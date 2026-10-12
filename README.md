@@ -1,43 +1,41 @@
 # Owelk
 
-논문 읽는 앱. 빠르고, 가볍고, 내 컴퓨터에만 있습니다.
+A quiet place to read papers. Fast, light, and it stays on your machine.
 
-PDF 리더 · 주석 · 노트 · 라이브러리 · 검색 · AI · 웹 탭 · 컴퓨터 간 동기화.
-나머지는 써 보면 압니다.
+PDFs, highlights, notes, a library, search, AI that cites the page, web tabs, sync across computers.
+That's the short list.
 
-## 설치
+## Install
 
 ```sh
-tools/install-local.sh          # 빌드하고 설치. 업데이트는 git pull 후 다시
-tools/install-local.sh --clean  # 처음부터 다시 빌드
+tools/install-local.sh          # build and install; after git pull, run it again to update
+tools/install-local.sh --clean  # rebuild from scratch
 ```
 
-- **macOS**: Homebrew의 Qt를 씁니다. `~/Applications/Owelk.app`에 설치됩니다.
-- **Linux** (Ubuntu 24.04 등): 공식 Qt 6.11을 `~/Qt`에 받아 씁니다(처음 한 번 약 1.5 GB). 앱 메뉴에 들어갑니다.
-- 라이브러리·노트·설정은 앱 데이터 폴더에 있어서 다시 설치해도 그대로입니다.
+- **macOS** uses Homebrew's Qt and installs to `~/Applications/Owelk.app`.
+- **Linux** (Ubuntu 24.04 and similar) fetches Qt 6.11 into `~/Qt` once (about 1.5 GB) and adds a menu entry.
+- Your library, notes and settings live in the app data folder, so reinstalling keeps them.
 
-있으면 더 좋은 것(없어도 돌아감):
-[Tesseract](https://github.com/tesseract-ocr/tesseract)(스캔 PDF 검색) ·
-[Ollama](https://ollama.com)(의미 검색) ·
-AI 키 또는 ChatGPT 계정(AI 기능).
+Nice to have: [Tesseract](https://github.com/tesseract-ocr/tesseract) for scanned PDFs,
+[Ollama](https://ollama.com) for search by meaning, an API key or a ChatGPT account for AI.
 
-## 개발
+## Develop
 
 ```sh
 cmake -S . -B build -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
 cmake --build build --parallel 6
 ctest --test-dir build --output-on-failure
-open -n build/owelk.app --args --data-dir "$PWD/build/manual-data"   # 테스트용 데이터로 실행
+open -n build/owelk.app --args --data-dir "$PWD/build/manual-data"   # run with test data
 ```
 
-C++20, Qt 6.11 (Quick · PDF · WebEngine), SQLite. macOS · Linux · Windows.
+C++20, Qt 6.11 (Quick, PDF, WebEngine), SQLite. macOS, Linux, Windows.
 
-## 원칙
+## Promises
 
-- 원본 PDF는 건드리지 않습니다. 주석은 Owelk에 따로 저장되고, 원하면 주석 포함 사본으로 내보냅니다.
-- 밖으로 나가는 건 웹 탭, 직접 누른 조회, 동의한 AI 요청뿐입니다.
-- 무거운 일(색인·OCR·백업)은 읽는 동안 쉽니다.
+- Your PDFs are never touched. Annotations live beside them, and export as a copy when you want one.
+- Nothing leaves your computer except web tabs, lookups you ask for, and AI requests you agree to.
+- Heavy work (indexing, OCR, backups) waits while you read.
 
-## 더 보기
+## More
 
-[진행 현황](docs/STATUS.md) · [다음 할 일](docs/NEXT.md) · [동기화](docs/SYNC.md) · [주석](docs/HIGHLIGHTS.md) · [검색](docs/SEARCH.md) · [PDF 재연결](docs/RELINK.md) · [디자인](docs/DESIGN.md) · [성능](docs/PERFORMANCE.md)
+[Status](docs/STATUS.md) · [Next](docs/NEXT.md) · [Sync](docs/SYNC.md) · [Annotations](docs/HIGHLIGHTS.md) · [Search](docs/SEARCH.md) · [Relinking PDFs](docs/RELINK.md) · [Design](docs/DESIGN.md) · [Performance](docs/PERFORMANCE.md)
