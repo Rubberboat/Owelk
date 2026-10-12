@@ -1211,6 +1211,22 @@ private slots:
         QCOMPARE(store.readingPosition(source)["page"].toInt(), 2);
         QCOMPARE(store.continueReading()["id"].toString(), "t1");
     }
+    void webTabAddressesSurviveSaving()
+    {
+        QTemporaryDir directory;
+        ResearchStore store(directory.path());
+        QString error;
+        QVERIFY(store.initialize(&error));
+        // QUrl::toString() would decode %20 to a space, which the tab layout check rejects on the next start.
+        const QString address = "https://scholar.google.com/scholar?q=radar%20inertial%20odometry";
+        const QVariantMap web{
+            {"id", "w1"}, {"kind", "web"}, {"source", address}, {"title", ""}, {"position", QVariantMap{{"page", 0}}}};
+        const QVariantMap group{{"kind", "group"}, {"id", "g1"}, {"activeTab", "w1"}, {"tabs", QVariantList{web}}};
+        QVERIFY(store.saveSession(QVariantMap{{"version", 2}, {"tree", group}, {"activeGroup", "g1"}}));
+        const auto tabs = store.session()["tree"].toMap()["tabs"].toList();
+        QCOMPARE(tabs.size(), 1);
+        QCOMPARE(tabs[0].toMap()["source"].toString(), address);
+    }
     void activePaneOwnsRecentPosition()
     {
         QTemporaryDir directory;

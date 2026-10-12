@@ -140,6 +140,19 @@ TestCase {
         try { Tree.restore({version: 99}) } catch (error) { failed = true }
         verify(failed)
     }
+    function test_webAddressesWithSpaces() {
+        // url.toString() decodes %20 to a space; such an address still makes a tab, kept encoded.
+        const t = Tree.webTab("https://scholar.google.com/scholar?q=radar inertial odometry")
+        compare(t.source, "https://scholar.google.com/scholar?q=radar%20inertial%20odometry")
+        verify(Tree.isWebAddress("https://example.com/?q=a b"))
+        verify(!Tree.isWebAddress("not a url"))
+        // A layout saved with the decoded address (as earlier versions did) loads, with the address encoded.
+        const saved = {kind: "group", id: "g", activeTab: "w", tabs: [{id: "w", kind: "web", source: "https://example.com/?q=a b",
+            title: "", position: {page: 0, x: 0, y: 0, zoom: 1}}]}
+        const restored = Tree.restore({version: 2, tree: saved, activeGroup: "g"})
+        compare(restored.tree.tabs[0].source, "https://example.com/?q=a%20b")
+        compare(saved.tabs[0].source, "https://example.com/?q=a b") // The input is left as it was.
+    }
     function test_splitGeometryAndRoundTrip() {
         let tree = Tree.group([Tree.tab("file:///a.pdf")])
         for (let i = 0; i < 8; ++i) tree = Tree.split(tree, Tree.leaves(tree)[0].id, Tree.group([Tree.tab("file:///b.pdf")]), i % 2 ? "bottom" : "right")
