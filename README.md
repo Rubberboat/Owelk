@@ -18,7 +18,7 @@ tools/install-local.sh --clean  # 빌드를 처음부터 다시
 기존 창을 닫은 뒤 프로젝트에서 다음 명령으로 실행합니다. 현재 수동 테스트 데이터와 읽던 위치를 그대로 사용합니다.
 
 ```sh
-open -n /Users/gyu/Documents/Owelk/build/owelk.app --args --data-dir /Users/gyu/Documents/Owelk/build/manual-data
+open -n build/owelk.app --args --data-dir "$PWD/build/manual-data"
 ```
 
 `--data-dir` 없이 실행하면 OS의 앱 데이터 폴더를 사용하므로, 위 테스트 데이터와 별도로 저장됩니다. 여러 인스턴스를 같은 데이터 폴더로 실행하지 마세요.
