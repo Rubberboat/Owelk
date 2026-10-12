@@ -238,9 +238,10 @@ Flickable {
     function updateWebTab(tabId, url, title) {
         const g = Tree.owner(tree, tabId)
         const t = g ? g.tabs.find(function(tab) { return tab.id === tabId }) : null
-        if (!t || t.kind !== "web" || !Tree.isWebAddress(url)) return
-        if (t.source === url.toString() && t.title === title) return
-        t.source = url.toString(); t.title = title || ""
+        const address = Tree.webAddress(url)
+        if (!t || t.kind !== "web" || !Tree.isWebAddress(address)) return
+        if (t.source === address && t.title === title) return
+        t.source = address; t.title = title || ""
         sync(); changed(); webTabUpdated()
     }
     // A downloaded PDF replaces the web tab that only existed to fetch it, or opens next to it.

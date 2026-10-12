@@ -49,7 +49,12 @@ QUrl ResearchStore::resolvedSource(const QUrl &source) const
 }
 QVariantMap ResearchStore::canonicalState(const QVariantMap &state) const
 {
-    return rewrite(state, [this](const QString &source) { return resolvedSource(QUrl(source)).toString(); }).toMap();
+    // Only local PDFs are relinked. Any other source (a web tab's address) is kept exactly as written:
+    // QUrl::toString() would turn %20 into a space, and the saved tab layout would then fail to load.
+    return rewrite(state, [this](const QString &source) {
+        const QUrl url(source);
+        return url.isLocalFile() ? resolvedSource(url).toString() : source;
+    }).toMap();
 }
 void ResearchStore::requestRelink(const QUrl &source)
 {

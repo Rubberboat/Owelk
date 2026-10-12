@@ -7,8 +7,11 @@ function clone(value) { return JSON.parse(JSON.stringify(value)) }
 function group(tabs) { return {kind: "group", id: id("group"), tabs: tabs || [], activeTab: tabs && tabs.length ? tabs[0].id : ""} }
 function tab(source, position) { return {id: id("tab"), source: source.toString(), position: Object.assign({page: 0, y: 0, x: 0, zoom: 1}, clone(position || {}))} }
 // Web pages are tabs too; their source is the current http(s) address.
-function webTab(url, title) { return {id: id("tab"), kind: "web", source: url.toString(), title: title || "", position: {page: 0, y: 0, x: 0, zoom: 1}} }
-function isWebAddress(url) { return /^https?:\/\/[^\s]+$/i.test(url.toString()) }
+function webTab(url, title) { return {id: id("tab"), kind: "web", source: webAddress(url), title: title || "", position: {page: 0, y: 0, x: 0, zoom: 1}} }
+// A web address as tabs keep it. url.toString() (in QML and C++ QUrl alike) turns %20 back into a space,
+// so whitespace is encoded again: the address stays one token and a layout saved with it still loads.
+function webAddress(url) { return String(url).trim().replace(/\s/g, function(c) { return encodeURIComponent(c) }) }
+function isWebAddress(url) { return /^https?:\/\/[^\s]+$/i.test(webAddress(url)) }
 // A typed address becomes a URL; anything else is a search with the given template ("…?q=%s").
 function addressToUrl(text, searchTemplate) {
     const value = text.trim()
@@ -218,6 +221,8 @@ function restore(state) {
         const tree = clone(state.tree)
         if (!validate(tree, {}, 0)) throw new Error("Invalid saved tab layout. The saved data has not been overwritten.")
         const list = leaves(tree)
+        // Earlier versions could save a web address with spaces in it (see webAddress); it is encoded again.
+        list.forEach(function(g) { g.tabs.forEach(function(t) { if (t.kind === "web") t.source = webAddress(t.source) }) })
         return {tree: tree, activeGroup: list.some(function(g) { return g.id === state.activeGroup }) ? state.activeGroup : list[0].id}
     }
     if (state.version && state.version !== 1) throw new Error("This session needs a newer Owelk version. Saved data has not been overwritten.")
