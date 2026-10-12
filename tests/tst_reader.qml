@@ -428,7 +428,9 @@ Item {
             tryVerify(function() { return canvas.documentFingerprint.length === 64 })
         }
         function test_persistentHighlightSelectionAndRemoval() {
-            // Marks removed by earlier tests leave the list once it has been read again.
+            // Starts from a paper without marks: once its marks are read, those left by earlier tests go.
+            tryVerify(function() { return canvas.documentFingerprint.length === 64 }, 10000)
+            canvas.savedHighlights.forEach(function(m) { researchStore.removeHighlight(m.id) })
             tryVerify(function() { return canvas.savedHighlights.length === 0 }, 10000)
             const paper = findChild(canvas, "paperPage0")
             const bounds = fixtureTextBounds
