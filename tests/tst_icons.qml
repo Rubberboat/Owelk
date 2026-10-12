@@ -31,11 +31,11 @@ Item {
             check(win.contentItem.parent, problems)
             win.documents.openDocument(fixtureSource)
             tryVerify(function() { return win.currentReader && win.currentReader.pdfReady }, 10000)
-            // The AI panel (in its own dock) and the Document panel.
-            win.aiVisible = true; win.documentVisible = true; win.aiSide = "left"
+            // The Document panel, then the AI panel in its place (one panel per dock).
+            win.documentSide = "left"; win.togglePanel("document")
             wait(300)
             check(win.contentItem.parent, problems)
-            findChild(win, "leftDock").activePanel = "ai"
+            win.aiSide = "left"; win.setPanelShown("ai", true); win.closeOthers("ai")
             wait(300)
             check(win.contentItem.parent, problems)
             compare(problems.join("; "), "")

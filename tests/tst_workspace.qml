@@ -220,9 +220,10 @@ Item {
             compare(home.recentCollections[0].id, second)
             verify(home.recentThreads.some(function(t) { return t.id === thread }))
             compare(findChild(home, "homeNote-0").text, "Older note")
-            // The box holds just its rows inside a slot of fixed height.
+            // The box holds just its rows inside a slot of fixed height (full only with five notes or more).
             const row = findChild(home, "homeNote-0"), box = row.ListView.view.parent
-            verify(box.height < box.parent.height)
+            verify(box.height <= box.parent.height)
+            if (home.recentNotes.length < 5) verify(box.height < box.parent.height)
             // A note opens in a tab (the row may be below the fold).
             row.clicked()
             tryVerify(function() { const g = Tree.find(workspace.documents.tree, workspace.documents.activeGroup); return g && g.tabs.some(function(t) { return t.id === g.activeTab && t.noteId === older }) })

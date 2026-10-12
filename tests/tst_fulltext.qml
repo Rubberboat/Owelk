@@ -192,13 +192,18 @@ Item {
             tryCompare(workspace, "homeVisible", false)
             compare(canvas().currentPage, 2)
             workspace.showHome()
+            // On Home the index line shows only while indexing or when PDFs cannot be read; its details
+            // (as in Settings › Search) are checked with the line shown.
             const status = findChild(home, "indexStatus")
+            status.quiet = false
+            waitForPolish(status); wait(30)
             mouseClick(status)
             const details = findChild(status, "indexDetails")
             tryCompare(details, "opened", true)
             mouseClick(findChild(details, "pauseIndex")); compare(researchStore.paperIndex.paused, true)
             mouseClick(findChild(details, "pauseIndex")); compare(researchStore.paperIndex.paused, false)
             details.close()
+            status.quiet = true
         }
     }
 }

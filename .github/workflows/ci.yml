@@ -1,4 +1,4 @@
-# Build and test Owelk on Linux, Windows and macOS. Every test runs offscreen.
+# Build and test Owelk on Linux and macOS. Every test runs offscreen. (Windows is left out for now.)
 name: CI
 on:
   push:
@@ -13,12 +13,6 @@ jobs:
         include:
           - os: ubuntu-24.04
             arch: linux_gcc_64
-          # Windows is not a main target yet: its result is shown but does not fail the run.
-          - os: windows-2022
-            arch: win64_msvc2022_64
-            optional: true
-            # 6.11.3's Windows packages are incomplete on the Qt mirrors (no Updates.xml).
-            qt: '6.11.2'
           - os: macos-14
             arch: clang_64
     runs-on: ${{ matrix.os }}

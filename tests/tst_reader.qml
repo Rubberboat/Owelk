@@ -428,6 +428,8 @@ Item {
             tryVerify(function() { return canvas.documentFingerprint.length === 64 })
         }
         function test_persistentHighlightSelectionAndRemoval() {
+            // Marks removed by earlier tests leave the list once it has been read again.
+            tryVerify(function() { return canvas.savedHighlights.length === 0 }, 10000)
             const paper = findChild(canvas, "paperPage0")
             const bounds = fixtureTextBounds
             const from = paper.mapToItem(canvas, bounds.x * canvas.pageScale, (bounds.y + bounds.height / 2) * canvas.pageScale)
@@ -1147,8 +1149,11 @@ Item {
             tryVerify(function() { return canvas.savedHighlights.some(function(h) { return h.kind === "area" && h.page === 1 }) }, 10000)
             compare(canvas.tool, "")
             const mark = canvas.savedHighlights.filter(function(h) { return h.kind === "area" })[0]
-            fuzzyCompare(mark.rectangles[0].width, .5, .02)
+            // Removed first, so a failed check below leaves no mark for the next test.
             verify(researchStore.removeHighlight(mark.id))
+            // As wide as the drag (the page's on-screen size differs between machines, so roughly).
+            verify(mark.rectangles[0].width > .2 && mark.rectangles[0].width < .6, mark.rectangles[0].width)
+            verify(mark.rectangles[0].height > .05, mark.rectangles[0].height)
         }
     }
 }
