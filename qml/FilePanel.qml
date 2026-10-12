@@ -271,10 +271,11 @@ Item {
                     id: drop
                     anchors.fill: parent
                     keys: ["owelk/paper", "text/uri-list"]
-                    // A Library paper is filed here; PDF files from the desktop are added to the Library and filed.
+                    // A Library paper is filed here; PDF files from the desktop join the Library (moving into
+                    // the PDF folder like any dropped PDF) and are filed.
                     onDropped: function(event) {
                         if (event.source && event.source.paperUrls) researchStore.setDocumentsCollection(event.source.paperUrls, shelfRow.modelData.id, true)
-                        else researchStore.addDocuments(event.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) }), shelfRow.modelData.id)
+                        else researchStore.takeDroppedPdfs(event.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) }), shelfRow.modelData.id)
                     }
                 }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: { shelfMenu.collection = shelfRow.modelData; shelfMenu.popup() } }

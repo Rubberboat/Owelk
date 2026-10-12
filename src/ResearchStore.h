@@ -71,10 +71,14 @@ public:
     bool relinking() const { return m_relinking; }
     bool copyingPdfs() const { return m_copyingPdfs; }
     // "Keep PDFs in Owelk" (setting library.keepPdfs, on by default): PDFs that are opened, added or
-    // downloaded are copied into the data folder's papers/; originals stay untouched.
+    // downloaded are copied into the PDF folder; originals stay untouched (dropped PDFs move, below).
     bool keepsPdfs() const;
     QString papersFolder() const;
     Q_INVOKABLE QUrl papersFolderUrl() const;
+    // Settings › Data › PDF folder (setting library.folder): the PDFs kept in the folder in use move to
+    // this one, each paper following its file the way Locate Original PDF does, and new PDFs go there.
+    // False when the folder cannot be used or PDFs are already being copied or moved.
+    Q_INVOKABLE bool choosePapersFolder(const QUrl &folder);
     // The URL to open for a PDF: the Library's own copy (made now if needed) while PDFs are kept.
     Q_INVOKABLE QUrl adoptPdf(const QUrl &source);
     // Library papers whose file is still outside papers/, and copying them in (one by one, each
@@ -145,6 +149,12 @@ public:
     // Adds PDFs to the Library (and to a collection, if given) without opening them; their details and
     // text are read in the background. Returns how many were added.
     Q_INVOKABLE int addDocuments(const QVariantList &sources, const QString &collectionId = QString());
+    // PDFs dropped on Owelk join the Library like addDocuments, and while PDFs are kept they move into
+    // the PDF folder (setting library.dropMoves, on by default; from another disk the copy is checked
+    // byte for byte and the original goes to the system Trash). Returns the papers' URLs.
+    Q_INVOKABLE QVariantList takeDroppedPdfs(const QVariantList &sources, const QString &collectionId = QString());
+    // A folder on this computer (a dropped folder joins the Library through importFolder).
+    Q_INVOKABLE bool isFolder(const QUrl &url) const;
     // Takes papers out of the Library: lists, recent papers, collections, tags and the text index.
     // The PDF file and annotations stay; opening the file again brings the paper back.
     Q_INVOKABLE int removeFromLibrary(const QVariantList &sources);
@@ -403,8 +413,9 @@ private:
     bool m_copyingPdfs = false;
     static QStringList adoptPdfFiles(const QString &directory, const QString &papers,
         const QHash<QString, QString> &relinks, const QStringList &paths);
-    // Same-bytes files met earlier in one batch reuse that copy.
-    QUrl adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch);
+    // Same-bytes files met earlier in one batch reuse that copy; `move` moves the file in instead.
+    QUrl adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move = false);
+    QVariantList addPdfs(const QVariantList &sources, const QString &collectionId, bool move);
     static QString defaultPapersFolder(const QString &directory);
     void relocatePapers();
     QString m_papers;

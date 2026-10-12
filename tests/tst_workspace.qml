@@ -645,6 +645,55 @@ Item {
             compare(researchStore.session.version, 3)
             verify(researchStore.saveSession(live))
         }
+        function test_pdfsDroppedOnTheWindowMoveInAndOpen() {
+            // UI tests read PDFs in place; dropped PDFs move only while Owelk keeps its PDFs.
+            researchStore.setSetting("library.keepPdfs", "1")
+            try { droppedPdfsMoveInAndOpen() } finally { researchStore.setSetting("library.keepPdfs", "0") }
+        }
+        function droppedPdfsMoveInAndOpen() {
+            workspace.documents.restore({}); workspace.showHome()
+            const hint = findChild(workspace, "windowDropHint")
+            verify(hint !== null && !hint.visible)
+            const folder = researchStore.papersFolderUrl().toString() + "/"
+            const dropped = testInput.uniqueFixture("dropped from downloads.pdf")
+            verify(workspace.droppable([dropped]))
+            verify(!workspace.droppable(["file:///nowhere/notes.txt"]))
+            const papers = researchStore.libraryDocuments({}).length
+            // One PDF: it moves into the PDF folder, joins the Library and opens.
+            verify(workspace.dropFiles([dropped]))
+            tryCompare(workspace, "homeVisible", false)
+            const g = Tree.find(workspace.documents.tree, workspace.documents.activeGroup)
+            const tab = g.tabs.find(function(t) { return t.id === g.activeTab })
+            verify(String(tab.source).indexOf(folder) === 0, String(tab.source))
+            verify(!testInput.fileExists(dropped), "the dropped file left its folder")
+            compare(researchStore.libraryDocuments({}).length, papers + 1)
+            canvas()
+            // Many at once only join the Library.
+            const many = []
+            for (let i = 0; i < workspace.dropOpenLimit + 1; ++i) many.push(testInput.uniqueFixture("batch " + i + ".pdf"))
+            const count = function() { return Tree.leaves(workspace.documents.tree).reduce(function(n, leaf) { return n + leaf.tabs.length }, 0) }
+            const tabs = count()
+            verify(workspace.dropFiles(many))
+            compare(count(), tabs)
+            compare(researchStore.libraryDocuments({}).length, papers + 1 + many.length)
+            verify(many.every(function(url) { return !testInput.fileExists(url) }))
+        }
+        function test_homeWebSearchChoosesItsEngine() {
+            workspace.showHome()
+            const home = findChild(workspace, "homeView")
+            const field = findChild(home, "homeWebSearch"), chip = findChild(home, "homeSearchEngine")
+            compare(chip.text, "Scholar")
+            mouseClick(chip)
+            const menu = findChild(home, "homeSearchEngineMenu")
+            tryCompare(menu, "opened", true)
+            findChild(menu, "homeEngine-arXiv").triggered()
+            menu.close()
+            compare(researchStore.setting("searchEngine"), Tree.searchEngines[1].template)
+            tryCompare(chip, "text", "arXiv")
+            compare(Tree.addressToUrl("slam", field.engine), "https://arxiv.org/search/?query=slam&searchtype=all")
+            researchStore.setSetting("searchEngine", "")
+            tryCompare(chip, "text", "Scholar")
+        }
         function test_shortcutSheetOpensFromKeyButtonMenuAndPalette() {
             workspace.showHome()
             const loader = findChild(workspace, "shortcutSheetLoader")

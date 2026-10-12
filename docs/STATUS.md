@@ -14,11 +14,20 @@
 | 12–16. 검색·커맨드 | FTS5 본문(+OCR), 단어 순서 무관·점수 순위, 범위 칩·검색어 조건, 선택적 의미 검색(Ollama·OpenAI), 명령 팔레트 | — |
 | 17–21. 주석·연결 | 5색 주석·코멘트, 영역 표시(캡션 함께), 노트 링크·역링크, 주석 포함 PDF 내보내기(표준 주석). 이전 Captures는 주석·노트로 통합(스키마 15) | Figure 자동 인식 |
 | 22–27. 노트·AI | Markdown 노트, AI 4종(Claude API, OpenAI API, ChatGPT 계정, Ollama), 모델·추론 강도·Fast, 이미지·PDF/웹 영역 첨부(저장 안 함), Thread(논문별 자동 + 여러 논문을 묶는 나만의 Thread)와 그 안의 Chat, 선호 언어, 논문 비교표, 쪽별 번역·논문 요약, 탭·Collection AI 정리 | 라이브러리 전체에 묻기(v0.6) |
-| 28–32. 데이터·기술 | C++20 + Qt Quick/PDF/WebEngine, 공유 폴더를 통한 컴퓨터 간 동기화(Google Drive·Dropbox·Syncthing, 항목별 나중 변경 우선), SQLite(라이브러리 스키마 16, 색인 4, 업그레이드 전 백업), 백업·복원, Markdown·BibTeX 내보내기, 단축키 변경, macOS·Linux·Windows 키 저장소, 로컬 설치 스크립트, 자동 테스트 7묶음 | Linux/Windows 실기기, 배포 패키지 |
+| 28–32. 데이터·기술 | C++20 + Qt Quick/PDF/WebEngine, 공유 폴더를 통한 컴퓨터 간 동기화(Google Drive·Dropbox·Syncthing, 항목별 나중 변경 우선), SQLite(라이브러리 스키마 17, 색인 4, 업그레이드 전 백업), 백업·복원, Markdown·BibTeX 내보내기, 단축키 변경, macOS·Linux·Windows 키 저장소, 로컬 설치 스크립트, 자동 테스트 7묶음 | Linux/Windows 실기기, 배포 패키지 |
 
 ## 우선순위
 
 가볍고 빠름을 먼저 지키고, 기획서 순서보다 실제 사용 중 불편한 부분을 먼저 고칩니다. 기능별 사용법은 [README](../README.md)와 각 문서에, 변경 이력은 git 로그에 있습니다.
+
+## 이번 단계 (2026-10-12): 손에 익게
+
+- AI: Chat이 Thread에 모임(논문마다 자동 Thread, 여러 논문을 묶는 나만의 Thread; 스키마 17).
+- 단축키 한눈에 보기: `?`, `⌘/`, 상태 표시줄 `?`, Help 메뉴, `/shortcuts`(`/list`).
+- 저장된 탭 중 열 수 없는 것만 빼고 나머지를 엶(전부 못 읽으면 탭 없이 시작, 원래 세션은 한 번 보관).
+- PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.
+- PDF 폴더 바꾸기: Settings → Data → PDF folder → `Change…`. 이미 있던 PDF도 새 폴더로 옮기고 주석·노트 연결은 그대로.
+- 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.
 
 ## 이번 단계 (2026-10-10): 구조 단순화
 

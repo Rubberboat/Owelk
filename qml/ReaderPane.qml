@@ -640,7 +640,9 @@ Rectangle {
                 anchors.fill: parent
                 onDropped: function(drop) {
                     if (drop.hasUrls && /\.pdf$/i.test(drop.urls[0].toString())) {
-                        if (root.managed) root.fileChosen(drop.urls[0]); else root.openFile(drop.urls[0])
+                        // A dropped PDF moves into the PDF folder like one dropped anywhere else.
+                        const url = researchStore.takeDroppedPdfs([drop.urls[0]])[0] || drop.urls[0]
+                        if (root.managed) root.fileChosen(url); else root.openFile(url)
                         drop.acceptProposedAction()
                     }
                 }

@@ -175,6 +175,32 @@ ApplicationWindow {
         else { const view = documents.groupView(documents.activeGroup); if (view) view.focusHome() }
     }
     function openDocument(source, position) { if (!restoreFailed) documents.openDocument(researchStore.resolvedSource(source), position) }
+    // Files dropped on the window where no panel takes them (from Finder, the Downloads folder or a
+    // browser's download list): PDFs move into the PDF folder and join the Library, and up to
+    // dropOpenLimit of them open in tabs; a folder joins the Library as collections; web addresses
+    // open in web tabs. False when the drop held none of these.
+    readonly property int dropOpenLimit: 6
+    function dropFiles(urls) {
+        if (restoreFailed) return false
+        const drop = Tree.droppedFiles(urls, function(url) { return researchStore.isFolder(url) })
+        if (drop.pdfs.length) {
+            const papers = researchStore.takeDroppedPdfs(drop.pdfs)
+            if (papers.length && papers.length <= dropOpenLimit) {
+                papers.forEach(function(url) { window.openDocument(url) })
+                homeVisible = false
+            }
+        }
+        drop.folders.forEach(function(folder) { researchStore.importFolder(folder, "", true) })
+        if (!drop.pdfs.length && !drop.folders.length && drop.web.length) {
+            drop.web.slice(0, dropOpenLimit).forEach(function(url) { documents.openWeb(url) })
+            homeVisible = false
+        }
+        return drop.pdfs.length + drop.folders.length + drop.web.length > 0
+    }
+    function droppable(urls) {
+        const drop = Tree.droppedFiles(urls, function(url) { return researchStore.isFolder(url) })
+        return drop.pdfs.length + drop.folders.length + drop.web.length > 0
+    }
     function openSearchResult(result) {
         if (result.kind === "paper") openDocument(result.source, result.position)
         else if (result.kind === "highlight") researchStore.openHighlight(result.id)
@@ -524,6 +550,40 @@ ApplicationWindow {
                 }
             }
             IconButton { objectName: "restoreNoticeClose"; icon.name: "close"; description: "Dismiss"; focusPolicy: Qt.NoFocus; onClicked: restoreNotice.visible = false }
+        }
+    }
+    // Beneath everything: a drop that no panel takes (the Library list, a collection, the AI panel) lands here.
+    DropArea {
+        id: windowDrop
+        objectName: "windowDrop"
+        anchors.fill: parent
+        z: -1
+        keys: ["text/uri-list"]
+        onEntered: function(drag) { drag.accepted = !window.restoreFailed && window.droppable(drag.urls) }
+        onDropped: function(drop) { if (window.dropFiles(drop.urls)) drop.acceptProposedAction() }
+    }
+    Rectangle {
+        objectName: "windowDropHint"
+        parent: window.contentItem
+        anchors.fill: parent
+        z: 60
+        visible: windowDrop.containsDrag
+        color: Theme.overlay
+        border.color: Theme.overlayBorder; border.width: 2
+        Rectangle {
+            anchors.centerIn: parent
+            width: dropHintText.implicitWidth + 32; height: dropHintText.implicitHeight + 20
+            radius: Theme.radiusLarge
+            color: Theme.raised; border.color: Theme.border
+            Label {
+                id: dropHintText
+                anchors.centerIn: parent
+                font.pixelSize: Theme.fontBody; color: Theme.text
+                text: !windowDrop.containsDrag ? ""
+                    : researchStore.setting("library.keepPdfs", "1") === "1" && researchStore.setting("library.dropMoves", "1") === "1"
+                    ? "Drop to move PDFs into \u201c" + researchStore.fileName(researchStore.papersFolderUrl()) + "\u201d and open them"
+                    : "Drop to add PDFs to the Library and open them"
+            }
         }
     }
     // Areas are slices separated by 1px edges; an edge darkens under the pointer and drags to resize.

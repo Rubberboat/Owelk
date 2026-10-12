@@ -1724,6 +1724,73 @@ private slots:
         QCOMPARE(store.libraryDocuments().size(), 1);
         QCOMPARE(store.libraryDocuments()[0].toMap()["url"].toUrl(), moved);
     }
+    void droppedPdfsMoveIntoThePdfFolder()
+    {
+        // A PDF dragged onto Owelk (from Downloads, say) moves into the PDF folder and joins the Library;
+        // with "Copy" chosen the original stays. Other files are not taken.
+        QTemporaryDir directory;
+        QVERIFY(QDir().mkpath(directory.filePath("Downloads")));
+        const auto first = directory.filePath("Downloads/first paper.pdf"), second = directory.filePath("Downloads/second.pdf");
+        writeFixture(first, "Dropped First");
+        writeFixture(second, "Dropped Second");
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        const auto added
+            = store.takeDroppedPdfs({QUrl::fromLocalFile(first), QUrl::fromLocalFile(directory.filePath("Downloads/notes.txt"))});
+        QCOMPARE(added.size(), 1);
+        QCOMPARE(added[0].toUrl().toLocalFile(), store.papersFolder() + "/first paper.pdf");
+        QVERIFY(QFileInfo::exists(added[0].toUrl().toLocalFile()));
+        QVERIFY(!QFileInfo::exists(first));
+        QCOMPARE(store.libraryDocuments().size(), 1);
+        QVERIFY(store.setSetting("library.dropMoves", "0"));
+        const auto copied = store.takeDroppedPdfs({QUrl::fromLocalFile(second)});
+        QCOMPARE(copied.size(), 1);
+        QVERIFY(copied[0].toUrl().toLocalFile().startsWith(store.papersFolder() + "/"));
+        QVERIFY(QFileInfo::exists(second));
+        QCOMPARE(store.libraryDocuments().size(), 2);
+        QVERIFY(store.isFolder(QUrl::fromLocalFile(directory.filePath("Downloads"))));
+        QVERIFY(!store.isFolder(copied[0].toUrl()));
+        QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+    }
+    void aChosenPdfFolderTakesTheKeptPdfsAlong()
+    {
+        // Settings › Data › PDF folder: the kept PDFs move to the chosen folder, each paper keeping its ID
+        // (the old path still finds it); new PDFs go there, and the choice holds after a restart.
+        QTemporaryDir directory;
+        const auto original = directory.filePath("paper.pdf"), folder = directory.filePath("명현만 간장게장");
+        writeFixture(original, "Folder Paper");
+        QUrl kept;
+        QString id, error;
+        {
+            ResearchStore store(directory.filePath("data"));
+            QVERIFY2(store.initialize(&error), qPrintable(error));
+            kept = store.adoptPdf(QUrl::fromLocalFile(original));
+            QVERIFY(kept.toLocalFile().startsWith(store.papersFolder() + "/"));
+            QVERIFY(store.rememberDocument(kept));
+            id = store.documentLinkId(kept);
+            QSignalSpy relinked(&store, &ResearchStore::sourceRelinked);
+            QVERIFY(!store.choosePapersFolder(QUrl::fromLocalFile(directory.filePath("data"))));
+            QVERIFY(store.choosePapersFolder(QUrl::fromLocalFile(folder)));
+            QTRY_VERIFY_WITH_TIMEOUT(!store.copyingPdfs(), 10000);
+            const auto moved = QUrl::fromLocalFile(folder + "/paper.pdf");
+            QCOMPARE(store.papersFolder(), folder);
+            QCOMPARE(store.resolvedSource(kept), moved);
+            QVERIFY(QFileInfo::exists(moved.toLocalFile()));
+            QVERIFY(!QFileInfo::exists(kept.toLocalFile()));
+            QVERIFY(QFileInfo::exists(original));
+            QCOMPARE(store.documentLinkId(moved), id);
+            QCOMPARE(relinked.size(), 1);
+            const auto next = directory.filePath("next.pdf");
+            writeFixture(next, "Next Paper");
+            QVERIFY(store.adoptPdf(QUrl::fromLocalFile(next)).toLocalFile().startsWith(folder + "/"));
+            QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+        }
+        ResearchStore store(directory.filePath("data"));
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        QCOMPARE(store.papersFolder(), folder);
+        QCOMPARE(store.documentLinkId(store.resolvedSource(kept)), id);
+    }
     void deletedPapersWaitInTheTrash()
     {
         QTemporaryDir directory;

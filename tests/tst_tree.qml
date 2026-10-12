@@ -140,6 +140,28 @@ TestCase {
         try { Tree.restore({version: 99}) } catch (error) { failed = true }
         verify(failed)
     }
+    function test_webSearchGoesWhereItIsAsked() {
+        const scholar = Tree.searchEngines[0].template, arxiv = Tree.searchEngine("https://arxiv.org/search/?query=%s&searchtype=all")
+        compare(arxiv.label, "arXiv")
+        compare(Tree.searchEngine("https://example.org/?q=%s").name, "Google Scholar")
+        compare(Tree.addressToUrl("lidar odometry", scholar), "https://scholar.google.com/scholar?q=lidar%20odometry")
+        compare(Tree.addressToUrl("lidar odometry", arxiv.template), "https://arxiv.org/search/?query=lidar%20odometry&searchtype=all")
+        // A prefix searches there once, whatever engine is chosen.
+        compare(Tree.addressToUrl("arxiv: lidar odometry", scholar), "https://arxiv.org/search/?query=lidar%20odometry&searchtype=all")
+        compare(Tree.addressToUrl("Scholar:lidar", arxiv.template), "https://scholar.google.com/scholar?q=lidar")
+        compare(Tree.addressToUrl("arxiv:2305.01234", scholar), "https://arxiv.org/abs/2305.01234")
+        compare(Tree.addressToUrl("arxiv: 2305.01234v2", scholar), "https://arxiv.org/abs/2305.01234v2")
+        compare(Tree.addressToUrl("example.org/paper", scholar), "https://example.org/paper")
+        compare(Tree.addressToUrl("note: lidar", scholar), "https://scholar.google.com/scholar?q=note%3A%20lidar")
+    }
+    function test_droppedFilesAreSorted() {
+        const drop = Tree.droppedFiles(["file:///Users/me/Downloads/Paper%20One.PDF", "file:///Users/me/Downloads/Papers",
+                                        "file:///Users/me/notes.txt", "https://arxiv.org/abs/2305.01234"],
+                                       function(url) { return String(url).endsWith("/Papers") })
+        compare(drop.pdfs.length, 1)
+        compare(drop.folders.length, 1)
+        compare(drop.web, ["https://arxiv.org/abs/2305.01234"])
+    }
     function test_tabsThatCannotOpenAreLeftOut() {
         const pdf = function(id, page) { return {id: id, source: "file:///" + id + ".pdf", position: {page: page || 0, x: 0, y: 0, zoom: 1}} }
         const saved = {version: 2, activeGroup: "right", tree: {kind: "split", id: "s", axis: "horizontal", ratio: .5,

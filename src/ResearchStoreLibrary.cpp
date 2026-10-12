@@ -431,6 +431,38 @@ int ResearchStore::keyboardModifiers() const
 
 int ResearchStore::addDocuments(const QVariantList &sources, const QString &collectionId)
 {
+    const auto added = addPdfs(sources, collectionId, false);
+    if (m_quietAdd) return int(added.size());
+    if (!added.isEmpty())
+        emit message(added.size() == 1 ? QStringLiteral("Added 1 PDF to the Library.")
+                                       : QString("Added %1 PDFs to the Library.").arg(added.size()));
+    else
+        emit message("No PDFs were added. Choose PDF files.");
+    return int(added.size());
+}
+
+QVariantList ResearchStore::takeDroppedPdfs(const QVariantList &sources, const QString &collectionId)
+{
+    const bool move = keepsPdfs() && setting("library.dropMoves", "1") == "1";
+    const auto added = addPdfs(sources, collectionId, move);
+    if (added.isEmpty()) {
+        emit message("No PDFs were added. Drop PDF files.");
+        return added;
+    }
+    const auto count = added.size() == 1 ? QStringLiteral("1 PDF") : QString("%1 PDFs").arg(added.size());
+    emit message(move ? QString("Moved %1 to %2 and added %3 to the Library.")
+                            .arg(count, QFileInfo(papersFolder()).fileName(), added.size() == 1 ? "it" : "them")
+                      : QString("Added %1 to the Library.").arg(count));
+    return added;
+}
+
+bool ResearchStore::isFolder(const QUrl &url) const
+{
+    return url.isLocalFile() && QFileInfo(url.toLocalFile()).isDir();
+}
+
+QVariantList ResearchStore::addPdfs(const QVariantList &sources, const QString &collectionId, bool move)
+{
     QVariantList added;
     QHash<QString, QUrl> batch; // Two files with the same bytes become one paper.
     for (const auto &value : sources) {
@@ -438,7 +470,7 @@ int ResearchStore::addDocuments(const QVariantList &sources, const QString &coll
         if (!value.toUrl().isLocalFile() || !info.isFile() || !info.isReadable()
             || info.suffix().compare("pdf", Qt::CaseInsensitive))
             continue;
-        const auto url = adoptPdf(value.toUrl(), &batch);
+        const auto url = adoptPdf(value.toUrl(), &batch, move);
         const auto document = ensureDocument(url);
         if (document.isEmpty()) continue;
         QSqlQuery restore(m_database);
@@ -447,18 +479,12 @@ int ResearchStore::addDocuments(const QVariantList &sources, const QString &coll
         restore.exec();
         refreshMetadata(document, resolvedSource(url), false, true);
         m_index->enqueue(url);
-        added.append(url);
+        if (!added.contains(url)) added.append(url);
     }
     if (!collectionId.isEmpty() && !added.isEmpty()) setDocumentsCollection(added, collectionId, true);
     announceDocumentsChanged();
     emit homeChanged();
-    if (m_quietAdd) return int(added.size());
-    if (!added.isEmpty())
-        emit message(added.size() == 1 ? QStringLiteral("Added 1 PDF to the Library.")
-                                       : QString("Added %1 PDFs to the Library.").arg(added.size()));
-    else
-        emit message("No PDFs were added. Choose PDF files.");
-    return int(added.size());
+    return added;
 }
 
 int ResearchStore::removeFromLibrary(const QVariantList &sources)

@@ -68,6 +68,14 @@ public:
         QFile::copy(m_directory.filePath("fixture.pdf"), path);
         return QUrl::fromLocalFile(path);
     }
+    // A copy of fixture.pdf with bytes of its own (a comment after its end), so it is no duplicate.
+    Q_INVOKABLE QUrl uniqueFixture(const QString &name)
+    {
+        const auto url = copyFixture(name);
+        QFile file(url.toLocalFile());
+        if (file.open(QIODevice::Append)) file.write("\n% " + QUuid::createUuid().toByteArray() + "\n");
+        return url;
+    }
     Q_INVOKABLE QVariantMap relinkFixture(bool specialPath = false)
     {
         const auto prefix = m_directory.filePath(

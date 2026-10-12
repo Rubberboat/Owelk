@@ -15,12 +15,17 @@ ColumnLayout {
     readonly property var sync: researchStore.sync
     readonly property bool syncing: sync.folder.length > 0
     property bool keepPdfs: researchStore.setting("library.keepPdfs", "1") === "1"
+    // The PDF folder (shown as a path) and whether a change of it is moving PDFs right now.
+    property string papersPath: researchStore.localPath(researchStore.papersFolderUrl())
+    property bool movingPapers: false
+    property string papersProblem: ""
+    Connections { target: researchStore; function onCopyingPdfsChanged() { if (!researchStore.copyingPdfs) root.movingPapers = false } }
     // Read again after copying or when papers change.
     readonly property int outside: researchStore.documentsRevision >= 0 && !researchStore.copyingPdfs ? researchStore.outsidePdfCount() : 0
     Connections { target: researchStore; function onBackupFinished(ok, path, message) { root.result = message } }
     SettingsGroup {
         title: "Library"
-        note: "Like a note app, Owelk keeps its own copy of every PDF you open, add or download, in its data folder. The original files are never moved or deleted; you can remove them yourself."
+        note: "Like a note app, Owelk keeps every PDF you open, add or download in its PDF folder. Opened and added files are copied and the originals left alone; PDFs dragged onto Owelk move there. Changing the folder moves the PDFs already in it, with their notes and annotations."
         SettingsRow {
             label: "Keep PDFs in Owelk"
             Switch {
@@ -31,7 +36,7 @@ ColumnLayout {
         }
         SettingsRow {
             visible: root.keepPdfs && (root.outside > 0 || researchStore.copyingPdfs)
-            label: researchStore.copyingPdfs ? "Copying PDFs…" : root.outside + (root.outside === 1 ? " paper still reads its PDF from elsewhere" : " papers still read their PDFs from elsewhere")
+            label: researchStore.copyingPdfs ? (root.movingPapers ? "Moving PDFs…" : "Copying PDFs…") : root.outside + (root.outside === 1 ? " paper still reads its PDF from elsewhere" : " papers still read their PDFs from elsewhere")
             detail: "Each copy is checked byte for byte before the paper uses it."
             Button {
                 objectName: "copyPdfsIn"
@@ -54,7 +59,25 @@ ColumnLayout {
         }
         SettingsRow {
             label: "PDF folder"
+            detail: root.papersProblem || root.papersPath
+            Button {
+                objectName: "changePapersFolder"; text: "Change…"
+                enabled: !researchStore.copyingPdfs
+                onClicked: papersFolderDialog.open()
+            }
             Button { objectName: "showPapersFolder"; text: "Show Folder"; onClicked: Qt.openUrlExternally(researchStore.papersFolderUrl()) }
+        }
+        SettingsRow {
+            visible: root.keepPdfs
+            label: "Dragged-in PDFs"
+            detail: "PDFs dropped on Owelk from Finder, Downloads or a browser's download list"
+            ComboBox {
+                objectName: "dropMovesBox"
+                Layout.preferredWidth: 240
+                model: ["Move into the PDF folder", "Copy, leaving the original"]
+                currentIndex: researchStore.setting("library.dropMoves", "1") === "1" ? 0 : 1
+                onActivated: function(index) { researchStore.setSetting("library.dropMoves", index === 0 ? "1" : "0") }
+            }
         }
     }
     SettingsGroup {
@@ -116,6 +139,20 @@ ColumnLayout {
         }
     }
     Label { objectName: "backupResult"; visible: false; text: root.result }
+    // A new PDF folder: the PDFs kept in the old one move along (in the background).
+    function choosePapersFolder(folder) {
+        root.movingPapers = true
+        const ok = researchStore.choosePapersFolder(folder)
+        root.papersProblem = ok ? "" : "Owelk cannot keep its PDFs there. Choose a folder you can write to (not Owelk's data folder)."
+        root.papersPath = researchStore.localPath(researchStore.papersFolderUrl())
+        if (!researchStore.copyingPdfs) root.movingPapers = false
+    }
+    Native.FolderDialog {
+        id: papersFolderDialog
+        title: "Choose the folder for Owelk's PDFs"
+        currentFolder: researchStore.papersFolderUrl()
+        onAccepted: root.choosePapersFolder(selectedFolder)
+    }
     Native.FolderDialog {
         id: syncFolderDialog
         title: "Choose the shared folder to sync with"

@@ -37,11 +37,12 @@ Rectangle {
         function onNotesChanged() { listsLater.restart() }
         function onAiThreadsChanged() { listsLater.restart() }
         function onDocumentsChanged() { listsLater.restart() }
+        function onSettingsChanged() { webInput.engine = (researchStore.setting("searchEngine") || Tree.searchEngines[0].template) }
     }
     // An address or a web search typed on Home (opens a web tab).
     signal webRequested(string url)
     function searchWeb(text) {
-        const url = Tree.addressToUrl(text, researchStore.setting("searchEngine", "https://scholar.google.com/scholar?q=%s"))
+        const url = Tree.addressToUrl(text, webInput.engine)
         if (url.length) webRequested(url)
         return url.length > 0
     }
@@ -172,13 +173,43 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: Theme.controlHeight + 6
                     leftPadding: 30
-                    placeholderText: "Search the web or enter an address  ·  " + (researchStore.setting("searchEngine", "").indexOf("google.com/search") >= 0 ? "Google" : researchStore.setting("searchEngine", "").indexOf("duckduckgo") >= 0 ? "DuckDuckGo" : researchStore.setting("searchEngine", "").indexOf("arxiv") >= 0 ? "arXiv" : "Google Scholar")
+                    rightPadding: engineChip.width + 10
+                    // Where words go: chosen with the button at the right end (the same choice as Settings › Web).
+                    property string engine: (researchStore.setting("searchEngine") || Tree.searchEngines[0].template)
+                    placeholderText: "Search the web or enter an address"
                     selectByMouse: true
                     font.pixelSize: Theme.fontBody
                     onAccepted: if (root.searchWeb(text)) clear()
                     Keys.onEscapePressed: clear()
                     // A globe: the web, not the library.
                     Icon { x: 9; anchors.verticalCenter: parent.verticalCenter; name: "globe"; size: Theme.fontBody + 1; color: Theme.textTertiary }
+                    Chip {
+                        id: engineChip
+                        objectName: "homeSearchEngine"
+                        anchors.right: parent.right; anchors.rightMargin: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        focusPolicy: Qt.NoFocus
+                        trailingIcon: "down"
+                        text: Tree.searchEngine(webInput.engine).label
+                        ToolTip.text: "Search with"
+                        onClicked: engineMenu.popup(engineChip, 0, engineChip.height + 2)
+                        Menu {
+                            id: engineMenu
+                            objectName: "homeSearchEngineMenu"
+                            Instantiator {
+                                model: Tree.searchEngines
+                                delegate: MenuItem {
+                                    required property var modelData
+                                    objectName: "homeEngine-" + modelData.label
+                                    text: modelData.name
+                                    checkable: true; checked: webInput.engine === modelData.template
+                                    onTriggered: researchStore.setSetting("searchEngine", modelData.template)
+                                }
+                                onObjectAdded: function(index, item) { engineMenu.insertItem(index, item) }
+                                onObjectRemoved: function(index, item) { engineMenu.removeItem(item) }
+                            }
+                        }
+                    }
                 }
             }
             // The paper last read, as a card: click anywhere on it to go back to the page.

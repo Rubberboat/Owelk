@@ -1,4 +1,5 @@
 #include "FileFingerprint.h"
+#include "LibrarySync.h"
 #include "PaperMetadata.h"
 #include "PaperIndex.h"
 #include "ResearchStore.h"
@@ -12,11 +13,12 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QSqlQuery>
+#include <QStorageInfo>
 #include <QtConcurrent>
 
-// "Keep PDFs in Owelk": opened, added and downloaded PDFs get a copy in the data folder's papers/
-// (which sync fills too), so the Library does not depend on files scattered over the disk, as in
-// note apps. The originals are never moved or deleted.
+// "Keep PDFs in Owelk": opened, added and downloaded PDFs get a copy in the PDF folder (which sync
+// fills too), so the Library does not depend on files scattered over the disk, as in note apps.
+// Opened and added originals are never moved or deleted; PDFs dropped on Owelk move in.
 namespace {
 QString uniqueFile(const QString &folder, const QString &suggested)
 {
@@ -39,10 +41,20 @@ bool copyInto(const QString &from, const QString &to)
     return false;
 }
 
+// A move within one disk is a rename: the file itself changes folder and nothing is copied.
+// (QFile::rename alone would fall back to copy-and-delete across disks.)
+bool renameOnDisk(const QString &from, const QString &to)
+{
+    QDir().mkpath(QFileInfo(to).absolutePath());
+    return QStorageInfo(QFileInfo(from).absolutePath()) == QStorageInfo(QFileInfo(to).absolutePath())
+        && QFile::rename(from, to);
+}
+
 // The Library's file for a PDF: a path the Library already uses stays; identical bytes map to the
-// paper that has them; anything else is copied into papers/. The input comes back when nothing
-// applies or copying fails, so opening never breaks because of this.
-QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHash<QString, QUrl> *batch)
+// paper that has them; anything else is copied into the PDF folder, or with `move` moved there (from
+// another disk: copied, checked byte for byte, and the original sent to the system Trash). The input
+// comes back when nothing applies or copying fails, so opening never breaks because of this.
+QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHash<QString, QUrl> *batch, bool move)
 {
     const auto path = source.toLocalFile();
     const QFileInfo info(path);
@@ -62,14 +74,19 @@ QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHas
         const QUrl existing(same.value(0).toString());
         const auto existingPath = existing.toLocalFile();
         if (QFileInfo::exists(existingPath) && QFileInfo(existingPath) != info) {
-            // A fresh download of a paper Owelk already keeps is not kept twice.
+            // A fresh download of a paper Owelk already keeps is not kept twice, and a dropped copy of
+            // it leaves its folder (for the system Trash) as a moved file would.
             if (inside) QFile::remove(path);
+            else if (move && existingPath.startsWith(folder + "/")) QFile::moveToTrash(path);
             return existing;
         }
     }
     if (inside) return source;
     const auto target = uniqueFile(folder, info.fileName());
-    if (!copyInto(path, target)) return source;
+    if (!(move && renameOnDisk(path, target))) {
+        if (!copyInto(path, target)) return source;
+        if (move && FileFingerprint::sha256(target) == hash) QFile::moveToTrash(path);
+    }
     FileFingerprint::remember(target, FileFingerprint::stamp(target), hash);
     const auto url = QUrl::fromLocalFile(target);
     if (batch) batch->insert(hash, url);
@@ -176,15 +193,109 @@ QUrl ResearchStore::papersFolderUrl() const
     return QUrl::fromLocalFile(papersFolder());
 }
 
+bool ResearchStore::choosePapersFolder(const QUrl &folder)
+{
+    if (!folder.isLocalFile() || m_copyingPdfs || m_relinking || busy()) return false;
+    const auto target = QDir::cleanPath(QDir(folder.toLocalFile()).absolutePath());
+    if (target == m_papers) return true;
+    // Not the data folder itself (the database lives there), and a folder Owelk can write to.
+    if (target == QDir::cleanPath(QDir(m_directory).absolutePath()) || !QDir().mkpath(target)
+        || !QFileInfo(target).isWritable() || !setSetting("library.folder", target))
+        return false;
+    const auto old = m_papers;
+    m_papers = target;
+    m_sync->setPapersFolder(m_papers);
+    // Every paper whose file lies directly in the old folder follows it, papers in the Trash too.
+    struct Move {
+        QString from, to, hash;
+        bool copied = false;
+    };
+    QList<Move> moves;
+    QSqlQuery query(m_database);
+    if (query.exec("SELECT url,sha256 FROM documents WHERE url LIKE 'file:%'"))
+        while (query.next()) {
+            const auto path = QUrl(query.value(0).toString()).toLocalFile();
+            if (QFileInfo(path).absolutePath() == old && QFileInfo(path).isFile())
+                moves.append({path, {}, query.value(1).toString()});
+        }
+    if (moves.isEmpty()) {
+        emit message(QString("New PDFs will be kept in %1.").arg(QDir::toNativeSeparators(target)));
+        return true;
+    }
+    m_copyingPdfs = true;
+    emit copyingPdfsChanged();
+    auto *watcher = new QFutureWatcher<QList<Move>>(this);
+    connect(watcher, &QFutureWatcher<QList<Move>>::finished, this, [this, watcher, old, target] {
+        const auto done = watcher->result();
+        watcher->deleteLater();
+        int moved = 0;
+        for (const auto &move : done) {
+            if (move.to.isEmpty()) continue;
+            const auto from = QUrl::fromLocalFile(move.from), to = QUrl::fromLocalFile(move.to);
+            QString error;
+            if (!applyRelink(from, to, move.hash, &error)) {
+                // The paper keeps its file where it was.
+                if (move.copied) QFile::remove(move.to);
+                else QFile::rename(move.to, move.from);
+                continue;
+            }
+            // A copy on another disk replaced Owelk's old file, which goes to the system Trash.
+            if (move.copied) QFile::moveToTrash(move.from);
+            m_relinks.insert(from.toString(), to.toString());
+            m_index->relocateSource(from, to);
+            QSqlQuery pending(m_database);
+            pending.prepare("UPDATE sync_files SET local=? WHERE local=?");
+            pending.addBindValue(move.to);
+            pending.addBindValue(move.from);
+            pending.exec();
+            emit sourceRelinked(from, to);
+            ++moved;
+        }
+        // Owelk's own default folder goes once it is empty; a folder the reader chose stays.
+        if (old == defaultPapersFolder(m_directory) && QDir().rmdir(old)) QDir().rmdir(QFileInfo(old).absolutePath());
+        loadDocumentNames();
+        announceDocumentsChanged();
+        emit highlightsChanged();
+        m_copyingPdfs = false;
+        emit copyingPdfsChanged();
+        emit message(moved == done.size()
+                ? QString("Moved %1 PDFs to %2.").arg(moved).arg(QDir::toNativeSeparators(target))
+                : QString("Moved %1 of %2 PDFs to %3; the rest stay in %4.")
+                      .arg(moved)
+                      .arg(done.size())
+                      .arg(QDir::toNativeSeparators(target), QDir::toNativeSeparators(old)));
+    });
+    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [moves, target]() mutable {
+        for (auto &move : moves) {
+            const auto file = uniqueFile(target, QFileInfo(move.from).fileName());
+            if (move.hash.isEmpty()) move.hash = FileFingerprint::sha256(move.from);
+            if (move.hash.isEmpty()) continue;
+            if (renameOnDisk(move.from, file)) {
+                move.to = file;
+                continue;
+            }
+            // Another disk: only a byte-for-byte copy takes the old file's place.
+            if (!copyInto(move.from, file) || FileFingerprint::sha256(file) != FileFingerprint::sha256(move.from)) {
+                QFile::remove(file);
+                continue;
+            }
+            move.to = file;
+            move.copied = true;
+        }
+        return moves;
+    }));
+    return true;
+}
+
 QUrl ResearchStore::adoptPdf(const QUrl &source)
 {
     return adoptPdf(source, nullptr);
 }
 
-QUrl ResearchStore::adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch)
+QUrl ResearchStore::adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move)
 {
     const auto url = resolvedSource(source);
-    return keepsPdfs() ? adoptFile(m_database, papersFolder(), url, batch) : url;
+    return keepsPdfs() ? adoptFile(m_database, papersFolder(), url, batch, move) : url;
 }
 
 QStringList ResearchStore::adoptPdfFiles(
@@ -197,7 +308,7 @@ QStringList ResearchStore::adoptPdfFiles(
     for (const auto &path : paths) {
         auto url = QUrl::fromLocalFile(path).toString();
         for (int hop = 0; hop < 16 && relinks.contains(url); ++hop) url = relinks.value(url);
-        adopted << adoptFile(db.db, papers, QUrl(url), &batch).toLocalFile();
+        adopted << adoptFile(db.db, papers, QUrl(url), &batch, false).toLocalFile();
     }
     return adopted;
 }

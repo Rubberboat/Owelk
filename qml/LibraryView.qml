@@ -611,7 +611,7 @@ Rectangle {
                         keys: ["text/uri-list"]
                         onDropped: function(drop) {
                             const pdfs = drop.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) })
-                            if (pdfs.length) { researchStore.addDocuments(pdfs, root.filter.collection || ""); drop.acceptProposedAction() }
+                            if (pdfs.length) { researchStore.takeDroppedPdfs(pdfs, root.filter.collection || ""); drop.acceptProposedAction() }
                         }
                         Rectangle { anchors.fill: parent; visible: parent.containsDrag; color: "transparent"; radius: Theme.radius; border.width: 2; border.color: Theme.accent }
                     }

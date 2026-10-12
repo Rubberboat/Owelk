@@ -13,13 +13,40 @@ function webTab(url, title) { return {id: id("tab"), kind: "web", source: webAdd
 function webAddress(url) { return String(url).trim().replace(/\s/g, function(c) { return encodeURIComponent(c) }) }
 function isWebAddress(url) { return /^https?:\/\/[^\s]+$/i.test(webAddress(url)) }
 // A typed address becomes a URL; anything else is a search with the given template ("…?q=%s").
+// Where words typed as a web search go (Settings › Web and the button beside Home's web search).
+var searchEngines = [
+    {name: "Google Scholar", label: "Scholar", prefix: "scholar", template: "https://scholar.google.com/scholar?q=%s"},
+    {name: "arXiv", label: "arXiv", prefix: "arxiv", template: "https://arxiv.org/search/?query=%s&searchtype=all"},
+    {name: "Google", label: "Google", prefix: "google", template: "https://www.google.com/search?q=%s"},
+    {name: "DuckDuckGo", label: "DuckDuckGo", prefix: "ddg", template: "https://duckduckgo.com/?q=%s"}
+]
+function searchEngine(template) {
+    return searchEngines.find(function(e) { return e.template === template }) || searchEngines[0]
+}
+// "arxiv: words" or "scholar: words" searches there once, whatever engine is chosen;
+// "arxiv: 2305.01234" opens that paper's page.
 function addressToUrl(text, searchTemplate) {
     const value = text.trim()
     if (!value.length) return ""
     if (/^https?:\/\//i.test(value)) return value
+    if (/^arxiv:\s*\d{4}\.\d{4,5}(v\d+)?$/i.test(value)) return "https://arxiv.org/abs/" + value.replace(/^arxiv:\s*/i, "")
+    const named = /^([a-z]+):\s*(\S[\s\S]*)$/i.exec(value)
+    const engine = named && searchEngines.find(function(e) { return e.prefix === named[1].toLowerCase() })
+    if (engine) return engine.template.replace("%s", encodeURIComponent(named[2]))
     if (!/\s/.test(value) && /^[^\/]+\.[a-z]{2,}(\/|:|$)/i.test(value)) return "https://" + value
-    if (/^arxiv:\s*\d{4}\.\d{4,5}/i.test(value)) return "https://arxiv.org/abs/" + value.replace(/^arxiv:\s*/i, "")
     return searchTemplate.replace("%s", encodeURIComponent(value))
+}
+// What a drop on the window holds: PDFs and folders (isFolder decides) on this computer, and web addresses.
+function droppedFiles(urls, isFolder) {
+    const drop = {pdfs: [], folders: [], web: []}
+    for (let i = 0; i < urls.length; ++i) {
+        const text = String(urls[i])
+        if (/^file:/i.test(text)) {
+            if (/\.pdf$/i.test(text)) drop.pdfs.push(urls[i])
+            else if (isFolder(urls[i])) drop.folders.push(urls[i])
+        } else if (/^https?:\/\//i.test(text)) drop.web.push(text)
+    }
+    return drop
 }
 // Where to look for a paper from its reference-list entry: its DOI or arXiv page when the entry
 // names one, otherwise a search (Google Scholar by default) for the entry without its number.

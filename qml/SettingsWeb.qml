@@ -4,16 +4,12 @@ import QtQuick.Layouts
 import QtQuick.Dialogs as Native
 import Owelk.Ui
 import "Platform.js" as Platform
+import "WorkspaceTree.js" as Tree
 
 ColumnLayout {
     id: root
     spacing: 22
-    readonly property var engines: [
-        {name: "Google Scholar", template: "https://scholar.google.com/scholar?q=%s"},
-        {name: "Google", template: "https://www.google.com/search?q=%s"},
-        {name: "DuckDuckGo", template: "https://duckduckgo.com/?q=%s"},
-        {name: "arXiv", template: "https://arxiv.org/search/?query=%s&searchtype=all"}
-    ]
+    readonly property var engines: Tree.searchEngines
     readonly property bool keepsPdfs: researchStore.setting("library.keepPdfs", "1") === "1"
     function folder() { const f = researchStore.setting("downloadFolder"); return f.length ? f : researchStore.downloadTarget("x").directory }
     Native.FolderDialog {
@@ -54,7 +50,7 @@ ColumnLayout {
     }
     SettingsGroup {
         title: "Browsing"
-        note: "The start page opens with " + Platform.keys("Ctrl+L") + " when no web tab is in front."
+        note: "The start page opens with " + Platform.keys("Ctrl+L") + " when no web tab is in front. Home's web search can switch the engine too, and arxiv: or scholar: before the words searches there just once."
         SettingsRow {
             label: "Search with"
             ComboBox {
