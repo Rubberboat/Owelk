@@ -613,6 +613,74 @@ Item {
             verify(failed)
             compare(JSON.stringify(d.snapshot()), before)
         }
+        function test_brokenSavedTabsAreLeftOutAndKept() {
+            workspace.openDocument(fixtureSource); canvas(); workspace.persist()
+            const live = researchStore.session
+            const good = {id: "good", source: fixtureSource.toString(), position: {page: 2, x: 0, y: 0, zoom: 1}}
+            const bad = {id: "bad", kind: "web", source: "not an address", position: {page: 0}}
+            verify(researchStore.saveSession({version: 2, activeGroup: "g", tree: {kind: "group", id: "g", activeTab: "bad", tabs: [good, bad]}}))
+            // The tab that opens comes back, Owelk works, and a notice says what was left out.
+            const restored = createTemporaryObject(restoredWindow, null)
+            compare(restored.restoreFailed, false)
+            const tabs = Tree.leaves(restored.documents.tree)[0].tabs
+            compare(tabs.length, 1)
+            compare(tabs[0].id, "good")
+            verify(findChild(restored, "restoreNotice").visible)
+            compare(findChild(restored, "restoreNoticeText").text, "1 saved tab could not be reopened and was left out.")
+            // The saved tabs as they were are kept (one copy).
+            compare(researchStore.unrestoredSession().tree.tabs.length, 2)
+            mouseClick(findChild(restored, "restoreNoticeClose"))
+            verify(!findChild(restored, "restoreNotice").visible)
+            // Nothing that opens: Owelk starts without tabs instead of stopping.
+            verify(researchStore.saveSession({version: 2, tree: {kind: "group", id: "g", activeTab: "bad", tabs: [bad]}}))
+            const empty = createTemporaryObject(restoredWindow, null)
+            compare(empty.restoreFailed, false)
+            compare(empty.documents.hasTabs, false)
+            compare(findChild(empty, "restoreNoticeText").text, "The saved tabs could not be reopened, so Owelk started without them.")
+            // Saved by a newer Owelk: nothing is opened or overwritten.
+            verify(researchStore.saveSession({version: 3, tree: {}}))
+            const newer = createTemporaryObject(restoredWindow, null)
+            compare(newer.restoreFailed, true)
+            verify(findChild(newer, "restoreNotice").visible)
+            compare(researchStore.session.version, 3)
+            verify(researchStore.saveSession(live))
+        }
+        function test_shortcutSheetOpensFromKeyButtonMenuAndPalette() {
+            workspace.showHome()
+            const loader = findChild(workspace, "shortcutSheetLoader")
+            // ? typed in a text field stays text.
+            const search = findChild(workspace, "homeSearch")
+            search.text = ""
+            testInput.keyClick(search, Qt.Key_Question, Qt.ShiftModifier)
+            compare(search.text, "?")
+            verify(!loader.item || !loader.item.visible)
+            search.text = ""
+            // Elsewhere ? opens the sheet (made then, the first time).
+            workspace.openDocument(fixtureSource); canvas()
+            testInput.keyClick(workspace.currentReader, Qt.Key_Question, Qt.ShiftModifier)
+            tryVerify(function() { return loader.item !== null && loader.item.opened })
+            const sheet = loader.item
+            sheet.close(); tryCompare(sheet, "visible", false)
+            // The ? in the status bar, Help › Keyboard Shortcuts and /shortcuts.
+            mouseClick(visualChild(findChild(workspace, "statusBar"), "shortcutsButton"))
+            tryCompare(sheet, "opened", true)
+            sheet.close(); tryCompare(sheet, "visible", false)
+            findChild(workspace, "shortcutsAction").trigger()
+            tryCompare(sheet, "opened", true)
+            sheet.close(); tryCompare(sheet, "visible", false)
+            findChild(workspace, "commandPalette").commandChosen("/shortcuts")
+            tryCompare(sheet, "opened", true)
+            // A changed shortcut shows as it is set now.
+            researchStore.setSetting("shortcuts", JSON.stringify({search: "Ctrl+J"}))
+            tryVerify(function() { return sheet.rows.find(function(r) { return r.name === "Search" }).keys[0] === "Ctrl+J" })
+            researchStore.setSetting("shortcuts", "")
+            // Change Shortcuts… opens that page of Settings.
+            mouseClick(findChild(sheet, "shortcutSettings"))
+            const settings = findChild(workspace, "settingsDialog")
+            tryCompare(settings, "opened", true)
+            compare(settings.page, "shortcuts")
+            settings.close(); tryCompare(settings, "visible", false)
+        }
         function test_reopenClosedTabKeepsPosition() {
             workspace.openDocument(fixtureSource, {page: 4, y: .15, x: 0, zoom: 1.3})
             canvas()

@@ -140,6 +140,37 @@ TestCase {
         try { Tree.restore({version: 99}) } catch (error) { failed = true }
         verify(failed)
     }
+    function test_tabsThatCannotOpenAreLeftOut() {
+        const pdf = function(id, page) { return {id: id, source: "file:///" + id + ".pdf", position: {page: page || 0, x: 0, y: 0, zoom: 1}} }
+        const saved = {version: 2, activeGroup: "right", tree: {kind: "split", id: "s", axis: "horizontal", ratio: .5,
+            first: {kind: "group", id: "left", activeTab: "bad", labels: [{id: "L", name: "Reading"}, {id: 5}],
+                    tabs: [pdf("a"), {id: "bad", source: "", position: {page: 0}}, Object.assign(pdf("b"), {label: "L"}),
+                           Object.assign(pdf("c"), {label: "gone"}), pdf("a")]},
+            second: {kind: "group", id: "right", activeTab: "x", tabs: [{id: "x", kind: "web", source: "not a page", position: {page: 0}}]}}}
+        const before = JSON.stringify(saved)
+        const restored = Tree.restore(saved)
+        compare(JSON.stringify(saved), before) // The saved data itself is left as it was.
+        // Only the left group is left (its split goes with the empty right one): three tabs, bad and repeated ones out.
+        compare(restored.dropped, 3)
+        compare(restored.tree.kind, "group")
+        compare(restored.tree.tabs.map(function(t) { return t.id }), ["a", "b", "c"])
+        compare(restored.tree.activeTab, "a")
+        compare(restored.tree.labels.length, 1)
+        compare(restored.tree.tabs[1].label, "L")
+        compare(restored.tree.tabs[2].label, undefined)
+        compare(restored.activeGroup, "left")
+        verify(Tree.validate(restored.tree, {}, 0))
+        // A layout that reads as it is: nothing left out.
+        compare(Tree.restore({version: 2, tree: restored.tree, activeGroup: "left"}).dropped, 0)
+        // Nothing left that opens: it throws, and the caller starts without tabs.
+        let failed = false
+        try { Tree.restore({version: 2, tree: {kind: "group", id: "g", activeTab: "x", tabs: [{id: "x", source: 7}]}}) } catch (error) { failed = !error.newer }
+        verify(failed)
+        // Saved by a newer Owelk: refused as such, never repaired.
+        let newer = false
+        try { Tree.restore({version: 3, tree: restored.tree}) } catch (error) { newer = !!error.newer }
+        verify(newer)
+    }
     function test_webAddressesWithSpaces() {
         // url.toString() decodes %20 to a space; such an address still makes a tab, kept encoded.
         const t = Tree.webTab("https://scholar.google.com/scholar?q=radar inertial odometry")

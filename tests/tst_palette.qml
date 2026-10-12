@@ -119,6 +119,17 @@ Item {
             tryCompare(chosen, "count", 1)
             compare(chosen.signalArguments[0][0].kind, "paper")
         }
+        function test_shortcutsAnswerToList() {
+            const query = findChild(palette, "paletteQuery")
+            for (const text of ["/list", "shortcuts", "keys"]) {
+                query.text = text
+                compare(palette.results.length, 1, text)
+                compare(palette.results[0].title, "Help: Keyboard Shortcuts")
+            }
+            keyClick(Qt.Key_Return)
+            tryCompare(command, "count", 1)
+            compare(command.signalArguments[0][0], "/shortcuts")
+        }
         function test_noMatchAndEscape() {
             const query = findChild(palette, "paletteQuery")
             query.text = "unknown command xyz"

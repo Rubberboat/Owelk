@@ -62,6 +62,8 @@ Flickable {
     }
     function snapshot() { flush(); return {version: 2, tree: Tree.clone(tree), activeGroup: activeGroup} }
     function prepare() { flush(); beforeChange() }
+    // How many saved tabs were left out (they could not be opened). Throws, leaving the live layout as it
+    // was, when nothing can be read.
     function restore(state) {
         const restored = Tree.restore(state || {}) // Validate before changing the live layout.
         syncing = true
@@ -71,6 +73,7 @@ Flickable {
         activeGroup = restored.activeGroup
         syncing = false
         sync()
+        return restored.dropped
     }
     function sync() {
         if (syncing) return

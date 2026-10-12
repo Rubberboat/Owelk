@@ -217,8 +217,25 @@ ApplicationWindow {
             const list = panelsForSide(side), front = side === "left" ? panels.leftActive : panels.rightActive
             if (list.length > 1) closeOthers(list.indexOf(front) >= 0 ? front : list[0])
         }
-        try { documents.restore(state) }
-        catch (error) { restoreFailed = true; notification = error.message }
+        // Tabs that cannot be reopened are left out and the rest open; when none can be read, Owelk starts
+        // with no tabs. Either way the saved tabs are kept as they were (one copy) and a notice says so. Only
+        // tabs saved by a newer Owelk stop it: they must not be overwritten.
+        try {
+            const dropped = documents.restore(state)
+            if (dropped > 0) {
+                researchStore.keepUnrestoredSession()
+                restoreNotice.show(dropped === 1 ? "1 saved tab could not be reopened and was left out." : dropped + " saved tabs could not be reopened and were left out.")
+            }
+        } catch (error) {
+            if (error.newer) {
+                restoreFailed = true; notification = error.message
+                restoreNotice.show(error.message)
+            } else {
+                researchStore.keepUnrestoredSession()
+                documents.restore({})
+                restoreNotice.show("The saved tabs could not be reopened, so Owelk started without them.")
+            }
+        }
         initialized = true
         // Files from the command line, Finder or a second launch made before the window was ready.
         const external = initialFiles.concat(typeof appInstance !== "undefined" ? appInstance.takePending() : [])
@@ -315,9 +332,25 @@ ApplicationWindow {
             case "/reopen tab": documents.reopenClosedTab(); break
             case "/fit width": if (window.currentReader) window.currentReader.fitWidth(); break
             case "/fit page": if (window.currentReader) window.currentReader.fitPage(); break
+            case "/shortcuts": window.showShortcuts(); break
             }
         }
     }
+    // Every keyboard shortcut on one sheet: ?, Ctrl/⌘+/, the ? in the status bar, Help, or /shortcuts.
+    // Made the first time it is asked for.
+    Loader {
+        id: shortcutSheet
+        objectName: "shortcutSheetLoader"
+        active: false
+        sourceComponent: ShortcutSheet {
+            parent: Overlay.overlay
+            overrides: window.shortcutOverrides
+            onSettingsRequested: settingsDialog.openPage("shortcuts")
+        }
+    }
+    function showShortcuts() { commandPalette.close(); searchPalette.close(); shortcutSheet.active = true; shortcutSheet.item.open() }
+    // ? on its own (a text field being typed in keeps it).
+    Shortcut { objectName: "shortcutSheetKey"; sequences: ["?", "Shift+?"]; onActivated: window.showShortcuts() }
     SearchPalette {
         currentSource: !window.homeVisible && window.currentReader ? window.currentReader.source : ""
         id: searchPalette
@@ -362,6 +395,10 @@ ApplicationWindow {
             Action { objectName: "nextSplitAction"; text: "Focus Next Split"; shortcut: window.keys("nextSplit"); enabled: !window.homeVisible && window.canSwitchTabs; onTriggered: documents.focusGroup(1) }
             Action { objectName: "previousSplitAction"; text: "Focus Previous Split"; shortcut: window.keys("previousSplit"); enabled: !window.homeVisible && window.canSwitchTabs; onTriggered: documents.focusGroup(-1) }
             Action { text: "Join All Groups"; enabled: !window.homeVisible; onTriggered: documents.joinAll() }
+        }
+        Menu {
+            title: "Help"
+            Action { objectName: "shortcutsAction"; text: "Keyboard Shortcuts"; shortcut: "Ctrl+/"; onTriggered: window.showShortcuts() }
         }
     }
     // An answer arrived while its thread is not in view: a card at the bottom right (Open / Dismiss),
@@ -454,6 +491,39 @@ ApplicationWindow {
                 onClicked: { researchStore.keepDuplicate(duplicateBar.source); duplicateBar.close() }
             }
             IconButton { icon.name: "close"; description: "Dismiss"; focusPolicy: Qt.NoFocus; onClicked: duplicateBar.close() }
+        }
+    }
+    // Saved tabs that could not be reopened: what happened, above the window's content. A notice, not a
+    // dialog; it stays until dismissed.
+    Rectangle {
+        id: restoreNotice
+        objectName: "restoreNotice"
+        parent: window.contentItem
+        z: 50
+        property string text: ""
+        function show(message) { text = message; visible = true }
+        visible: false
+        x: (parent.width - width) / 2; y: 8
+        width: Math.min(560, parent.width - 32); height: restoreRow.implicitHeight + 16
+        color: Theme.raised; border.color: Theme.border; radius: Theme.radiusLarge
+        RowLayout {
+            id: restoreRow
+            anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 12; anchors.rightMargin: 6
+            spacing: 6
+            Icon { name: "alert"; size: Theme.fontBody + 2; color: Theme.textSecondary }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+                Label { objectName: "restoreNoticeText"; Layout.fillWidth: true; text: restoreNotice.text; font.weight: Font.DemiBold; color: Theme.text; wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                Label {
+                    Layout.fillWidth: true
+                    visible: !window.restoreFailed
+                    text: "The tabs as they were saved are kept in Owelk's data folder."
+                    wrapMode: Text.Wrap; font.pixelSize: Theme.fontSmall; color: Theme.textSecondary
+                }
+            }
+            IconButton { objectName: "restoreNoticeClose"; icon.name: "close"; description: "Dismiss"; focusPolicy: Qt.NoFocus; onClicked: restoreNotice.visible = false }
         }
     }
     // Areas are slices separated by 1px edges; an edge darkens under the pointer and drags to resize.
@@ -606,6 +676,7 @@ ApplicationWindow {
                 text: window.notification.length ? window.notification : researchStore.busy ? "Saving…" : ""
                 elide: Text.ElideRight; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary
             }
+            StatusIcon { objectName: "shortcutsButton"; kind: "help"; description: "Keyboard Shortcuts · ?"; onTriggered: window.showShortcuts() }
             StatusIcon { kind: "search"; description: "Search · " + Platform.keys("Ctrl+K"); onTriggered: { commandPalette.close(); searchPalette.open() } }
             StatusIcon { kind: "split"; description: "Duplicate to right split · " + Platform.keys("Ctrl+\\"); visible: !window.homeVisible; selected: documents.groupCount > 1; onTriggered: documents.duplicateSplit("right") }
             Repeater {

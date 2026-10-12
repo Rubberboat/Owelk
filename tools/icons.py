@@ -79,6 +79,7 @@ locate file-search
 tag tag
 appearance palette
 keyboard keyboard
+help circle-help
 data database
 reading book-open
 alert circle-alert

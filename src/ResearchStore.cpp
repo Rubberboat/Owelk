@@ -448,6 +448,21 @@ QVariantMap ResearchStore::session() const
     return json.object().toVariantMap();
 }
 
+bool ResearchStore::keepUnrestoredSession()
+{
+    QSqlQuery query(m_database);
+    return query.exec("INSERT OR REPLACE INTO settings(key,value) SELECT 'session.unrestored',value FROM settings "
+                      "WHERE key='session'")
+        && query.numRowsAffected() == 1;
+}
+
+QVariantMap ResearchStore::unrestoredSession() const
+{
+    QSqlQuery query(m_database);
+    if (!query.exec("SELECT value FROM settings WHERE key='session.unrestored'") || !query.next()) return {};
+    return QJsonDocument::fromJson(query.value(0).toByteArray()).object().toVariantMap();
+}
+
 bool ResearchStore::saveSession(const QVariantMap &input)
 {
     const auto state = canonicalState(input);

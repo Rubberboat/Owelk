@@ -187,6 +187,55 @@ function geometry(node, x, y, width, height, groups, handles) {
     geometry(node.first, x, y, horizontal ? first : width, horizontal ? height : first, groups, handles)
     geometry(node.second, x + (horizontal ? first + splitGap : 0), y + (horizontal ? 0 : first + splitGap), horizontal ? span - first : width, horizontal ? height : span - first, groups, handles)
 }
+// A tab this version can open.
+function validTab(t) {
+    if (!t || typeof t !== "object" || typeof t.id !== "string" || !t.id || typeof t.source !== "string") return false
+    if (t.kind === "note" && (typeof t.noteId !== "string" || !t.noteId.length)) return false
+    if (t.kind === "home" || t.kind === "library" || t.kind === "note" ? t.source !== ""
+        : t.kind === "web" ? !isWebAddress(t.source) : !t.source.startsWith("file:")) return false
+    if (!t.position || !Number.isFinite(t.position.page) || t.position.page < 0) return false
+    return t.documentId === undefined || typeof t.documentId === "string"
+}
+// What a saved layout still holds when parts of it cannot be read (changes the node in place): tabs that
+// cannot be opened are left out and counted in dropped.count, a split or group that cannot be read is
+// left out with its tabs, and the rest is made consistent (IDs, labels, the tab in front). Null when
+// nothing is left.
+function salvage(node, ids, depth, dropped) {
+    if (!node || typeof node !== "object" || depth > 128) return null
+    if (node.kind === "split") {
+        const first = salvage(node.first, ids, depth + 1, dropped), second = salvage(node.second, ids, depth + 1, dropped)
+        if (!first || !second) return first || second
+        if (typeof node.id !== "string" || !node.id || ids[node.id]) node.id = id("split")
+        ids[node.id] = true
+        if (["horizontal", "vertical"].indexOf(node.axis) < 0) node.axis = "horizontal"
+        if (!Number.isFinite(node.ratio) || node.ratio <= 0 || node.ratio >= 1) node.ratio = .5
+        node.first = first; node.second = second
+        return node
+    }
+    if (node.kind !== "group" || !Array.isArray(node.tabs)) {
+        if (node.kind === "group" || Array.isArray(node.tabs)) dropped.count += Array.isArray(node.tabs) ? node.tabs.length : 0
+        return null
+    }
+    if (typeof node.id !== "string" || !node.id || ids[node.id]) node.id = id("group")
+    ids[node.id] = true
+    node.tabs = node.tabs.filter(function(t) {
+        const kept = validTab(t) && !ids[t.id]
+        if (kept) ids[t.id] = true
+        else dropped.count++
+        return kept
+    })
+    if (!node.tabs.length) return null
+    const labels = Array.isArray(node.labels) ? node.labels.filter(function(l) {
+        return l && typeof l.id === "string" && l.id && typeof l.name === "string" && l.name.length <= 120
+            && (l.color === undefined || typeof l.color === "string")
+    }).slice(0, 64) : []
+    const labelIds = {}
+    node.labels = labels.filter(function(l) { const fresh = !labelIds[l.id]; labelIds[l.id] = true; return fresh })
+    node.tabs.forEach(function(t) { if (t.label !== undefined && !labelIds[t.label]) delete t.label })
+    if (!node.labels.length) delete node.labels
+    if (!node.tabs.some(function(t) { return t.id === node.activeTab })) node.activeTab = node.tabs[0].id
+    return node
+}
 function validate(node, ids, depth) {
     if (!node || depth > 128 || typeof node.id !== "string" || !node.id || ids[node.id]) return false
     ids[node.id] = true
@@ -194,13 +243,8 @@ function validate(node, ids, depth) {
     if (node.kind !== "group" || !Array.isArray(node.tabs)) return false
     for (let i = 0; i < node.tabs.length; ++i) {
         const t = node.tabs[i]
-        if (!t || typeof t.id !== "string" || !t.id || ids[t.id] || typeof t.source !== "string") return false
-        if (t.kind === "note" && (typeof t.noteId !== "string" || !t.noteId.length)) return false
-        if (t.kind === "home" || t.kind === "library" || t.kind === "note" ? t.source !== ""
-            : t.kind === "web" ? !isWebAddress(t.source) : !t.source.startsWith("file:")) return false
+        if (!validTab(t) || ids[t.id]) return false
         ids[t.id] = true
-        if (!t.position || !Number.isFinite(t.position.page) || t.position.page < 0) return false
-        if (t.documentId !== undefined && typeof t.documentId !== "string") return false
     }
     // Named tab groups (optional): labels on the strip, a tab names its label.
     if (node.labels !== undefined) {
@@ -216,16 +260,28 @@ function validate(node, ids, depth) {
     } else if (node.tabs.some(function(t) { return t.label !== undefined })) return false
     return node.tabs.length ? node.tabs.some(function(t) { return t.id === node.activeTab }) : node.activeTab === ""
 }
+// The layout to show from a saved session: {tree, activeGroup, dropped (tabs left out)}. Tabs that cannot
+// be opened are left out and the rest comes back; it throws when nothing can be read (error.newer: saved
+// by a newer Owelk, which this one must not overwrite).
 function restore(state) {
     if (state.version === 2) {
-        const tree = clone(state.tree)
-        if (!validate(tree, {}, 0)) throw new Error("Invalid saved tab layout. The saved data has not been overwritten.")
+        let tree = clone(state.tree)
+        const dropped = {count: 0}
+        if (!validate(tree, {}, 0)) {
+            tree = salvage(clone(state.tree), {}, 0, dropped)
+            if (!tree || !validate(tree, {}, 0)) throw new Error("Invalid saved tab layout. The saved data has not been overwritten.")
+        }
         const list = leaves(tree)
         // Earlier versions could save a web address with spaces in it (see webAddress); it is encoded again.
         list.forEach(function(g) { g.tabs.forEach(function(t) { if (t.kind === "web") t.source = webAddress(t.source) }) })
-        return {tree: tree, activeGroup: list.some(function(g) { return g.id === state.activeGroup }) ? state.activeGroup : list[0].id}
+        return {tree: tree, activeGroup: list.some(function(g) { return g.id === state.activeGroup }) ? state.activeGroup : list[0].id,
+                dropped: dropped.count}
     }
-    if (state.version && state.version !== 1) throw new Error("This session needs a newer Owelk version. Saved data has not been overwritten.")
+    if (state.version && state.version !== 1) {
+        const newer = new Error("These tabs were saved by a newer Owelk. Update Owelk to open them; nothing was changed.")
+        newer.newer = true
+        throw newer
+    }
     const a = group(state.left && state.left.source ? [tab(state.left.source, state.left.position)] : [])
     const b = group(state.right && state.right.source ? [tab(state.right.source, state.right.position)] : [])
     let tree = a
@@ -233,5 +289,5 @@ function restore(state) {
     if (state.split && b.tabs.length) tree = {kind: "split", id: id("split"), axis: "horizontal", ratio: .5, first: a, second: b}
     else if (b.tabs.length) a.tabs = a.tabs.concat(b.tabs)
     if (!a.activeTab && a.tabs.length) a.activeTab = a.tabs[0].id
-    return {tree: tree, activeGroup: state.split && state.active === 1 && b.tabs.length ? b.id : a.id}
+    return {tree: tree, activeGroup: state.split && state.active === 1 && b.tabs.length ? b.id : a.id, dropped: 0}
 }

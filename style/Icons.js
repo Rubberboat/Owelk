@@ -66,6 +66,7 @@ var glyphs = {
     "tag": "\ue17f",
     "appearance": "\ue1dd",
     "keyboard": "\ue284",
+    "help": "\ue082",
     "data": "\ue0ad",
     "reading": "\ue05f",
     "alert": "\ue077",

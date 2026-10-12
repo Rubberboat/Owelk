@@ -45,9 +45,11 @@ Popup {
         {command: "/mark region", title: "PDF: Mark a Region", enabled: hasDocument},
         {command: "/highlight", title: "PDF: Highlight Selected Text", enabled: hasDocument && hasSelection},
         {command: "/fit width", title: "PDF: Fit Width", enabled: hasDocument},
-        {command: "/fit page", title: "PDF: Fit Page", enabled: hasDocument}
+        {command: "/fit page", title: "PDF: Fit Page", enabled: hasDocument},
+        {command: "/shortcuts", title: "Help: Keyboard Shortcuts", keywords: "/shortcuts /list /keys list keys help ?", enabled: true}
     ]
-    readonly property var results: commands.filter(function(c) { return Match.matches(c.title, query.text) })
+    // The title, and a few other words some commands answer to (/list for the shortcuts).
+    readonly property var results: commands.filter(function(c) { return Match.matches(c.title + (c.keywords ? " " + c.keywords : ""), query.text) })
     signal commandChosen(string command)
     function move(direction) {
         if (!results.length) return

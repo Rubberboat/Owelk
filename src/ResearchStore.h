@@ -103,6 +103,10 @@ public:
     Q_INVOKABLE void relinkSource(const QUrl &source, const QUrl &candidate);
 
     Q_INVOKABLE bool saveSession(const QVariantMap &state);
+    // The saved tabs as they were when some could not be reopened: one copy, replaced by the next
+    // (about the size of the session itself, a few KB). The live session then keeps only the tabs that open.
+    Q_INVOKABLE bool keepUnrestoredSession();
+    Q_INVOKABLE QVariantMap unrestoredSession() const;
     Q_INVOKABLE bool rememberDocument(const QUrl &url);
     Q_INVOKABLE bool removeRecentDocument(const QUrl &url);
     Q_INVOKABLE QString fileName(const QUrl &url) const;

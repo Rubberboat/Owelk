@@ -1218,6 +1218,23 @@ private slots:
         QCOMPARE(store.readingPosition(source)["page"].toInt(), 2);
         QCOMPARE(store.continueReading()["id"].toString(), "t1");
     }
+    void tabsThatCouldNotReopenAreKeptOnce()
+    {
+        QTemporaryDir directory;
+        ResearchStore store(directory.path());
+        QString error;
+        QVERIFY(store.initialize(&error));
+        QVERIFY(store.unrestoredSession().isEmpty());
+        const QVariantMap first{{"version", 2}, {"tree", QVariantMap{{"kind", "group"}, {"id", "a"}}}};
+        QVERIFY(store.saveSession(first));
+        QVERIFY(store.keepUnrestoredSession());
+        // The copy stays when the session is saved again, and a later copy replaces it.
+        QVERIFY(store.saveSession(QVariantMap{{"version", 2}, {"tree", QVariantMap{{"kind", "group"}, {"id", "b"}}}}));
+        QCOMPARE(store.unrestoredSession()["tree"].toMap()["id"].toString(), QString("a"));
+        QVERIFY(store.keepUnrestoredSession());
+        QCOMPARE(store.unrestoredSession()["tree"].toMap()["id"].toString(), QString("b"));
+        QCOMPARE(store.session()["tree"].toMap()["id"].toString(), QString("b"));
+    }
     void webTabAddressesSurviveSaving()
     {
         QTemporaryDir directory;
