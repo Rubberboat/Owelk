@@ -379,6 +379,24 @@ bool ResearchStore::initialize(QString *error)
         {16,
             {"CREATE TABLE IF NOT EXISTS recent_items (kind TEXT NOT NULL, id TEXT NOT NULL, opened_at TEXT NOT NULL, "
              "PRIMARY KEY(kind,id))"}},
+        // Threads of the reader's own in the AI panel; a chat in one names it (empty: its paper's Thread).
+        {17,
+            {"CREATE TABLE IF NOT EXISTS ai_topics (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT "
+             "NULL, updated_at TEXT NOT NULL)"},
+            [](QSqlDatabase &db, QString *error) {
+                QSqlQuery columns(db);
+                if (!columns.exec("PRAGMA table_info(ai_threads)")) {
+                    *error = columns.lastError().text();
+                    return false;
+                }
+                while (columns.next())
+                    if (columns.value(1).toString() == "topic_id") return true;
+                QSqlQuery add(db);
+                if (add.exec("ALTER TABLE ai_threads ADD COLUMN topic_id TEXT NOT NULL DEFAULT ''")) return true;
+                *error = add.lastError().text();
+                return false;
+            },
+            true},
     };
     if (!migrateSchema(m_database, steps, error, m_directory + "/backups")) return false;
     loadDocumentNames();
@@ -540,7 +558,7 @@ void ResearchStore::syncReceived(const QSet<QString> &tables, const QStringList 
         emit notesChanged();
         emit linksChanged();
     }
-    if (touched({"ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
+    if (touched({"ai_topics", "ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
 }
 
 QVariantMap ResearchStore::readingPosition(const QUrl &source) const

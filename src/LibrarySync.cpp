@@ -38,8 +38,8 @@ const QList<Table> &tables()
     static const QList<Table> list{{"documents", {"id"}}, {"tags", {"id"}}, {"collections", {"id"}}, {"notes", {"id"}},
         {"highlights", {"id"}}, {"recent_documents", {"document_id"}}, {"reading_positions", {"document_id"}},
         {"collection_documents", {"collection_id", "document_id"}}, {"document_tags", {"document_id", "tag_id"}},
-        {"links", {"from_kind", "from_id", "to_kind", "to_id"}}, {"ai_threads", {"id"}}, {"ai_messages", {"id"}},
-        {"ai_responses", {"id"}}};
+        {"links", {"from_kind", "from_id", "to_kind", "to_id"}}, {"ai_topics", {"id"}}, {"ai_threads", {"id"}},
+        {"ai_messages", {"id"}}, {"ai_responses", {"id"}}};
     return list;
 }
 

@@ -58,6 +58,23 @@ Item {
     property var models: ({})
     // Whether the panel shows a conversation (open thread or a new one) rather than the thread list.
     property bool conversationOpen: false
+    // The Thread the panel shows: "" for all chats, a paper's ("paper:…"), "general" (chats about no
+    // paper), or one the reader made (its id), which may hold chats about several papers.
+    property string topicKey: ""
+    function isCustomTopic(key) { return !!key && key !== "general" && key.indexOf("paper:") !== 0 }
+    function chooseTopic(key) { topicKey = key || "" }
+    // Another paper in front: the panel turns to its Thread, and a conversation about a different paper
+    // gives way to that Thread's chats. Inside a Thread of the reader's own everything stays: its chats
+    // may be about several papers.
+    readonly property string readerPaper: reader && reader.source ? reader.source.toString() : ""
+    onReaderPaperChanged: {
+        if (!readerPaper.length || isCustomTopic(topicKey)) return
+        const key = researchStore.aiTopicFor(reader.source)
+        const about = threadId.length ? thread.source : spec.source
+        if (conversationOpen && !streaming && about && about.toString().length && researchStore.aiTopicFor(about) !== key)
+            showThreads()
+        topicKey = key
+    }
     signal focusRequested()
     // An answer came in: the thread, its title and the answer's opening words (plain text).
     signal answered(string threadId, string title, string preview)
@@ -188,11 +205,14 @@ Item {
         conversationOpen = true
         focusRequested()
     }
-    function openThread(id) {
+    // Opened from the panel's list, the panel stays on the Thread it shows (All Chats included);
+    // from elsewhere (Home, search, a link), it turns to the chat's Thread.
+    function openThread(id, fromList) {
         const saved = researchStore.aiThread(id)
         if (!saved.id) return false
         reset()
         threadId = id; thread = saved
+        if (!fromList) topicKey = saved.topic || ""
         researchStore.markOpened("ai", id)
         conversationOpen = true
         // Continue with the model the thread used, when that provider is still set up.
@@ -252,6 +272,8 @@ Item {
                         imageNames: images.map(function(i) { return i.name || "" })}
         if (efforts.length) choice.effort = effectiveEffort
         if (effectiveFast) choice.fast = true
+        // A new chat started in a Thread of the reader's own stays there; otherwise it follows its paper.
+        if (!threadId.length && isCustomTopic(topicKey)) choice.topic = topicKey
         request = ai.ask(Object.assign({}, spec, choice))
         images = []
         return true

@@ -249,6 +249,20 @@ public:
     // A thread with its messages; trashed while it is in the Trash.
     Q_INVOKABLE QVariantMap aiThread(const QString &id) const;
     Q_INVOKABLE bool renameAiThread(const QString &id, const QString &title);
+    // The AI panel shows conversations ("chats", the threads above) in Threads: one per paper, made as
+    // its chats are ("paper:<document>"), General for chats about no paper ("general"), and Threads of
+    // the reader's own (their ids), which may hold chats about several papers. A chat moved into one of
+    // those keeps it; otherwise it follows its paper.
+    // [{key, kind (paper, general, custom), title, source (paper), chats, updatedAt}], newest first.
+    Q_INVOKABLE QVariantList aiTopics() const;
+    // The key of a paper's Thread ("general" for none).
+    Q_INVOKABLE QString aiTopicFor(const QUrl &source) const;
+    Q_INVOKABLE QString createAiTopic(const QString &title);
+    Q_INVOKABLE bool renameAiTopic(const QString &id, const QString &title);
+    // Its chats go back to their papers' Threads; none is deleted.
+    Q_INVOKABLE bool deleteAiTopic(const QString &id);
+    // Into a Thread of one's own (its id), or back to their papers' ("").
+    Q_INVOKABLE int moveAiThreads(const QStringList &ids, const QString &topicId);
     Q_INVOKABLE bool appendNoteLink(const QString &noteId, const QString &kind, const QString &id);
     int documentsRevision() const { return m_documentsRevision; }
     Q_INVOKABLE bool sameSource(const QUrl &first, const QUrl &second) const { return first == second; }
@@ -418,6 +432,10 @@ private:
     int m_historyRevision = 0;
     QVariantMap annotationState(const QString &id) const;
     bool deleteAiThread(const QString &id);
+    // The Thread a chat shows in: its own when it has one that still exists, else its paper's.
+    QSet<QString> aiTopicIds() const;
+    QString aiChatTopic(const QString &topicId, const QString &source, const QSet<QString> &topics,
+        QHash<QString, QString> *papers) const;
     void revealAnchor(const QVariantMap &anchor);
     bool applyAnnotationState(const QString &id, const QVariantMap &state);
     void recordAnnotation(const QString &id, const QVariantMap &before, const QString &label);

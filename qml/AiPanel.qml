@@ -30,6 +30,73 @@ Item {
         selectedThreads = []
         researchStore.trashAiThreads(ids)
     }
+    // Threads hold the chats: All Chats, one per paper (made as its chats are), General, and Threads of the
+    // reader's own, which may hold chats about several papers. Wide, the Threads stand in a column beside
+    // the chats (and the conversation); narrow, one list at a time.
+    readonly property bool wide: width >= 440
+    readonly property real topicWidth: Math.round(Math.min(200, Math.max(140, width * .3)))
+    property bool topicsOpen: false
+    property int topicRevision: 0
+    Connections { target: researchStore; function onAiThreadsChanged() { root.topicRevision++ } }
+    Connections { target: root.c; function onTopicKeyChanged() { root.topicsOpen = false } }
+    // The paper in front has its Thread at the top even before its first chat.
+    readonly property string readerTopic: c && c.reader && c.reader.source && c.reader.source.toString().length ? researchStore.aiTopicFor(c.reader.source) : ""
+    readonly property var topics: {
+        const revision = topicRevision
+        const list = researchStore.aiTopics()
+        const rows = [{key: "", kind: "all", title: "All Chats", chats: list.reduce(function(n, t) { return n + t.chats }, 0)}]
+        if (readerTopic.length && !list.some(function(t) { return t.key === readerTopic }))
+            rows.push({key: readerTopic, kind: "paper", title: researchStore.displayName(c.reader.source), chats: 0})
+        return rows.concat(list)
+    }
+    readonly property var currentTopic: (c && topics.find(function(t) { return t.key === c.topicKey })) || topics[0]
+    readonly property var ownTopics: topics.filter(function(t) { return t.kind === "custom" })
+    function chooseTopic(key) {
+        c.showThreads()
+        selectedThreads = []
+        c.chooseTopic(key)
+        topicsOpen = false
+    }
+    function moveChats(ids, key) {
+        if (!ids.length) return
+        researchStore.moveAiThreads(ids, key)
+        selectedThreads = []
+    }
+    // A name for a new Thread (the chats given move into it) or a new name for one.
+    function askTopicName(id, chats) {
+        topicDialog.topicId = id
+        topicDialog.chats = chats
+        topicField.text = id.length ? (topics.find(function(t) { return t.key === id }) || {}).title || "" : ""
+        topicDialog.open()
+    }
+    function saveTopic(id, name, chats) {
+        if (id.length) { researchStore.renameAiTopic(id, name); return }
+        const made = researchStore.createAiTopic(name)
+        if (!made.length) return
+        if (chats.length) researchStore.moveAiThreads(chats, made)
+        chooseTopic(made)
+    }
+    // Its chats go back to their papers' Threads.
+    function deleteTopic(key) {
+        if (c.topicKey === key) c.chooseTopic("")
+        researchStore.deleteAiTopic(key)
+    }
+    // The chats being dragged onto a Thread. The drop moves them once the drag is over: the row that
+    // started it leaves the list then.
+    property var draggedChats: []
+    function startChatDrag(ids, title, scene) {
+        draggedChats = ids
+        dragProxy.label = title + (ids.length > 1 ? "  +" + (ids.length - 1) : "")
+        dragProxy.moveTo(scene)
+        dragProxy.dragging = true
+    }
+    function moveChatDrag(scene) { if (dragProxy.dragging) dragProxy.moveTo(scene) }
+    function finishChatDrag() {
+        if (!dragProxy.dragging) return
+        dragProxy.Drag.drop()
+        dragProxy.dragging = false
+        draggedChats = []
+    }
     signal linkActivated(string link)
     signal settingsRequested()
     // Conversations moved to the Trash are in the Library's Trash, with papers and notes.
@@ -233,23 +300,112 @@ Item {
             onTriggered: { const target = textMenu.target; target.persistentSelection = textMenu.kept; root.quote(root.selectionText(target)) }
         }
     }
+    // The Threads: wide, a column on the left; narrow, in place of the chats until one is chosen.
+    Item {
+        id: topicColumn
+        objectName: "aiTopics"
+        visible: root.wide || (root.showingThreads && root.topicsOpen)
+        anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+        width: root.wide ? root.topicWidth : parent.width
+        Rectangle { visible: root.wide; anchors.right: parent.right; width: 1; height: parent.height; color: Theme.separator }
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            anchors.rightMargin: root.wide ? 7 : 8
+            spacing: 6
+            RowLayout {
+                Layout.fillWidth: true; Layout.minimumWidth: 0
+                spacing: 2
+                Label {
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                    text: "Threads"
+                    elide: Text.ElideRight; textFormat: Text.PlainText
+                    font.pixelSize: Theme.fontBody; font.weight: Font.DemiBold; color: Theme.text
+                }
+                IconButton { objectName: "aiNewTopic"; icon.name: "add"; description: "New Thread"; onClicked: root.askTopicName("", []) }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
+            ListView {
+                id: topicList
+                objectName: "aiTopicList"
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumWidth: 0
+                clip: true
+                model: root.topics
+                ScrollBar.vertical: ScrollBar {}
+                delegate: ItemDelegate {
+                    id: topicRow
+                    required property var modelData
+                    required property int index
+                    readonly property bool own: modelData.kind === "custom"
+                    readonly property bool here: modelData.key.length > 0 && modelData.key === root.readerTopic
+                    objectName: "aiTopic-" + index
+                    width: ListView.view.width
+                    height: Theme.rowHeightTall
+                    // The Thread shown, and the one a dragged chat would go into.
+                    highlighted: (root.c && root.c.topicKey === modelData.key) || chatDrop.containsDrag
+                    onClicked: root.chooseTopic(modelData.key)
+                    contentItem: ColumnLayout {
+                        spacing: 1
+                        Label {
+                            Layout.fillWidth: true
+                            text: topicRow.modelData.title
+                            elide: Text.ElideRight; textFormat: Text.PlainText
+                            color: topicRow.highlighted ? Theme.selectedText : Theme.text
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: (topicRow.here ? "This paper · " : "") + topicRow.modelData.chats + (topicRow.modelData.chats === 1 ? " chat" : " chats")
+                            elide: Text.ElideRight; textFormat: Text.PlainText
+                            color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
+                        }
+                    }
+                    // Chats dropped here move into this Thread (one of the reader's own).
+                    DropArea {
+                        id: chatDrop
+                        anchors.fill: parent
+                        keys: ["owelk-ai-chats"]
+                        enabled: topicRow.own
+                        onDropped: function(drop) {
+                            const ids = root.draggedChats.slice(), key = topicRow.modelData.key
+                            drop.accept()
+                            Qt.callLater(function() { root.moveChats(ids, key) })
+                        }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        enabled: topicRow.own
+                        onTapped: { topicMenu.row = topicRow.modelData; topicMenu.popup() }
+                    }
+                }
+            }
+        }
+    }
     ColumnLayout {
-        anchors.fill: parent
+        anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
+        anchors.left: root.wide ? topicColumn.right : parent.left
         anchors.margins: 8
+        visible: root.wide || !topicColumn.visible
         spacing: 6
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             spacing: 2
+            // Narrow: from the chats back to the Threads.
+            IconButton {
+                objectName: "aiTopicsButton"
+                icon.name: "back"; description: "Threads"
+                visible: root.showingThreads && !root.wide
+                onClicked: { root.selectedThreads = []; root.topicsOpen = true }
+            }
             IconButton {
                 objectName: "aiThreadsButton"
-                icon.name: "back"; description: "All threads"
+                icon.name: "back"; description: "Chats"
                 visible: !root.showingThreads
                 onClicked: root.c.showThreads()
             }
             Label {
                 objectName: "aiThreadTitle"
                 Layout.fillWidth: true; Layout.minimumWidth: 0
-                text: root.showingThreads ? "Threads" : (root.c.thread.title || "New thread")
+                text: root.showingThreads ? root.currentTopic.title : (root.c.thread.title || "New chat")
                 elide: Text.ElideRight; textFormat: Text.PlainText
                 font.pixelSize: Theme.fontBody; font.weight: Font.DemiBold; color: Theme.text
             }
@@ -259,11 +415,12 @@ Item {
                 icon.name: "trash"; description: "Trash (in the Library)"
                 onClicked: root.trashRequested()
             }
-            IconButton { objectName: "aiNewThread"; icon.name: "add"; description: "New thread"; onClicked: { root.c.newThread(); root.focusQuestion() } }
+            IconButton { objectName: "aiNewThread"; icon.name: "add"; description: "New chat"; onClicked: { root.c.newThread(); root.focusQuestion() } }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
-        // Saved threads, newest first. Click opens; Cmd/Ctrl-click and Shift-click select
-        // several; Delete or the right-click menu moves them to the Trash.
+        // The Thread's chats, newest first. Click opens; Cmd/Ctrl-click and Shift-click select
+        // several; Delete or the right-click menu moves them to the Trash; dragged onto a Thread of one's
+        // own (wide), they move there.
         ListView {
             id: threadList
             objectName: "aiThreadList"
@@ -275,7 +432,7 @@ Item {
             focus: visible
             // Read again when threads change.
             property int revision: 0
-            model: (revision, researchStore.aiThreads())
+            model: (revision, researchStore.aiThreads().filter(function(t) { return !root.c || !root.c.topicKey.length || t.topic === root.c.topicKey }))
             Connections {
                 target: researchStore
                 function onAiThreadsChanged() { threadList.revision++ }
@@ -303,13 +460,24 @@ Item {
                     const mods = threadList.clickModifiers
                     if (mods & (Qt.ControlModifier | Qt.MetaModifier)) root.toggleThread(row.modelData.id, row.index)
                     else if (mods & Qt.ShiftModifier) root.selectThreadRange(row.index)
-                    else { root.selectedThreads = []; const id = row.modelData.id; Qt.callLater(function() { root.c.openThread(id) }) }
+                    else { root.selectedThreads = []; const id = row.modelData.id, controller = root.c; Qt.callLater(function() { controller.openThread(id, true) }) }
                 }
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
                     acceptedModifiers: Qt.KeyboardModifierMask
                     // Only notes the keys held; the click itself goes to the row.
                     onPressedChanged: if (pressed) threadList.clickModifiers = point.modifiers
+                }
+                DragHandler {
+                    id: chatDrag
+                    objectName: "aiChatDrag"
+                    target: null
+                    enabled: root.wide && root.ownTopics.length > 0
+                    onActiveChanged: {
+                        if (active) root.startChatDrag(row.chosen ? root.selectedThreads.slice() : [row.modelData.id], row.modelData.title, centroid.scenePosition)
+                        else root.finishChatDrag()
+                    }
+                    onCentroidChanged: if (active) root.moveChatDrag(centroid.scenePosition)
                 }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
@@ -335,7 +503,7 @@ Item {
                 anchors.centerIn: parent
                 width: parent.width - 16
                 visible: threadList.count === 0
-                text: "Ask about a selection, page or figure, or start a new thread with +."
+                text: "Ask about a selection, page or figure, or start a new chat with +."
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere; horizontalAlignment: Text.AlignHCenter
                 color: Theme.textTertiary; font.pixelSize: Theme.fontSmall
             }
@@ -828,6 +996,31 @@ Item {
             text: "Rename…"
             onTriggered: { renameDialog.threadId = threadMenu.row.id; renameField.text = threadMenu.row.title; renameDialog.open() }
         }
+        Menu {
+            id: moveMenu
+            objectName: "aiMoveMenu"
+            title: "Move to Thread"
+            Instantiator {
+                model: root.ownTopics
+                delegate: MenuItem {
+                    required property var modelData
+                    objectName: "aiMoveTo-" + modelData.title
+                    text: modelData.title
+                    onTriggered: root.moveChats(threadMenu.ids, modelData.key)
+                }
+                onObjectAdded: function(index, item) { moveMenu.insertItem(index, item) }
+                onObjectRemoved: function(index, item) { moveMenu.removeItem(item) }
+            }
+            MenuSeparator { visible: root.ownTopics.length > 0; height: visible ? implicitHeight : 0 }
+            MenuItem { objectName: "aiMoveToNewTopic"; text: "New Thread…"; onTriggered: root.askTopicName("", threadMenu.ids) }
+        }
+        MenuItem {
+            objectName: "aiRemoveFromTopic"
+            visible: !!root.c && root.c.isCustomTopic(threadMenu.row.topic || "")
+            height: visible ? implicitHeight : 0
+            text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " Out of the Thread" : "Move Out of the Thread"
+            onTriggered: root.moveChats(threadMenu.ids, "")
+        }
         MenuItem {
             objectName: "trashThreadOption"
             text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " to Trash" : "Move to Trash"
@@ -840,10 +1033,55 @@ Item {
         anchors.centerIn: parent
         width: 360
         modal: true
-        title: "Rename Thread"
+        title: "Rename Chat"
         property string threadId: ""
         standardButtons: Dialog.Ok | Dialog.Cancel
         TextField { id: renameField; objectName: "aiRenameField"; width: parent.width; onAccepted: renameDialog.accept() }
         onAccepted: root.c.renameThread(threadId, renameField.text)
+    }
+    // A Thread of one's own: renamed, or deleted (its chats go back to their papers' Threads).
+    Menu {
+        id: topicMenu
+        objectName: "aiTopicMenu"
+        property var row: ({})
+        MenuItem { objectName: "aiRenameTopic"; text: "Rename…"; onTriggered: root.askTopicName(topicMenu.row.key, []) }
+        MenuItem { objectName: "aiDeleteTopic"; text: "Delete Thread"; onTriggered: root.deleteTopic(topicMenu.row.key) }
+    }
+    Dialog {
+        id: topicDialog
+        objectName: "aiTopicDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 360
+        modal: true
+        title: topicId.length ? "Rename Thread" : "New Thread"
+        property string topicId: ""
+        property var chats: []
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        TextField { id: topicField; objectName: "aiTopicField"; width: parent.width; placeholderText: "Name"; onAccepted: topicDialog.accept() }
+        onOpened: topicField.forceActiveFocus()
+        onAccepted: root.saveTopic(topicId, topicField.text, chats)
+    }
+    // A chat on its way to a Thread: its title follows the pointer.
+    Rectangle {
+        id: dragProxy
+        objectName: "aiChatDragProxy"
+        property bool dragging: false
+        property alias label: dragLabel.text
+        function moveTo(scene) { const at = root.mapFromItem(null, scene.x, scene.y); x = at.x - 10; y = at.y - height / 2 }
+        visible: dragging
+        z: 10
+        width: Math.min(220, dragLabel.implicitWidth + 16); height: 24
+        radius: Theme.radius; color: Theme.raised; border.color: Theme.border
+        Drag.active: dragging
+        Drag.keys: ["owelk-ai-chats"]
+        Drag.hotSpot.x: 10; Drag.hotSpot.y: 12
+        Label {
+            id: dragLabel
+            anchors.verticalCenter: parent.verticalCenter
+            x: 8; width: parent.width - 16
+            elide: Text.ElideRight; textFormat: Text.PlainText
+            font.pixelSize: Theme.fontSmall; color: Theme.text
+        }
     }
 }

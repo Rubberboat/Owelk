@@ -1,10 +1,13 @@
 #include "ResearchStore.h"
 
 #include <QDateTime>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSqlQuery>
 #include <QUuid>
+
+#include <algorithm>
 
 namespace {
 QString now()
@@ -24,14 +27,25 @@ QString ResearchStore::createAiThread(const QVariantMap &thread)
     auto title = thread.value("title").toString().simplified().left(160);
     if (title.isEmpty())
         title = source.isValid() && !source.isEmpty() ? displayName(source) : QStringLiteral("New thread");
+    // Started in a Thread of the reader's own, it stays there; otherwise it follows its paper.
+    auto topic = thread.value("topic").toString();
+    if (!topic.isEmpty() && !aiTopicIds().contains(topic)) topic.clear();
     QSqlQuery query(m_database);
-    query.prepare("INSERT INTO ai_threads(id,title,provider,model,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?)");
+    query.prepare("INSERT INTO ai_threads(id,title,provider,model,source,created_at,updated_at,topic_id) "
+                  "VALUES(?,?,?,?,?,?,?,?)");
     for (const QString &value : {id, title, thread.value("provider").toString(), thread.value("model").toString(),
-             source.isValid() ? source.toString() : QString(), now(), now()})
+             source.isValid() ? source.toString() : QString(), now(), now(), topic})
         query.addBindValue(text(value));
     if (!query.exec()) {
         emit message("Cannot start an AI thread.");
         return {};
+    }
+    if (!topic.isEmpty()) {
+        QSqlQuery touch(m_database);
+        touch.prepare("UPDATE ai_topics SET updated_at=? WHERE id=?");
+        touch.addBindValue(now());
+        touch.addBindValue(topic);
+        touch.exec();
     }
     // A thread about a paper links to it, so the paper's Links tab finds the conversation.
     const auto document = findDocument(source);
@@ -72,27 +86,170 @@ bool ResearchStore::appendAiMessage(const QString &threadId, const QVariantMap &
 QVariantList ResearchStore::aiThreads() const
 {
     QVariantList rows;
+    const auto topics = aiTopicIds();
+    QHash<QString, QString> papers;
     QSqlQuery query(m_database);
-    query.exec(
-        "SELECT t.id,t.title,t.provider,t.model,t.source,t.updated_at,(SELECT count(*) FROM ai_messages m "
-        "WHERE m.thread_id=t.id) FROM ai_threads t WHERE t.trashed_at IS NULL ORDER BY t.updated_at DESC LIMIT 500");
+    query.exec("SELECT t.id,t.title,t.provider,t.model,t.source,t.updated_at,(SELECT count(*) FROM ai_messages m "
+               "WHERE m.thread_id=t.id),t.topic_id FROM ai_threads t WHERE t.trashed_at IS NULL "
+               "ORDER BY t.updated_at DESC LIMIT 500");
     while (query.next())
         rows.append(QVariantMap{{"id", query.value(0)}, {"title", query.value(1)}, {"provider", query.value(2)},
             {"model", query.value(3)}, {"source", QUrl(query.value(4).toString())}, {"updatedAt", query.value(5)},
-            {"messages", query.value(6)}});
+            {"messages", query.value(6)},
+            {"topic", aiChatTopic(query.value(7).toString(), query.value(4).toString(), topics, &papers)}});
     return rows;
+}
+
+QSet<QString> ResearchStore::aiTopicIds() const
+{
+    QSet<QString> ids;
+    QSqlQuery query(m_database);
+    query.exec("SELECT id FROM ai_topics");
+    while (query.next()) ids.insert(query.value(0).toString());
+    return ids;
+}
+
+QString ResearchStore::aiChatTopic(
+    const QString &topicId, const QString &source, const QSet<QString> &topics, QHash<QString, QString> *papers) const
+{
+    if (!topicId.isEmpty() && topics.contains(topicId)) return topicId;
+    if (source.isEmpty()) return QStringLiteral("general");
+    if (!papers->contains(source)) papers->insert(source, aiTopicFor(QUrl(source)));
+    return papers->value(source);
+}
+
+QString ResearchStore::aiTopicFor(const QUrl &source) const
+{
+    if (!source.isValid() || source.isEmpty()) return QStringLiteral("general");
+    // The paper's ID, so copies and relinked paths share one Thread (the address while it has none).
+    const auto document = findDocument(source);
+    return QStringLiteral("paper:") + (document.isEmpty() ? resolvedSource(source).toString() : document);
+}
+
+QVariantList ResearchStore::aiTopics() const
+{
+    QHash<QString, QVariantMap> rows;
+    QSqlQuery own(m_database);
+    own.exec("SELECT id,title,updated_at FROM ai_topics");
+    while (own.next())
+        rows.insert(own.value(0).toString(),
+            {{"key", own.value(0)}, {"kind", "custom"}, {"title", own.value(1)}, {"chats", 0},
+                {"updatedAt", own.value(2)}});
+    const auto topics = aiTopicIds();
+    QHash<QString, QString> papers;
+    QSqlQuery chats(m_database);
+    chats.exec("SELECT topic_id,source,updated_at FROM ai_threads WHERE trashed_at IS NULL");
+    while (chats.next()) {
+        const auto source = chats.value(1).toString(), updated = chats.value(2).toString();
+        const auto key = aiChatTopic(chats.value(0).toString(), source, topics, &papers);
+        auto &row = rows[key];
+        if (row.isEmpty()) {
+            const bool general = key == QStringLiteral("general");
+            const auto paper = resolvedSource(QUrl(source));
+            row = {{"key", key}, {"kind", general ? "general" : "paper"},
+                {"title", general ? QStringLiteral("General") : displayName(paper)}, {"chats", 0},
+                {"updatedAt", QString()}};
+            if (!general) row.insert("source", paper);
+        }
+        row["chats"] = row.value("chats").toInt() + 1;
+        if (updated > row.value("updatedAt").toString()) row["updatedAt"] = updated;
+    }
+    QVariantList list;
+    for (const auto &row : std::as_const(rows)) list.append(row);
+    std::sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
+        const auto x = a.toMap(), y = b.toMap();
+        const auto first = x.value("updatedAt").toString(), second = y.value("updatedAt").toString();
+        return first != second ? first > second
+                               : x.value("title").toString().localeAwareCompare(y.value("title").toString()) < 0;
+    });
+    return list;
+}
+
+QString ResearchStore::createAiTopic(const QString &title)
+{
+    const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto name = title.simplified().left(160);
+    if (name.isEmpty()) name = QStringLiteral("New Thread");
+    QSqlQuery query(m_database);
+    query.prepare("INSERT INTO ai_topics(id,title,created_at,updated_at) VALUES(?,?,?,?)");
+    for (const QString &value : {id, name, now(), now()}) query.addBindValue(value);
+    if (!query.exec()) {
+        emit message("Cannot make the Thread.");
+        return {};
+    }
+    emit aiThreadsChanged();
+    return id;
+}
+
+bool ResearchStore::renameAiTopic(const QString &id, const QString &title)
+{
+    const auto name = title.simplified().left(160);
+    if (name.isEmpty()) return false;
+    QSqlQuery query(m_database);
+    query.prepare("UPDATE ai_topics SET title=?,updated_at=? WHERE id=?");
+    query.addBindValue(name);
+    query.addBindValue(now());
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) return false;
+    emit aiThreadsChanged();
+    return true;
+}
+
+bool ResearchStore::deleteAiTopic(const QString &id)
+{
+    if (id.isEmpty() || !m_database.transaction()) return false;
+    QSqlQuery chats(m_database), topic(m_database);
+    chats.prepare("UPDATE ai_threads SET topic_id='' WHERE topic_id=?");
+    chats.addBindValue(id);
+    topic.prepare("DELETE FROM ai_topics WHERE id=?");
+    topic.addBindValue(id);
+    if (!chats.exec() || !topic.exec() || topic.numRowsAffected() != 1 || !m_database.commit()) {
+        m_database.rollback();
+        return false;
+    }
+    emit aiThreadsChanged();
+    return true;
+}
+
+int ResearchStore::moveAiThreads(const QStringList &ids, const QString &topicId)
+{
+    // An empty ID from QML may arrive as a null string, which SQLite would store as NULL.
+    const auto topic = text(topicId);
+    if (!topic.isEmpty() && !aiTopicIds().contains(topic)) return 0;
+    int moved = 0;
+    for (const auto &id : ids) {
+        QSqlQuery query(m_database);
+        query.prepare("UPDATE ai_threads SET topic_id=? WHERE id=? AND topic_id<>?");
+        query.addBindValue(topic);
+        query.addBindValue(id);
+        query.addBindValue(topic);
+        if (query.exec()) moved += query.numRowsAffected();
+    }
+    if (!moved) return 0;
+    if (!topic.isEmpty()) {
+        QSqlQuery touch(m_database);
+        touch.prepare("UPDATE ai_topics SET updated_at=? WHERE id=?");
+        touch.addBindValue(now());
+        touch.addBindValue(topic);
+        touch.exec();
+    }
+    emit aiThreadsChanged();
+    return moved;
 }
 
 QVariantMap ResearchStore::aiThread(const QString &id) const
 {
     QSqlQuery query(m_database);
     query.prepare(
-        "SELECT title,provider,model,source,created_at,updated_at,trashed_at IS NOT NULL FROM ai_threads WHERE id=?");
+        "SELECT title,provider,model,source,created_at,updated_at,trashed_at IS NOT NULL,topic_id FROM ai_threads "
+        "WHERE id=?");
     query.addBindValue(id);
     if (!query.exec() || !query.next()) return {};
+    QHash<QString, QString> papers;
     QVariantMap thread{{"id", id}, {"title", query.value(0)}, {"provider", query.value(1)}, {"model", query.value(2)},
         {"source", QUrl(query.value(3).toString())}, {"createdAt", query.value(4)}, {"updatedAt", query.value(5)},
-        {"trashed", query.value(6).toBool()}};
+        {"trashed", query.value(6).toBool()},
+        {"topic", aiChatTopic(query.value(7).toString(), query.value(3).toString(), aiTopicIds(), &papers)}};
     QSqlQuery messages(m_database);
     messages.prepare("SELECT id,role,content,display,context_json,model,created_at FROM ai_messages WHERE thread_id=? "
                      "ORDER BY created_at, role DESC");

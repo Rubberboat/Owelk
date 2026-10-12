@@ -250,6 +250,11 @@ private slots:
         const auto robots = mac.createCollection("Robots");
         QVERIFY(mac.setDocumentCollection(source, robots, true));
         QVERIFY(mac.setReadingState(source, "read"));
+        // A Thread of one's own in the AI panel travels with the chats in it.
+        const auto chat
+            = mac.createAiThread({{"title", "Drift"}, {"provider", "claude"}, {"model", "m"}, {"source", source}});
+        const auto radar = mac.createAiTopic("Radar");
+        QCOMPARE(mac.moveAiThreads({chat}, radar), 1);
         auto *macSync = mac.librarySync();
         QCOMPARE(macSync->setFolder(QUrl::fromLocalFile(drive)), QString());
         QVERIFY2(macSync->syncBlocking().error.isEmpty(), qPrintable(macSync->status()));
@@ -275,6 +280,8 @@ private slots:
         QCOMPARE(scalar(ubuntu, "SELECT body FROM highlights WHERE kind='text'").toString(),
             QString("Check the drift term"));
         QCOMPARE(scalar(ubuntu, "SELECT count(*) FROM highlights WHERE kind='area' AND deleted_at IS NULL").toInt(), 1);
+        QCOMPARE(ubuntu.aiThread(chat)["topic"].toString(), radar);
+        QCOMPARE(ubuntu.aiTopics().value(0).toMap()["title"].toString(), QString("Radar"));
 
         // Edits travel back, and of two edits to the same note the later one wins on both.
         QVERIFY(ubuntu.saveNote(note, "Idea from Ubuntu", "Radar drift"));
@@ -1442,6 +1449,80 @@ private slots:
         QVERIFY(html.contains("Deleted conversation"));
         QCOMPARE(store.trashCount(), 0);
         QCOMPARE(store.aiThreads().size(), 2);
+    }
+    void aiChatsGatherInThreads()
+    {
+        QTemporaryDir directory;
+        const auto first = QUrl::fromLocalFile(directory.filePath("first.pdf"));
+        const auto second = QUrl::fromLocalFile(directory.filePath("second.pdf"));
+        writeFixture(first.toLocalFile(), "First Paper");
+        writeFixture(second.toLocalFile(), "Second Paper", 2);
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("library.keepPdfs", "0"));
+        QVERIFY(store.rememberDocument(first));
+        QVERIFY(store.rememberDocument(second));
+        const auto chat = [&](const QString &title, const QUrl &source, const QString &topic = {}) {
+            return store.createAiThread(
+                {{"title", title}, {"provider", "claude"}, {"model", "m"}, {"source", source}, {"topic", topic}});
+        };
+        const auto topic = [&](const QString &key) {
+            for (const auto &row : store.aiTopics())
+                if (row.toMap()["key"].toString() == key) return row.toMap();
+            return QVariantMap();
+        };
+        const auto a1 = chat("A1", first), a2 = chat("A2", first), b1 = chat("B1", second);
+        chat("G1", QUrl());
+        // One Thread per paper, made as its chats are, and General for chats about no paper.
+        const auto paperA = store.aiTopicFor(first), paperB = store.aiTopicFor(second);
+        QVERIFY(paperA.startsWith("paper:"));
+        QVERIFY(paperA != paperB);
+        QCOMPARE(store.aiTopicFor(QUrl()), QString("general"));
+        QCOMPARE(store.aiTopics().size(), 3);
+        QCOMPARE(topic(paperA)["chats"].toInt(), 2);
+        QCOMPARE(topic(paperA)["kind"].toString(), QString("paper"));
+        QCOMPARE(topic(paperA)["title"].toString(), store.displayName(first));
+        QCOMPARE(topic("general")["chats"].toInt(), 1);
+        QCOMPARE(store.aiThread(a1)["topic"].toString(), paperA);
+        // A Thread of one's own holds chats about several papers; one started in it stays there.
+        const auto own = store.createAiTopic("  Radar   odometry ");
+        QVERIFY(!own.isEmpty());
+        QCOMPARE(topic(own)["kind"].toString(), QString("custom"));
+        QCOMPARE(topic(own)["title"].toString(), QString("Radar odometry"));
+        QCOMPARE(topic(own)["chats"].toInt(), 0);
+        QCOMPARE(store.moveAiThreads({a2, b1}, own), 2);
+        QTest::qWait(5);
+        const auto c1 = chat("C1", second, own);
+        QCOMPARE(topic(own)["chats"].toInt(), 3);
+        QCOMPARE(topic(paperA)["chats"].toInt(), 1);
+        QVERIFY(topic(paperB).isEmpty()); // Its only chat moved.
+        QCOMPARE(store.aiThread(c1)["topic"].toString(), own);
+        const auto listed = store.aiThreads();
+        QCOMPARE(std::count_if(listed.cbegin(), listed.cend(),
+                     [&](const QVariant &row) { return row.toMap()["topic"].toString() == own; }),
+            3);
+        // Newest first: the Thread just used leads.
+        QCOMPARE(store.aiTopics().first().toMap()["key"].toString(), own);
+        // A Thread that does not exist is ignored: the chat follows its paper.
+        QCOMPARE(store.moveAiThreads({a1}, "missing"), 0);
+        QCOMPARE(store.aiThread(chat("D1", first, "missing"))["topic"].toString(), paperA);
+        // Renamed; a chat in the Trash leaves the count and comes back with its Thread.
+        QVERIFY(store.renameAiTopic(own, "Radar"));
+        QCOMPARE(topic(own)["title"].toString(), QString("Radar"));
+        QCOMPARE(store.trashAiThreads({c1}), 1);
+        QCOMPARE(topic(own)["chats"].toInt(), 2);
+        QCOMPARE(store.trashAiThreads({c1}, false), 1);
+        QCOMPARE(store.aiThread(c1)["topic"].toString(), own);
+        // Out of the Thread, then the Thread deleted: every chat goes back to its paper, none is lost.
+        QCOMPARE(store.moveAiThreads({a2}, QString()), 1); // QML's "" may arrive as a null string.
+        QCOMPARE(store.aiThread(a2)["topic"].toString(), paperA);
+        QVERIFY(store.deleteAiTopic(own));
+        QVERIFY(topic(own).isEmpty());
+        QCOMPARE(topic(paperB)["chats"].toInt(), 2);
+        QCOMPARE(topic(paperA)["chats"].toInt(), 3);
+        QCOMPARE(store.aiThreads().size(), 6);
+        QVERIFY(!store.deleteAiTopic(own));
     }
     void oneTrashForPapersNotesAndConversations()
     {
