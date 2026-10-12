@@ -97,6 +97,19 @@ Item {
             researchStore.ai.provider = before
             spy.destroy()
         }
+        function test_chatGptAccountIsAskedForAtStart() {
+            // Codex keeps the ChatGPT sign-in when Owelk quits; an AI started with ChatGPT chosen asks for the
+            // account at once, not only once Settings › AI opens (it looked signed out after every restart).
+            const before = researchStore.ai.provider
+            researchStore.ai.provider = "codex"
+            const spy = Qt.createQmlObject('import QtTest; SignalSpy { signalName: "codexAccountChanged" }', scene)
+            spy.target = researchStore.ai
+            const controller = Qt.createComponent("../qml/AiController.qml").createObject(scene)
+            verify(controller !== null)
+            tryVerify(function() { return spy.count > 0 }, 10000, "the account was asked for")
+            controller.destroy(); spy.destroy()
+            researchStore.ai.provider = before
+        }
         function test_aiInstructionsAndGlossModelAreKept() {
             settings.openPage("ai"); tryCompare(settings, "opened", true)
             tryVerify(function() { return findChild(settings, "aiInstructions") !== null })
