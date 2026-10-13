@@ -32,12 +32,13 @@ ItemDelegate {
                 elide: root.modelData.kind === "paper" ? Text.ElideRight : Text.ElideMiddle
             }
             Label {
+                objectName: "resultKind"
                 text: root.modelData.kind === "paperGroup" ? root.modelData.total + " matching pages"
                     : root.modelData.kind === "text" ? "p. " + (Number(root.modelData.page) + 1) + (root.modelData.ocr ? " · OCR" : "")
                     : ["moreInPaper", "nextResults", "section"].indexOf(root.modelData.kind) >= 0 ? ""
                     : root.modelData.kind === "paper" ? ""
                     : root.modelData.kind === "complete" ? root.modelData.key + (root.modelData.count !== undefined ? "  ·  " + root.modelData.count + " papers" : "")
-                    : root.modelData.kind === "web" ? "Web  ·  " + Platform.keys("Ctrl+Return")
+                    : root.modelData.kind === "web" ? "Web" + (researchStore.tor.enabled ? " via Tor" : "") + "  ·  " + Platform.keys("Ctrl+Return")
                     : root.modelData.kind
                 color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
             }

@@ -12,6 +12,9 @@
 #include "StoreFixture.h"
 #include "PaperMetadata.h"
 #include "MetadataLookup.h"
+#include "TorNetwork.h"
+#include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QDir>
@@ -2471,6 +2474,40 @@ private slots:
         store.listFolder(QUrl("https://example.com"));
         QTRY_COMPARE_WITH_TIMEOUT(listed.size(), 2, 10000);
         QVERIFY(!listed.last()[3].toString().isEmpty());
+    }
+    // Settings › Web › Browse through Tor: off until turned on; on without Tor, web tabs get no direct way
+    // out, and other requests keep theirs.
+    void torIsOffUntilTurnedOnAndNeverFallsBackToDirect()
+    {
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        auto *tor = qobject_cast<TorNetwork *>(store.tor());
+        QVERIFY(tor);
+        QVERIFY(!tor->enabled());
+        QCOMPARE(tor->state(), QStringLiteral("off"));
+        QVERIFY(QNetworkProxy::applicationProxy().type() != QNetworkProxy::Socks5Proxy);
+        qputenv("OWELK_TOR", directory.filePath("no-tor").toUtf8());
+        tor->setEnabled(true);
+        QCOMPARE(store.setting("web.tor"), QStringLiteral("1"));
+        QCOMPARE(tor->state(), QStringLiteral("missing"));
+        QCOMPARE(QNetworkProxy::applicationProxy().type(), QNetworkProxy::Socks5Proxy);
+        QCOMPARE(QNetworkProxy::applicationProxy().hostName(), QStringLiteral("127.0.0.1"));
+        QNetworkAccessManager other;
+        TorNetwork::keepDirect(&other);
+        const auto proxies = other.proxyFactory()->queryProxy(QNetworkProxyQuery(QUrl("https://api.crossref.org/works")));
+        QVERIFY(!proxies.isEmpty());
+        QVERIFY(proxies.first().type() != QNetworkProxy::Socks5Proxy);
+        QVERIFY(!tor->newIdentity()); // Only once connected.
+        tor->setExitCountry("de");
+        QCOMPARE(tor->exitCountry(), QStringLiteral("de"));
+        tor->setExitCountry("zz");
+        QCOMPARE(store.setting("web.torExit"), QStringLiteral("de"));
+        tor->setEnabled(false);
+        QCOMPARE(tor->state(), QStringLiteral("off"));
+        QVERIFY(QNetworkProxy::applicationProxy().type() != QNetworkProxy::Socks5Proxy);
+        qunsetenv("OWELK_TOR");
     }
 };
 QTEST_MAIN(ResearchStoreTest)

@@ -13,6 +13,7 @@
 #include <QVariantMap>
 
 class LibrarySync;
+class TorNetwork;
 class PaperIndex;
 class ReferenceFinder;
 class QNetworkAccessManager;
@@ -37,6 +38,8 @@ class ResearchStore final : public QObject {
     Q_PROPERTY(QObject *semantic READ semantic CONSTANT)
     // Keeping this library the same on other computers through a shared folder (LibrarySync.h).
     Q_PROPERTY(QObject *sync READ sync CONSTANT)
+    // Settings › Web › Browse through Tor: web tabs only, off unless turned on (TorNetwork.h).
+    Q_PROPERTY(QObject *tor READ tor CONSTANT)
     Q_PROPERTY(bool backingUp READ backingUp NOTIFY backingUpChanged)
     Q_PROPERTY(bool recoveredFromCrash READ recoveredFromCrash CONSTANT)
     Q_PROPERTY(QString startupMessage READ startupMessage CONSTANT)
@@ -68,6 +71,7 @@ public:
     QObject *semantic() const;
     QObject *sync() const;
     LibrarySync *librarySync() const { return m_sync; }
+    QObject *tor() const;
     bool relinking() const { return m_relinking; }
     bool copyingPdfs() const { return m_copyingPdfs; }
     // "Keep PDFs in Owelk" (setting library.keepPdfs, on by default): PDFs that are opened, added or
@@ -505,5 +509,6 @@ private:
     QObject *m_ai;
     class SemanticIndex *m_semantic = nullptr;
     LibrarySync *m_sync;
+    TorNetwork *m_tor;
     void syncReceived(const QSet<QString> &tables, const QStringList &sources);
 };

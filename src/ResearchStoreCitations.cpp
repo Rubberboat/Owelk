@@ -1,4 +1,5 @@
 #include "ResearchStore.h"
+#include "TorNetwork.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -91,7 +92,10 @@ int ResearchStore::loadCitations(const QUrl &source, bool refresh, bool cachedOn
     }
     if (doi.isEmpty() && arxiv.isEmpty() && title.size() < 8)
         return fail("This paper has no DOI, arXiv ID or title to look up. Add one in Paper Details.");
-    if (!m_citationNetwork) m_citationNetwork = new QNetworkAccessManager(this);
+    if (!m_citationNetwork) {
+        m_citationNetwork = new QNetworkAccessManager(this);
+        TorNetwork::keepDirect(m_citationNetwork);
+    }
     const auto base = setting("citations.baseUrl", "https://api.semanticscholar.org/graph/v1");
     const auto get = [this, request, source](const QUrl &url, std::function<void(const QByteArray &)> next) {
         QNetworkRequest call(url);

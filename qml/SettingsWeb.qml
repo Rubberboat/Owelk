@@ -10,6 +10,7 @@ ColumnLayout {
     id: root
     spacing: 22
     readonly property var engines: Tree.searchEngines
+    readonly property var tor: researchStore.tor
     readonly property bool keepsPdfs: researchStore.setting("library.keepPdfs", "1") === "1"
     function folder() { const f = researchStore.setting("downloadFolder"); return f.length ? f : researchStore.downloadTarget("x").directory }
     Native.FolderDialog {
@@ -70,6 +71,50 @@ ColumnLayout {
                 text: researchStore.setting("startPage")
                 placeholderText: "https://scholar.google.com/"
                 onEditingFinished: researchStore.setSetting("startPage", text.trim())
+            }
+        }
+    }
+    // Off unless turned on here; each computer's reader decides (TorNetwork.h).
+    SettingsGroup {
+        title: "Tor"
+        note: "Web tabs and Home's web search go out through Tor, so sites see an address in another country. "
+            + "Paper details, citations and AI still connect directly. Google and Scholar often ask Tor users to show "
+            + "they are not a robot; New Identity tries another exit. This changes where you appear to be, "
+            + "not the privacy of Tor Browser."
+        SettingsRow {
+            label: "Browse through Tor"
+            Switch {
+                objectName: "torSwitch"
+                checked: root.tor.enabled
+                onToggled: root.tor.setEnabled(checked)
+            }
+        }
+        SettingsRow {
+            label: "Exit country"
+            ComboBox {
+                objectName: "torExitBox"
+                Layout.preferredWidth: 200
+                model: root.tor.countries.map(function(c) { return c.name })
+                currentIndex: Math.max(0, root.tor.countries.findIndex(function(c) { return c.code === root.tor.exitCountry }))
+                onActivated: function(index) { root.tor.setExitCountry(root.tor.countries[index].code) }
+            }
+        }
+        SettingsRow {
+            label: "Status"
+            wide: true
+            Label {
+                objectName: "torStatus"
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                text: root.tor.summary
+                color: root.tor.state === "missing" || root.tor.state === "failed" ? Theme.danger : Theme.textSecondary
+            }
+            Button {
+                objectName: "torNewIdentity"
+                visible: root.tor.state === "ready"
+                text: "New Identity"
+                onClicked: root.tor.newIdentity()
             }
         }
     }

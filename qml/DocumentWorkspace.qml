@@ -216,6 +216,30 @@ Flickable {
         // whose name carries "QtWebEngine".
         Component.onCompleted: httpUserAgent = httpUserAgent.replace(/\s*QtWebEngine\/[\d.]+/, "")
     }
+    // Tor turned on or off, or a new identity (TorNetwork.h): Chromium takes a changed proxy in only when
+    // the next request comes, and lets that request go the old way. So a hidden page on this computer
+    // makes that request first; web tabs reload or retry once it has loaded.
+    Loader {
+        id: torProbe
+        active: false
+        // Tor turned on before this window existed (at startup) gets its probe now.
+        Component.onCompleted: if (researchStore.tor.routePending) active = true
+        sourceComponent: WebEngineView {
+            visible: false
+            width: 1; height: 1
+            profile: root.webProfile
+            Component.onCompleted: url = researchStore.tor.probeUrl
+            onLoadingChanged: function(request) {
+                if (request.status === WebEngineView.LoadStartedStatus) return
+                researchStore.tor.routeApplied()
+                Qt.callLater(function() { torProbe.active = false })
+            }
+        }
+    }
+    Connections {
+        target: researchStore.tor
+        function onRouteChanged() { torProbe.active = false; torProbe.active = true }
+    }
     signal webTabUpdated()
     // Route an address to the right surface: local PDFs open in the reader, web addresses in a web tab
     // (a PDF on the web downloads there and then opens in the reader).

@@ -31,6 +31,7 @@
 - PDF 파일 이름: PDF 폴더의 파일은 논문 정보가 생기거나 바뀌면 `저자 연도 - 제목.pdf`로 바뀜(같은 이름이면 번호). 한동안 탭에 열려 있던 논문은 다음 실행 때. Settings → Data에서 끔.
 - Windows 설치: `tools/install-local.ps1`(x-or-b의 스크립트에 winget이 자기 자신을 부르던 문제와 32비트 PowerShell 문제 수정).
 - 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.
+- Tor로 웹 보기: Settings → Web → Browse through Tor(기본 꺼짐, 각자 켬). 켜면 Owelk가 Tor를 직접 띄워 웹 탭과 Home 웹 검색만 Tor로 내보냄(출구 나라 선택, New Identity, 웹 탭 도구 막대의 Tor 칩). 논문 정보·인용·AI·의미 검색은 그대로 직접 연결. Tor가 준비 전이거나 없으면 직접 연결로 새지 않고 기다리며, 켜고 끄는 순간에 요청한 페이지도 새 경로가 잡힐 때까지 기다림(Chromium이 바뀐 프록시를 다음 요청 때에야 읽기 때문). 설치 스크립트가 Tor를 한 번 물어봄(macOS `brew install tor`, Windows는 torproject.org의 Tor Expert Bundle을 SHA-256 확인 후 받음, `-Tor`).
 
 ## 이번 단계 (2026-10-10): 구조 단순화
 

@@ -4,13 +4,14 @@
 #   powershell -ExecutionPolicy Bypass -File tools\install-local.ps1           build and install
 #   powershell -ExecutionPolicy Bypass -File tools\install-local.ps1 -Clean    start the build from scratch
 #   powershell -ExecutionPolicy Bypass -File tools\install-local.ps1 -Yes      do not ask before installing tools
+#   powershell -ExecutionPolicy Bypass -File tools\install-local.ps1 -Tor      download Tor without asking
 #
 # Windows 10/11 on x64. Needs Visual Studio 2022 Build Tools (C++) and Python 3.10+; missing ones are
 # installed with winget (after asking). The official Qt 6.11 goes to %USERPROFILE%\Qt (about 2 GB,
 # once); Owelk is built with MSVC and installed to %LOCALAPPDATA%\Programs\Owelk with a Start menu entry.
 # Unlike macOS and Linux the Qt libraries are copied next to the program: Windows has no other way to
-# find them.
-param([switch]$Clean, [switch]$Yes, [switch]$Help)
+# find them. Tor (for Settings > Web > Browse through Tor, off until turned on) is offered once.
+param([switch]$Clean, [switch]$Yes, [switch]$Tor, [switch]$Help)
 $ErrorActionPreference = 'Stop'
 
 $QtVersion = if ($env:OWELK_QT_VERSION) { $env:OWELK_QT_VERSION } else { '6.11.3' }
@@ -58,13 +59,14 @@ function Find-Python {
     return $false
 }
 
-if ($Help) { Get-Content $PSCommandPath | Select-Object -First 12 | ForEach-Object { $_ -replace '^# ?', '' }; exit 0 }
+if ($Help) { Get-Content $PSCommandPath | Select-Object -First 13 | ForEach-Object { $_ -replace '^# ?', '' }; exit 0 }
 # A 32-bit PowerShell on 64-bit Windows ("Windows PowerShell (x86)") hands the work to the 64-bit one.
 if ($env:PROCESSOR_ARCHITECTURE -eq 'x86' -and $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') {
     $native = Join-Path $env:windir 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
     $forward = @()
     if ($Clean) { $forward += '-Clean' }
     if ($Yes) { $forward += '-Yes' }
+    if ($Tor) { $forward += '-Tor' }
     & $native -ExecutionPolicy Bypass -File $PSCommandPath @forward
     exit $LASTEXITCODE
 }
@@ -149,4 +151,50 @@ $link.WorkingDirectory = Split-Path $exe
 $link.IconLocation = "$exe,0"
 $link.Description = 'Owelk'
 $link.Save()
+
+# --- Tor (optional): Settings > Web > Browse through Tor -----------------------------------------------
+# The Tor Expert Bundle from torproject.org, checked against its published SHA-256 sums, unpacked into
+# %LOCALAPPDATA%\Owelk\tor where Owelk looks for it. Asked once; -Tor downloads it (again) without asking.
+function Install-Tor([string]$dir) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = 'SilentlyContinue'
+    $base = 'https://dist.torproject.org/torbrowser/'
+    $listing = (Invoke-WebRequest -UseBasicParsing $base).Content
+    # The newest stable release (alphas such as 16.0a1 are left out).
+    $version = [regex]::Matches($listing, 'href="(\d+(?:\.\d+)+)/"') | ForEach-Object { $_.Groups[1].Value } |
+        Sort-Object { [version]$_ } | Select-Object -Last 1
+    if (-not $version) { throw 'no Tor release is listed' }
+    $file = "tor-expert-bundle-windows-x86_64-$version.tar.gz"
+    $archive = Join-Path $env:TEMP $file
+    $sums = Join-Path $env:TEMP "owelk-tor-sha256sums-$version.txt"
+    Say "Downloading Tor $version"
+    Invoke-WebRequest -UseBasicParsing "$base$version/$file" -OutFile $archive
+    Invoke-WebRequest -UseBasicParsing "$base$version/sha256sums-signed-build.txt" -OutFile $sums
+    $line = Select-String -Path $sums -Pattern ([regex]::Escape($file) + '$') | Select-Object -First 1
+    Remove-Item $sums
+    $expected = if ($line) { ($line.Line -split '\s+')[0].ToLower() } else { '' }
+    $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower()
+    if (-not $expected -or $expected -ne $actual) { Remove-Item $archive; throw 'the download does not match its checksum' }
+    if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    & tar.exe -xzf $archive -C $dir
+    $unpacked = $LASTEXITCODE -eq 0
+    Remove-Item $archive
+    if (-not $unpacked -or -not (Get-ChildItem $dir -Recurse -Filter tor.exe)) { throw 'it could not be unpacked' }
+    Say "Tor $version is in $dir"
+}
+$torHome = Join-Path $env:LOCALAPPDATA 'Owelk\tor'
+$torSkipped = Join-Path $env:LOCALAPPDATA 'Owelk\tor-skipped'
+$hasTor = [bool](Get-ChildItem $torHome -Recurse -Filter tor.exe -ErrorAction SilentlyContinue)
+if ($Tor -or (-not $hasTor -and -not (Test-Path $torSkipped))) {
+    if ($Tor -or (Ask 'Also download Tor (optional, about 10 MB, for Settings > Web > Browse through Tor)?')) {
+        try {
+            Install-Tor $torHome
+            if (Test-Path $torSkipped) { Remove-Item $torSkipped }
+        } catch { Write-Warning "Tor was not installed: $_. Owelk works without it." }
+    } else {
+        New-Item -ItemType File -Force $torSkipped | Out-Null
+        Write-Host '(Skipped. To add it later, run this script again with -Tor.)'
+    }
+}
 Say 'Done. Start Owelk from the Start menu.'
