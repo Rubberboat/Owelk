@@ -39,7 +39,12 @@ Popup {
     onRowsChanged: {
         list.currentIndex = root.selectionIndex()
         if (list.currentIndex >= 0) list.positionViewAtIndex(list.currentIndex, ListView.Contain)
-        if (acceptWhenReady && !search.namesPending) { acceptWhenReady = false; root.choose(Math.max(0, list.currentIndex)) }
+        if (acceptWhenReady && !search.namesPending) {
+            acceptWhenReady = false
+            // After this change has gone round (choosing closes the palette).
+            const text = searchInput.text
+            Qt.callLater(function() { if (searchInput.text === text) root.choose(Math.max(0, list.currentIndex)) })
+        }
     }
     function move(direction) {
         const rows = root.rows

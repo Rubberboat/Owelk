@@ -182,7 +182,8 @@ Item {
             field.forceActiveFocus()
             tryVerify(function() { return home.rows.length > 0 && home.rows[0].kind === "web" })
             testInput.keyClick(field, Qt.Key_Return)
-            tryCompare(activeTab(), "kind", "web")
+            // Return may wait for the saved items first, so look at the active tab again each time.
+            tryVerify(function() { return activeTab().kind === "web" })
             compare(activeTab().id, homeTab)
             verify(activeTab().source.indexOf("/page.html") > 0)
             // Words search with the chosen engine.

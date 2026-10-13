@@ -54,8 +54,9 @@ QtObject {
     // While a condition is being typed ("tag:sl"), its known names are offered; choosing one
     // completes the condition in the query (rewrite tells the search field).
     signal rewrite(string text)
-    readonly property var completing: {
-        const m = query.match(/(^|\s)(tag|collection|state):("?)([^"\s]*)$/i)
+    readonly property var completing: completingOf(query)
+    function completingOf(text) {
+        const m = text.match(/(^|\s)(tag|collection|state):("?)([^"\s]*)$/i)
         return m ? {key: m[2].toLowerCase(), partial: m[4], start: m.index + m[1].length} : null
     }
     function completions() {
@@ -78,8 +79,18 @@ QtObject {
     property bool withWeb: true
     function readEngine() { return researchStore.setting("searchEngine") || Tree.searchEngines[0].template }
     property string webTemplate: readEngine()
-    readonly property var webRow: withWeb && !sourceFilter.toString().length && !libraryScoped && !completing
-        ? Tree.webIntent(query, webTemplate) : null
+    // Set before the results are cleared for a new query (not a binding): lists built from both then never
+    // read a web row that is still about to change. Worked out from the query itself, since the bindings
+    // above may not have caught up with it yet.
+    property var webRow: null
+    function updateWebRow() {
+        const scoped = Object.keys(parseQuery(query).filter).length > 0
+        webRow = withWeb && !sourceFilter.toString().length && !scoped && !completingOf(query)
+            ? Tree.webIntent(query, webTemplate) : null
+    }
+    onWithWebChanged: updateWebRow()
+    onWebTemplateChanged: updateWebRow()
+    Component.onCompleted: updateWebRow()
     property int offset: 0
     property var history: []
     property bool changing: false
@@ -92,7 +103,7 @@ QtObject {
         if (changing) return
         offset = 0; history = []; preferredIndex = 0; invalidate(); if (active) delay.restart()
     }
-    onSourceFilterChanged: filtersChanged()
+    onSourceFilterChanged: { updateWebRow(); filtersChanged() }
     onTargetFilterChanged: filtersChanged()
     function choose(result) {
         if (result.kind === "section") return true
@@ -164,7 +175,7 @@ QtObject {
             request = researchStore.paperIndex.searchGrouped(needle, sourceFilter, offset, scope ? scope.map(function(p) { return p.id }) : null)
         }
     }
-    onQueryChanged: { offset = 0; history = []; preferredIndex = 0; invalidate(); if (active) delay.restart() }
+    onQueryChanged: { updateWebRow(); offset = 0; history = []; preferredIndex = 0; invalidate(); if (active) delay.restart() }
     onActiveChanged: { if (active) refresh(); else { delay.stop(); invalidate() } }
     property Timer delay: Timer { interval: 150; onTriggered: root.refresh() }
     property Connections storeUpdates: Connections {

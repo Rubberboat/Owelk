@@ -29,7 +29,9 @@ Rectangle {
     }
     signal newNoteRequested()
     onVisibleChanged: refreshLists()
-    Component.onCompleted: refreshLists()
+    // The result list follows rows once the view is built (while it is, the search is still filling in).
+    property bool built: false
+    Component.onCompleted: { built = true; refreshLists() }
     Timer { id: listsLater; interval: 150; onTriggered: root.refreshLists() }
     Connections {
         target: researchStore
@@ -76,9 +78,15 @@ Rectangle {
         if (rows.length) root.choose(rows[Math.max(0, Math.min(searchResults.currentIndex, rows.length - 1))])
     }
     onRowsChanged: {
+        if (!built) return
         searchResults.currentIndex = root.selectionIndex()
         if (searchResults.currentIndex >= 0) searchResults.positionViewAtIndex(searchResults.currentIndex, ListView.Contain)
-        if (acceptWhenReady && !searchModel.namesPending) { acceptWhenReady = false; acceptSelection() }
+        if (acceptWhenReady && !searchModel.namesPending) {
+            acceptWhenReady = false
+            // After this change has gone round: choosing can replace this Home tab (and this view).
+            const text = searchInput.text
+            Qt.callLater(function() { if (searchInput.text === text) root.acceptSelection() })
+        }
     }
     function focusSearch() { searchInput.forceActiveFocus(); searchInput.selectAll() }
     // A list in a slot of fixed height (rows rows): the rounded box grows with its rows up to the slot and
