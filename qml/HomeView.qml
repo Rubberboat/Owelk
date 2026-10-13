@@ -37,22 +37,48 @@ Rectangle {
         function onNotesChanged() { listsLater.restart() }
         function onAiThreadsChanged() { listsLater.restart() }
         function onDocumentsChanged() { listsLater.restart() }
-        function onSettingsChanged() { webInput.engine = (researchStore.setting("searchEngine") || Tree.searchEngines[0].template) }
     }
     // An address or a web search typed on Home (opens a web tab).
     signal webRequested(string url)
     function searchWeb(text) {
-        const url = Tree.addressToUrl(text, webInput.engine)
+        const url = Tree.addressToUrl(text, searchModel.webTemplate)
         if (url.length) webRequested(url)
         return url.length > 0
     }
     signal documentChosen(url source, var position)
     signal resultChosen(var result)
-    function choose(result) { if (!searchModel.choose(result)) root.resultChosen(result) }
-    function search() { searchModel.refresh(); searchResults.currentIndex = searchModel.selectionIndex() }
-    onResultsChanged: {
-        searchResults.currentIndex = searchModel.selectionIndex()
+    // One field for the Library and the web: the web row (searchModel.webRow) comes first when the text
+    // reads as an address or names an engine ("arxiv: …"), last otherwise, so Enter opens the best match.
+    readonly property var rows: {
+        const web = searchModel.webRow, list = root.results
+        return !web ? list : web.first ? [web].concat(list) : list.concat([web])
+    }
+    function selectionIndex() {
+        const web = searchModel.webRow, at = searchModel.selectionIndex()
+        if (!web) return at
+        if (web.first) return 0
+        return at >= 0 ? at : root.rows.length - 1
+    }
+    function choose(result) {
+        if (result.kind === "web") {
+            root.webRequested(result.url)
+            searchInput.clear()
+            return
+        }
+        if (!searchModel.choose(result)) root.resultChosen(result)
+    }
+    function search() { searchModel.refresh(); searchResults.currentIndex = root.selectionIndex() }
+    // Return pressed before the saved items are known waits for them, so it never jumps to the web
+    // row only because the Library had not answered yet.
+    property bool acceptWhenReady: false
+    function acceptSelection() {
+        const rows = root.rows
+        if (rows.length) root.choose(rows[Math.max(0, Math.min(searchResults.currentIndex, rows.length - 1))])
+    }
+    onRowsChanged: {
+        searchResults.currentIndex = root.selectionIndex()
         if (searchResults.currentIndex >= 0) searchResults.positionViewAtIndex(searchResults.currentIndex, ListView.Contain)
+        if (acceptWhenReady && !searchModel.namesPending) { acceptWhenReady = false; acceptSelection() }
     }
     function focusSearch() { searchInput.forceActiveFocus(); searchInput.selectAll() }
     // A list in a slot of fixed height (rows rows): the rounded box grows with its rows up to the slot and
@@ -129,69 +155,42 @@ Rectangle {
                 spacing: 8
                 Label { text: "Search your research"; font.pixelSize: Theme.fontTitle; font.weight: Font.Medium; color: Theme.text }
                 SearchFilters { Layout.fillWidth: true; controller: searchModel }
+                // One field: the Library's results, and a row for the web (an address, or words for the
+                // engine at the right end; Ctrl/⌘+Return goes to the web whatever is chosen).
                 TextField {
                     id: searchInput
                     objectName: "homeSearch"
                     Layout.fillWidth: true
                     implicitHeight: 40
-                    placeholderText: "Find PDF text, papers, notes or AI conversations  ·  tag: collection:"
+                    rightPadding: engineChip.width + 12
+                    placeholderText: "Search your library or the web  \u00b7  tag: collection:"
                     selectByMouse: true
+                    onTextChanged: root.acceptWhenReady = false
                     onAccepted: {
-                        let chosenIndex = searchResults.currentIndex
-                        if (searchModel.delay.running) { root.search(); chosenIndex = searchResults.currentIndex }
-                        if (root.results.length) root.choose(root.results[Math.max(0, Math.min(chosenIndex, root.results.length - 1))])
+                        if (searchModel.delay.running) root.search()
+                        if (searchModel.namesPending) root.acceptWhenReady = true
+                        else root.acceptSelection()
                     }
-                    Keys.onDownPressed: searchResults.currentIndex = Math.min(root.results.length - 1, searchResults.currentIndex + 1)
+                    Keys.onPressed: function(event) {
+                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier) && searchModel.webRow) {
+                            root.choose(searchModel.webRow)
+                            event.accepted = true
+                        }
+                    }
+                    Keys.onDownPressed: searchResults.currentIndex = Math.min(root.rows.length - 1, searchResults.currentIndex + 1)
                     Keys.onUpPressed: searchResults.currentIndex = Math.max(0, searchResults.currentIndex - 1)
                     Keys.onEscapePressed: clear()
-                }
-                // Only while PDFs are being indexed or some cannot be read (details in Settings › Search).
-                IndexStatus { Layout.fillWidth: true; quiet: true }
-                Label { Layout.fillWidth: true; visible: searchModel.error.length > 0; text: "PDF text search failed: " + searchModel.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary }
-                ListView {
-                    id: searchResults
-                    objectName: "homeResults"
-                    visible: searchInput.text.trim().length > 0
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: visible ? Math.min(320, Math.max(44, contentHeight)) : 0
-                    clip: true
-                    model: root.results
-                    ScrollBar.vertical: ScrollBar {}
-                    delegate: SearchResultDelegate {
-                        required property int index
-                        queryText: searchInput.text
-                        width: searchResults.width
-                        highlighted: searchResults.currentIndex === index
-                        onClicked: root.choose(modelData)
-                    }
-                    Label { anchors.centerIn: parent; visible: searchResults.count === 0; text: searchModel.waiting ? "Searching PDF text…" : searchModel.error.length ? "Text search failed. Try again." : "No matching saved items"; color: Theme.textTertiary }
-                }
-                // The web, from the same page: an address opens it, words search with the chosen engine.
-                TextField {
-                    id: webInput
-                    objectName: "homeWebSearch"
-                    Layout.fillWidth: true
-                    implicitHeight: Theme.controlHeight + 6
-                    leftPadding: 30
-                    rightPadding: engineChip.width + 10
-                    // Where words go: chosen with the button at the right end (the same choice as Settings › Web).
-                    property string engine: (researchStore.setting("searchEngine") || Tree.searchEngines[0].template)
-                    placeholderText: "Search the web or enter an address"
-                    selectByMouse: true
-                    font.pixelSize: Theme.fontBody
-                    onAccepted: if (root.searchWeb(text)) clear()
-                    Keys.onEscapePressed: clear()
-                    // A globe: the web, not the library.
-                    Icon { x: 9; anchors.verticalCenter: parent.verticalCenter; name: "globe"; size: Theme.fontBody + 1; color: Theme.textTertiary }
+                    // Where web searches go (the same choice as Settings › Web).
                     Chip {
                         id: engineChip
                         objectName: "homeSearchEngine"
-                        anchors.right: parent.right; anchors.rightMargin: 5
+                        anchors.right: parent.right; anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
                         focusPolicy: Qt.NoFocus
                         trailingIcon: "down"
-                        text: Tree.searchEngine(webInput.engine).label
-                        ToolTip.text: "Search with"
+                        icon.name: "globe"
+                        text: Tree.searchEngine(searchModel.webTemplate).label
+                        ToolTip.text: "Search the web with"
                         onClicked: engineMenu.popup(engineChip, 0, engineChip.height + 2)
                         Menu {
                             id: engineMenu
@@ -202,7 +201,7 @@ Rectangle {
                                     required property var modelData
                                     objectName: "homeEngine-" + modelData.label
                                     text: modelData.name
-                                    checkable: true; checked: webInput.engine === modelData.template
+                                    checkable: true; checked: searchModel.webTemplate === modelData.template
                                     onTriggered: researchStore.setSetting("searchEngine", modelData.template)
                                 }
                                 onObjectAdded: function(index, item) { engineMenu.insertItem(index, item) }
@@ -210,6 +209,27 @@ Rectangle {
                             }
                         }
                     }
+                }
+                // Only while PDFs are being indexed or some cannot be read (details in Settings › Search).
+                IndexStatus { Layout.fillWidth: true; quiet: true }
+                Label { Layout.fillWidth: true; visible: searchModel.error.length > 0; text: "PDF text search failed: " + searchModel.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary }
+                ListView {
+                    id: searchResults
+                    objectName: "homeResults"
+                    visible: searchInput.text.trim().length > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? Math.min(360, Math.max(44, contentHeight)) : 0
+                    clip: true
+                    model: root.rows
+                    ScrollBar.vertical: ScrollBar {}
+                    delegate: SearchResultDelegate {
+                        required property int index
+                        queryText: searchInput.text
+                        width: searchResults.width
+                        highlighted: searchResults.currentIndex === index
+                        onClicked: root.choose(modelData)
+                    }
+                    Label { anchors.centerIn: parent; visible: searchResults.count === 0; text: searchModel.waiting ? "Searching PDF text…" : searchModel.error.length ? "Text search failed. Try again." : "No matching saved items"; color: Theme.textTertiary }
                 }
             }
             // The paper last read, as a card: click anywhere on it to go back to the page.

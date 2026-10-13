@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "PaletteMatch.js" as Match
+import "Platform.js" as Platform
 import Owelk.Ui
 
 ItemDelegate {
@@ -15,7 +16,7 @@ ItemDelegate {
     enabled: !section
     // Rows follow the shared list look (hover, selection); a paper that groups its matching pages
     // reads as a bold heading rather than a dark bar.
-    height: section ? Theme.rowHeight : modelData.kind === "complete" ? Theme.rowHeight + 4 : (modelData.snippet ? Theme.rowHeightTall + 30 : Theme.rowHeightTall) + (byline.length ? 14 : 0)
+    height: section ? Theme.rowHeight : modelData.kind === "complete" || modelData.kind === "web" ? Theme.rowHeight + 4 : (modelData.snippet ? Theme.rowHeightTall + 30 : Theme.rowHeightTall) + (byline.length ? 14 : 0)
     contentItem: ColumnLayout {
         spacing: 3
         RowLayout {
@@ -36,6 +37,7 @@ ItemDelegate {
                     : ["moreInPaper", "nextResults", "section"].indexOf(root.modelData.kind) >= 0 ? ""
                     : root.modelData.kind === "paper" ? ""
                     : root.modelData.kind === "complete" ? root.modelData.key + (root.modelData.count !== undefined ? "  ·  " + root.modelData.count + " papers" : "")
+                    : root.modelData.kind === "web" ? "Web  ·  " + Platform.keys("Ctrl+Return")
                     : root.modelData.kind
                 color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
             }

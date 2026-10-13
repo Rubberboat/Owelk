@@ -36,6 +36,23 @@ function addressToUrl(text, searchTemplate) {
     if (!/\s/.test(value) && /^[^\/]+\.[a-z]{2,}(\/|:|$)/i.test(value)) return "https://" + value
     return searchTemplate.replace("%s", encodeURIComponent(value))
 }
+// The web row of the one search field: opens an address, or searches with the engine named in the text
+// ("arxiv: words") or the chosen one. "first" when the text reads as an address or names an engine, so
+// Enter goes to the web; otherwise the Library's results come first. Null for empty text.
+function webIntent(text, searchTemplate) {
+    const value = String(text || "").trim()
+    if (!value.length) return null
+    const url = addressToUrl(value, searchTemplate)
+    if (!url.length) return null
+    const arxiv = /^arxiv:\s*(\d{4}\.\d{4,5}(v\d+)?)$/i.exec(value)
+    const named = /^([a-z]+):\s*(\S[\s\S]*)$/i.exec(value)
+    const engine = named && searchEngines.find(function(e) { return e.prefix === named[1].toLowerCase() })
+    const address = /^https?:\/\//i.test(value) || (!/\s/.test(value) && /^[^\/]+\.[a-z]{2,}(\/|:|$)/i.test(value))
+    const title = arxiv ? "Open arXiv " + arxiv[1]
+        : address ? "Open " + value.replace(/^https?:\/\//i, "")
+        : "Search " + (engine || searchEngine(searchTemplate)).name + " for \u201c" + (engine ? named[2] : value) + "\u201d"
+    return {kind: "web", title: title, url: url, first: !!(arxiv || address || engine)}
+}
 // What a drop on the window holds: PDFs and folders (isFolder decides) on this computer, and web addresses.
 function droppedFiles(urls, isFolder) {
     const drop = {pdfs: [], folders: [], web: []}

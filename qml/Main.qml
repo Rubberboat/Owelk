@@ -262,6 +262,7 @@ ApplicationWindow {
         else if (result.kind === "highlight") researchStore.openHighlight(result.id)
         else if (result.kind === "note" && !restoreFailed) documents.openNote(result.id)
         else if (result.kind === "ai") openAiThread(result.id)
+        else if (result.kind === "web" && !restoreFailed) { documents.openWeb(result.url, true); homeVisible = false }
         else if (result.kind === "collection" && !restoreFailed) documents.openLibrary({collection: result.id})
         else if (result.kind === "tag" && !restoreFailed) documents.openLibrary({tag: result.id})
         else if (result.kind === "text" && !restoreFailed) { notify("Checking PDF source…"); researchStore.paperIndex.openResult(result.documentId, Number(result.page), result.sha256) }

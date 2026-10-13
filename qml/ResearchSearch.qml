@@ -1,4 +1,5 @@
 import QtQuick
+import "WorkspaceTree.js" as Tree
 
 QtObject {
     id: root
@@ -72,6 +73,13 @@ QtObject {
                     token: c.key + ":" + value}
         })
     }
+    // The web, from the same field (Tree.webIntent): not while narrowing the Library (tag: …), completing a
+    // condition, or looking inside one paper. The engine is Settings › Web's (Home's button sets it too).
+    property bool withWeb: true
+    function readEngine() { return researchStore.setting("searchEngine") || Tree.searchEngines[0].template }
+    property string webTemplate: readEngine()
+    readonly property var webRow: withWeb && !sourceFilter.toString().length && !libraryScoped && !completing
+        ? Tree.webIntent(query, webTemplate) : null
     property int offset: 0
     property var history: []
     property bool changing: false
@@ -162,6 +170,7 @@ QtObject {
     property Connections storeUpdates: Connections {
         target: researchStore
         function onHomeChanged() { if (root.active) root.delay.restart() }
+        function onSettingsChanged() { root.webTemplate = root.readEngine() }
         function onKnowledgeFound(id, rows) {
             if (!root.active || root.namesRequest !== id) return
             root.names = rows; root.namesPending = false; root.publish()

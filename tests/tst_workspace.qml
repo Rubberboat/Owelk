@@ -710,7 +710,7 @@ Item {
         function test_homeWebSearchChoosesItsEngine() {
             workspace.showHome()
             const home = findChild(workspace, "homeView")
-            const field = findChild(home, "homeWebSearch"), chip = findChild(home, "homeSearchEngine")
+            const chip = findChild(home, "homeSearchEngine")
             compare(chip.text, "Scholar")
             mouseClick(chip)
             const menu = findChild(home, "homeSearchEngineMenu")
@@ -719,9 +719,30 @@ Item {
             menu.close()
             compare(researchStore.setting("searchEngine"), Tree.searchEngines[1].template)
             tryCompare(chip, "text", "arXiv")
-            compare(Tree.addressToUrl("slam", field.engine), "https://arxiv.org/search/?query=slam&searchtype=all")
+            compare(Tree.addressToUrl("slam", home.searchController.webTemplate), "https://arxiv.org/search/?query=slam&searchtype=all")
             researchStore.setSetting("searchEngine", "")
             tryCompare(chip, "text", "Scholar")
+        }
+        function test_oneFieldForTheLibraryAndTheWeb() {
+            workspace.showHome()
+            const home = findChild(workspace, "homeView"), field = findChild(home, "homeSearch")
+            workspace.openDocument(fixtureSource); canvas(); workspace.showHome()
+            // Words a saved paper matches: its row is chosen, the web row waits at the end.
+            field.text = "Small Research"
+            tryVerify(function() { return home.rows.some(function(r) { return r.kind === "paper" }) })
+            const last = home.rows[home.rows.length - 1]
+            compare(last.kind, "web")
+            compare(last.title, "Search Google Scholar for \u201cSmall Research\u201d")
+            verify(home.rows[findChild(home, "homeResults").currentIndex].kind !== "web")
+            // An address or an engine named in the text: the web row first, and chosen.
+            field.text = "arxiv: occupancy grids"
+            tryVerify(function() { return home.rows.length > 0 && home.rows[0].kind === "web" })
+            compare(home.rows[0].title, "Search arXiv for \u201coccupancy grids\u201d")
+            compare(findChild(home, "homeResults").currentIndex, 0)
+            // Narrowing the Library is no web search.
+            field.text = "tag:slam"
+            tryVerify(function() { return !home.rows.some(function(r) { return r.kind === "web" }) })
+            field.text = ""
         }
         function test_shortcutSheetOpensFromKeyButtonMenuAndPalette() {
             workspace.showHome()

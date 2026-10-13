@@ -74,10 +74,10 @@ Item {
             verify(palette.results.some(function(r) { return r.semantic && r.kind === "text" && r.title === "A Small Research Reader" }))
             // The heading is never selected: not first, and skipped by the keyboard.
             const list = findChild(palette, "searchPaletteResults")
-            verify(palette.results[list.currentIndex].kind !== "section")
-            for (let i = 0; i < palette.results.length; ++i) {
+            verify(palette.rows[list.currentIndex].kind !== "section")
+            for (let i = 0; i < palette.rows.length; ++i) {
                 palette.move(1)
-                verify(palette.results[list.currentIndex].kind !== "section")
+                verify(palette.rows[list.currentIndex].kind !== "section")
             }
             palette.close()
             semantic.configure("", "")

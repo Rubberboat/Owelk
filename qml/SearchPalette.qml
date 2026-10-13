@@ -18,25 +18,41 @@ Popup {
     property url currentSource: ""
     ResearchSearch { id: search; query: searchInput.text; active: root.visible; showRecent: true; onRewrite: function(text) { searchInput.text = text; searchInput.cursorPosition = text.length; searchInput.forceActiveFocus() } }
     signal resultChosen(var result)
+    // The Library's results and a row for the web, as on Home: first when the text reads as an address
+    // or names an engine ("arxiv: …"), last otherwise.
+    readonly property var rows: {
+        const web = search.webRow, found = root.results
+        return !web ? found : web.first ? [web].concat(found) : found.concat([web])
+    }
+    function selectionIndex() {
+        const web = search.webRow, at = search.selectionIndex()
+        if (!web) return at
+        if (web.first) return 0
+        return at >= 0 ? at : root.rows.length - 1
+    }
     function refresh() {
         search.refresh()
-        list.currentIndex = search.selectionIndex()
+        list.currentIndex = root.selectionIndex()
     }
-    onResultsChanged: {
-        list.currentIndex = search.selectionIndex()
+    // Return pressed before the saved items are known waits for them (see HomeView).
+    property bool acceptWhenReady: false
+    onRowsChanged: {
+        list.currentIndex = root.selectionIndex()
         if (list.currentIndex >= 0) list.positionViewAtIndex(list.currentIndex, ListView.Contain)
+        if (acceptWhenReady && !search.namesPending) { acceptWhenReady = false; root.choose(Math.max(0, list.currentIndex)) }
     }
     function move(direction) {
-        if (!results.length) return
-        list.currentIndex = (list.currentIndex + direction + results.length) % results.length
-        if ((results[list.currentIndex].kind === "paperGroup" || results[list.currentIndex].kind === "section") && results.length > 1)
-            list.currentIndex = (list.currentIndex + direction + results.length) % results.length
+        const rows = root.rows
+        if (!rows.length) return
+        list.currentIndex = (list.currentIndex + direction + rows.length) % rows.length
+        if ((rows[list.currentIndex].kind === "paperGroup" || rows[list.currentIndex].kind === "section") && rows.length > 1)
+            list.currentIndex = (list.currentIndex + direction + rows.length) % rows.length
         list.positionViewAtIndex(list.currentIndex, ListView.Contain)
     }
     function choose(index) {
-        if (index < 0 || index >= results.length) return
-        const result = results[index]
-        if (search.choose(result)) return
+        if (index < 0 || index >= rows.length) return
+        const result = rows[index]
+        if (result.kind !== "web" && search.choose(result)) return
         close()
         Qt.callLater(function() { root.resultChosen(result) })
     }
@@ -48,12 +64,20 @@ Popup {
             id: searchInput
             objectName: "searchPaletteQuery"
             Layout.fillWidth: true
-            placeholderText: "Search PDF text, papers, notes, AI  ·  narrow with tag: collection: state: year:"
+            placeholderText: "Search your library or the web  ·  narrow with tag: collection: state: year:"
             selectByMouse: true
+            onTextChanged: root.acceptWhenReady = false
             onAccepted: {
-                let at = list.currentIndex
-                if (search.delay.running) { root.refresh(); at = list.currentIndex }
-                root.choose(Math.max(0, at))
+                if (search.delay.running) root.refresh()
+                if (search.namesPending) root.acceptWhenReady = true
+                else root.choose(Math.max(0, list.currentIndex))
+            }
+            // Ctrl/⌘+Return: the web, whatever row is chosen.
+            Keys.onPressed: function(event) {
+                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier) && search.webRow) {
+                    root.choose(root.rows.indexOf(search.webRow))
+                    event.accepted = true
+                }
             }
             Keys.onDownPressed: root.move(1)
             Keys.onUpPressed: root.move(-1)
@@ -65,9 +89,9 @@ Popup {
             objectName: "searchPaletteResults"
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(360, Math.max(44, contentHeight))
-            model: root.results
+            model: root.rows
             // A new model resets the current row to 0, which can be a heading; choose again afterwards.
-            onModelChanged: currentIndex = search.selectionIndex()
+            onModelChanged: currentIndex = root.selectionIndex()
             clip: true
             ScrollBar.vertical: ScrollBar {}
             delegate: SearchResultDelegate {

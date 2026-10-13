@@ -166,7 +166,7 @@ Item {
         }
         function test_homeTabSearchesTheWeb() {
             const d = workspace.documents
-            // Cmd+T opens Home in a tab; its web field opens a web tab in place of that Home tab.
+            // Cmd+T opens Home in a tab; its one search field opens a web tab in place of that Home tab.
             verify(d.openResource(testInput.webFixture("/page.html")))
             tryCompare(activeTab(), "kind", "web")
             d.newHomeTab()
@@ -174,10 +174,13 @@ Item {
             const homeTab = activeTab().id
             let home = null
             tryVerify(function() { const v = d.groupView(d.activeGroup); home = v ? findChild(v, "homeView") : null; return home !== null && home.visible })
-            const field = findChild(home, "homeWebSearch")
-            verify(field.placeholderText.indexOf("Search the web") === 0)
+            const field = findChild(home, "homeSearch")
+            verify(field.placeholderText.indexOf("the web") > 0)
+            verify(findChild(home, "homeWebSearch") === null) // One field, not two.
+            // An address puts the web row first, so Return opens it.
             field.text = testInput.webFixture("/page.html").toString()
             field.forceActiveFocus()
+            tryVerify(function() { return home.rows.length > 0 && home.rows[0].kind === "web" })
             testInput.keyClick(field, Qt.Key_Return)
             tryCompare(activeTab(), "kind", "web")
             compare(activeTab().id, homeTab)
@@ -186,7 +189,13 @@ Item {
             researchStore.setSetting("searchEngine", testInput.webFixture("/page.html").toString() + "?q=%s")
             d.newHomeTab()
             tryVerify(function() { const v = d.groupView(d.activeGroup); home = v ? findChild(v, "homeView") : null; return home !== null && home.visible && activeTab().kind === "home" })
-            verify(home.searchWeb("lidar odometry"))
+            // Words: the web row comes last (the Library's matches first); Ctrl/⌘+Return goes to the web.
+            const words = findChild(home, "homeSearch")
+            words.text = "lidar odometry"
+            words.forceActiveFocus()
+            tryVerify(function() { return home.rows.length > 0 && home.rows[home.rows.length - 1].kind === "web" })
+            verify(home.rows[home.rows.length - 1].title.indexOf("lidar odometry") > 0)
+            testInput.keyClick(words, Qt.Key_Return, Qt.ControlModifier)
             tryVerify(function() { return activeTab().kind === "web" && activeTab().source.indexOf("q=lidar%20odometry") > 0 })
             researchStore.setSetting("searchEngine", "")
         }

@@ -154,6 +154,23 @@ TestCase {
         compare(Tree.addressToUrl("example.org/paper", scholar), "https://example.org/paper")
         compare(Tree.addressToUrl("note: lidar", scholar), "https://scholar.google.com/scholar?q=note%3A%20lidar")
     }
+    function test_webRowOfTheOneSearchField() {
+        const scholar = Tree.searchEngines[0].template
+        compare(Tree.webIntent("  ", scholar), null)
+        const words = Tree.webIntent("lidar odometry", scholar)
+        compare(words.title, "Search Google Scholar for \u201clidar odometry\u201d")
+        compare(words.url, "https://scholar.google.com/scholar?q=lidar%20odometry")
+        verify(!words.first)
+        const named = Tree.webIntent("arxiv: lidar", scholar)
+        compare(named.title, "Search arXiv for \u201clidar\u201d")
+        verify(named.first)
+        compare(Tree.webIntent("arxiv:2305.01234", scholar).title, "Open arXiv 2305.01234")
+        const address = Tree.webIntent("example.org/paper", scholar)
+        compare(address.title, "Open example.org/paper")
+        compare(address.url, "https://example.org/paper")
+        verify(address.first)
+        verify(Tree.webIntent("https://doi.org/10.1/x", scholar).first)
+    }
     function test_droppedFilesAreSorted() {
         const drop = Tree.droppedFiles(["file:///Users/me/Downloads/Paper%20One.PDF", "file:///Users/me/Downloads/Papers",
                                         "file:///Users/me/notes.txt", "https://arxiv.org/abs/2305.01234"],
