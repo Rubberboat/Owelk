@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.9 REQUIRED COMPONENTS Quick QuickControls2 Pdf PdfQuick Sql Concurrent PrintSupport Widgets Network WebEngineQuick)
 qt_standard_project_setup(REQUIRES 6.9)
+# A smaller build. -O2 rather than CMake's -O3 for Release. Everything Owelk compiles ends up inside the one
+# program, so none of its symbols need to be visible outside it (the Release link then drops them).
+if(NOT MSVC)
+    string(REPLACE "-O3" "-O2" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+endif()
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 qt_add_library(owelk_core STATIC src/ResearchStore.cpp src/ResearchStoreHighlights.cpp src/ResearchStoreRelink.cpp src/ResearchStoreSearch.cpp src/ResearchStoreDocuments.cpp src/ResearchStoreLibrary.cpp src/ResearchStoreNotes.cpp src/ResearchStoreAi.cpp src/ResearchStoreBackup.cpp src/ResearchStoreExport.cpp src/ResearchStoreAnchors.cpp src/ResearchStoreHistory.cpp src/ResearchStoreCitations.cpp src/LibrarySync.cpp src/LibrarySync.h src/TorNetwork.cpp src/TorNetwork.h src/ResearchStorePapers.cpp src/ResearchStoreTrash.cpp src/MathRenderer.cpp src/MathRenderer.h src/PaperMetadata.cpp src/PaperMetadata.h src/MetadataLookup.cpp src/MetadataLookup.h src/ai/AiService.cpp src/ai/AiService.h src/ai/AiProviders.cpp src/ai/AiProviders.h src/ai/AiContext.cpp src/ai/AiContext.h src/ai/Keychain.cpp src/ai/Keychain.h src/ResearchStore.h src/SelectionGeometry.cpp src/SelectionGeometry.h src/PaperIndex.cpp src/PaperIndex.h src/ReferenceFinder.cpp src/ReferenceFinder.h src/AppInstance.cpp src/AppInstance.h src/SemanticIndex.cpp src/SemanticIndex.h src/PdfPrinting.cpp src/PdfPrinting.h src/PdfAccess.cpp src/PdfAccess.h src/AnnotatedPdf.cpp src/AnnotatedPdf.h src/FileFingerprint.cpp src/FileFingerprint.h src/SchemaMigration.h src/WorkerConnection.h src/ui/Theme.cpp src/ui/Theme.h src/ui/AppIcon.cpp src/ui/AppIcon.h)
 target_link_libraries(owelk_core PUBLIC Qt6::Core Qt6::Gui Qt6::Pdf Qt6::Sql Qt6::Concurrent Qt6::PrintSupport Qt6::Widgets Qt6::Network)
@@ -26,17 +33,19 @@ target_include_directories(owelk_microtex PUBLIC third_party/microtex/src PRIVAT
 target_compile_definitions(owelk_microtex PUBLIC BUILD_QT)
 target_link_libraries(owelk_microtex PRIVATE Qt6::Gui)
 set_target_properties(owelk_microtex PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+# Optimized for size: its tables are read once and formula images are cached, so speed hardly matters.
 if(MSVC)
-    target_compile_options(owelk_microtex PRIVATE /utf-8 /W0)
+    target_compile_options(owelk_microtex PRIVATE /utf-8 /W0 $<$<CONFIG:Release>:/O1>)
 else()
-    target_compile_options(owelk_microtex PRIVATE -w)
+    target_compile_options(owelk_microtex PRIVATE -w $<$<CONFIG:Release>:-Os>)
 endif()
 target_link_libraries(owelk_core PRIVATE owelk_microtex)
 file(GLOB_RECURSE owelk_math_fonts RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/microtex CONFIGURE_DEPENDS third_party/microtex/res/fonts/*.ttf)
 list(TRANSFORM owelk_math_fonts PREPEND third_party/microtex/)
-qt_add_resources(owelk_core "math_fonts" PREFIX "/" BASE third_party/microtex FILES ${owelk_math_fonts})
+# Fonts shrink by about a third: rcc compresses them only below its default 70% threshold.
+qt_add_resources(owelk_core "math_fonts" PREFIX "/" BASE third_party/microtex OPTIONS --threshold 30 FILES ${owelk_math_fonts})
 # The icon font (a Lucide subset, see tools/icons.py), loaded once by Theme.
-qt_add_resources(owelk_core "icons" PREFIX "/owelk" BASE resources FILES resources/icons/lucide.ttf resources/app/owelk.png resources/app/owelk-white.png resources/app/owelk-navy.png)
+qt_add_resources(owelk_core "icons" PREFIX "/owelk" BASE resources OPTIONS --threshold 30 FILES resources/icons/lucide.ttf resources/app/owelk.png resources/app/owelk-white.png resources/app/owelk-navy.png)
 # Optional: dark (inverted) PDF pages need a compiled shader (Qt ShaderTools at build time only).
 find_package(Qt6 QUIET COMPONENTS ShaderTools)
 if(TARGET Qt6::ShaderTools)
@@ -80,6 +89,12 @@ qt_add_qml_module(owelk
     QML_FILES qml/Main.qml qml/ReaderPane.qml qml/PdfCanvas.qml qml/CommandPalette.qml qml/FilePanel.qml qml/DockSidebar.qml qml/HomeView.qml qml/StatusIcon.qml qml/DocumentWorkspace.qml qml/DocumentGroup.qml qml/WorkspaceTree.js qml/RecentPaperDelegate.qml qml/PaperMenu.qml qml/AnnotationList.qml qml/TabsPanel.qml qml/TabStripMenu.qml qml/ConfirmDialog.qml qml/PaletteMatch.js qml/StrokePath.js qml/SearchPalette.qml qml/PdfNavigationPanel.qml qml/ResearchSearch.qml qml/SearchResultDelegate.qml qml/IndexStatus.qml qml/RelinkDialog.qml qml/PaperDetailsDialog.qml qml/WebPane.qml qml/SettingsDialog.qml qml/SettingsGroup.qml qml/SettingsRow.qml qml/SettingsAppearance.qml qml/SettingsWeb.qml qml/SettingsSearch.qml qml/SettingsAi.qml qml/SettingsShortcuts.qml qml/SettingsData.qml qml/LibraryView.qml qml/NotePane.qml qml/LinkToNoteDialog.qml qml/AiController.qml qml/AiPanel.qml qml/GlossPopup.qml qml/AiNames.js qml/Platform.js qml/Shortcuts.js qml/OrganizeTabsDialog.qml qml/OrganizePapersDialog.qml qml/GroupEditor.qml qml/ComparePapersDialog.qml qml/AiNotice.qml qml/ShortcutSheet.qml qml/DuplicateDialog.qml
 )
 target_link_libraries(owelk PRIVATE owelk_core owelk_styleplugin Qt6::Quick Qt6::QuickControls2 Qt6::PdfQuick Qt6::WebEngineQuick)
+# Release: leave out unused code and the symbol table (about 1.3 MB; crash reports show addresses).
+if(APPLE)
+    target_link_options(owelk PRIVATE $<$<CONFIG:Release>:LINKER:-dead_strip,-x>)
+elseif(UNIX)
+    target_link_options(owelk PRIVATE $<$<CONFIG:Release>:LINKER:--gc-sections,--strip-all>)
+endif()
 set_target_properties(owelk PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME Owelk
     MACOSX_BUNDLE_GUI_IDENTIFIER org.owelk.reader
@@ -93,8 +108,28 @@ set_target_properties(owelk PROPERTIES
 # Install with the Qt runtime it needs (QML modules, Pdf, WebEngine): `cmake --install build`.
 include(GNUInstallDirs)
 install(TARGETS owelk BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-qt_generate_deploy_qml_app_script(TARGET owelk OUTPUT_SCRIPT owelk_deploy_script NO_UNSUPPORTED_PLATFORM_ERROR)
+# Windows copies Qt next to the program; leave out what Owelk never loads (about 100 MB): translations
+# (Owelk is in English; WebEngine keeps its en-US pack), the Visual C++ installer (the build machine has the
+# runtime), software OpenGL and Direct3D compilers (Qt Quick uses Direct3D 11), QML debugging, position,
+# network-information, other SQL drivers, unused image formats and WebEngine's developer tools.
+set(owelk_deploy_options)
+if(WIN32)
+    set(owelk_deploy_options NO_TRANSLATIONS NO_COMPILER_RUNTIME DEPLOY_TOOL_OPTIONS
+        --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler
+        --skip-plugin-types qmltooling,generic,position,networkinformation
+        --exclude-plugins qsqlodbc,qsqlpsql,qsqlmimer,qsqlibase,qtiff,qtga,qwbmp,qicns,qpdf)
+endif()
+qt_generate_deploy_qml_app_script(TARGET owelk OUTPUT_SCRIPT owelk_deploy_script NO_UNSUPPORTED_PLATFORM_ERROR
+    ${owelk_deploy_options})
 install(SCRIPT ${owelk_deploy_script})
+if(WIN32)
+    install(CODE [[
+        file(GLOB_RECURSE owelk_devtools "${CMAKE_INSTALL_PREFIX}/*qtwebengine_devtools_resources*.pak")
+        if(owelk_devtools)
+            file(REMOVE ${owelk_devtools})
+        endif()
+    ]])
+endif()
 if(UNIX AND NOT APPLE)
     install(FILES resources/app/owelk.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
     install(FILES resources/app/owelk.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps)
