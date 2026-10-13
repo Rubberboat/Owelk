@@ -28,6 +28,7 @@
 - PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.
 - PDF 폴더 바꾸기: Settings → Data → PDF folder → `Change…`. 이미 있던 PDF도 새 폴더로 옮기고 주석·노트 연결은 그대로.
 - PDF 파일 이름: PDF 폴더의 파일은 논문 정보가 생기거나 바뀌면 `저자 연도 - 제목.pdf`로 바뀜(같은 이름이면 번호). 한동안 탭에 열려 있던 논문은 다음 실행 때. Settings → Data에서 끔.
+- Windows 설치: `tools/install-local.ps1`(x-or-b의 스크립트에 winget이 자기 자신을 부르던 문제와 32비트 PowerShell 문제 수정).
 - 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.
 
 ## 이번 단계 (2026-10-10): 구조 단순화
