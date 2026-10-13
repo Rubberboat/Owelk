@@ -412,6 +412,7 @@ bool ResearchStore::initialize(QString *error)
     if (const auto chosen = setting("library.folder"); !chosen.isEmpty()) m_papers = QDir(chosen).absolutePath();
     m_sync->setPapersFolder(m_papers);
     relocatePapers();
+    namePdfFiles(true); // Before any tab opens, so open papers get their names too.
     // Meaning search follows changes to indexed text and saved items, only while it is turned on.
     m_semantic = new SemanticIndex(this, m_index, m_directory, this);
     for (const auto signal :
@@ -574,6 +575,14 @@ void ResearchStore::syncReceived(const QSet<QString> &tables, const QStringList 
         emit linksChanged();
     }
     if (touched({"ai_topics", "ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
+}
+
+QSet<QString> ResearchStore::openSources() const
+{
+    QSet<QString> open;
+    for (const auto &value : readers(session()))
+        open.insert(resolvedSource(QUrl(value.toMap().value("source").toString())).toString());
+    return open;
 }
 
 QVariantMap ResearchStore::readingPosition(const QUrl &source) const

@@ -31,4 +31,7 @@ QStringList authorNames(const QStringList &lines);
 // A readable file name (without .pdf) for a paper: its title, safe on every system.
 // Empty when the title is unknown.
 QString fileStem(const PaperMetadata &paper);
+// The name a kept PDF takes, "Author Year - Title" (the first author's family name; parts that are
+// unknown are left out). Empty when the title is unknown.
+QString paperFileStem(const QString &title, const QString &authors, const QString &year);
 }

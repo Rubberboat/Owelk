@@ -79,6 +79,11 @@ public:
     // this one, each paper following its file the way Locate Original PDF does, and new PDFs go there.
     // False when the folder cannot be used or PDFs are already being copied or moved.
     Q_INVOKABLE bool choosePapersFolder(const QUrl &folder);
+    // Kept PDFs take their paper's name, "Author Year - Title.pdf" (setting library.namePdfs, on by
+    // default), each paper following its file like Locate Original PDF. Runs when details change; a
+    // paper open in a tab for a while keeps its file until the next start, so no reader reloads under
+    // the reader (a fresh one, just dropped or downloaded, is named at once).
+    Q_INVOKABLE void namePdfFiles(bool starting = false);
     // The URL to open for a PDF: the Library's own copy (made now if needed) while PDFs are kept.
     Q_INVOKABLE QUrl adoptPdf(const QUrl &source);
     // Library papers whose file is still outside papers/, and copying them in (one by one, each
@@ -416,6 +421,9 @@ private:
     // Same-bytes files met earlier in one batch reuse that copy; `move` moves the file in instead.
     QUrl adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move = false);
     QVariantList addPdfs(const QVariantList &sources, const QString &collectionId, bool move);
+    void scheduleNamingPdfs();
+    bool m_namingPending = false;
+    QSet<QString> openSources() const;
     static QString defaultPapersFolder(const QString &directory);
     void relocatePapers();
     QString m_papers;

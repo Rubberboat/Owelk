@@ -221,6 +221,20 @@ QString fileStem(const PaperMetadata &paper)
     while (title.endsWith('.') || title.endsWith(' ') || title.endsWith('-')) title.chop(1);
     return title;
 }
+
+QString paperFileStem(const QString &title, const QString &authors, const QString &year)
+{
+    PaperMetadata paper;
+    paper.title = title;
+    const auto name = fileStem(paper);
+    if (name.isEmpty()) return {};
+    // "Ashish Vaswani, Noam Shazeer" -> "Vaswani"; a name written without spaces stays whole.
+    auto family = authors.section(',', 0, 0).simplified().section(' ', -1);
+    family = family.replace(QRegularExpression("[\\x00-\\x1f\\\\/:*?\"<>|.]"), " ").simplified().left(40);
+    const auto when = QRegularExpression("^\\d{4}$").match(year.trimmed()).hasMatch() ? year.trimmed() : QString();
+    const auto prefix = QStringList{family, when}.join(' ').simplified();
+    return prefix.isEmpty() ? name : prefix + " - " + name;
+}
 }
 
 PaperMetadata extractPaperMetadata(const QString &path)

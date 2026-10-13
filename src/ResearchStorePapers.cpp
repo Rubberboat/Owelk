@@ -6,6 +6,7 @@
 #include "WorkerConnection.h"
 
 #include <QDateTime>
+#include <QTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -182,8 +183,13 @@ void ResearchStore::nameDownloadedPdf(const QUrl &file)
         }
         emit downloadNamed(file, named);
     });
-    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [path] {
-        return Named(PaperMetadataText::fileStem(extractPaperMetadata(path)), FileFingerprint::sha256(path));
+    // The same name kept PDFs take ("Author Year - Title"), or the title alone when that is turned off.
+    const bool full = setting("library.namePdfs", "1") == "1";
+    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [path, full] {
+        const auto paper = extractPaperMetadata(path);
+        const auto stem = full ? PaperMetadataText::paperFileStem(paper.title, paper.authors, paper.year)
+                               : PaperMetadataText::fileStem(paper);
+        return Named(stem, FileFingerprint::sha256(path));
     }));
 }
 
@@ -191,6 +197,78 @@ QUrl ResearchStore::papersFolderUrl() const
 {
     QDir().mkpath(papersFolder());
     return QUrl::fromLocalFile(papersFolder());
+}
+
+void ResearchStore::scheduleNamingPdfs()
+{
+    if (m_namingPending) return;
+    m_namingPending = true;
+    QTimer::singleShot(2000, this, [this] {
+        m_namingPending = false;
+        namePdfFiles(false);
+    });
+}
+
+void ResearchStore::namePdfFiles(bool starting)
+{
+    if (!keepsPdfs() || setting("library.namePdfs", "1") != "1") return;
+    if (m_copyingPdfs || m_relinking) {
+        scheduleNamingPdfs();
+        return;
+    }
+    const auto open = starting ? QSet<QString>() : openSources();
+    const auto now = QDateTime::currentDateTimeUtc();
+    struct Rename {
+        QString from, stem, hash;
+    };
+    QList<Rename> renames;
+    QSqlQuery query(m_database);
+    if (!query.exec("SELECT url,title,authors,year,sha256,added_at FROM documents "
+                    "WHERE kind='pdf' AND removed_at IS NULL AND url LIKE 'file:%'"))
+        return;
+    while (query.next()) {
+        const QUrl url(query.value(0).toString());
+        const QFileInfo info(url.toLocalFile());
+        if (info.absolutePath() != m_papers || !info.isFile()) continue;
+        // A paper read for a while keeps its file until the next start; a fresh one is named now.
+        const auto added = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
+        if (open.contains(url.toString()) && (!added.isValid() || added.secsTo(now) > 120)) continue;
+        const auto stem = PaperMetadataText::paperFileStem(
+            query.value(1).toString(), query.value(2).toString(), query.value(3).toString());
+        if (stem.isEmpty()) continue;
+        // Already so named, or so with the number another file of that name made necessary.
+        const auto current = info.completeBaseName();
+        const QRegularExpression numbered(
+            "^" + QRegularExpression::escape(stem) + " \\(\\d+\\)$", QRegularExpression::CaseInsensitiveOption);
+        if (current.compare(stem, Qt::CaseInsensitive) == 0 || numbered.match(current).hasMatch()) continue;
+        renames.append({info.absoluteFilePath(), stem, query.value(4).toString()});
+    }
+    query.finish();
+    int named = 0;
+    for (const auto &item : std::as_const(renames)) {
+        const auto target = uniqueFile(m_papers, item.stem + ".pdf");
+        // A file another program holds open (on Windows) is named on a later pass.
+        if (!renameOnDisk(item.from, target)) continue;
+        const auto from = QUrl::fromLocalFile(item.from), to = QUrl::fromLocalFile(target);
+        QString error;
+        if (!applyRelink(from, to, item.hash, &error)) {
+            QFile::rename(target, item.from);
+            continue;
+        }
+        if (!item.hash.isEmpty()) FileFingerprint::remember(target, FileFingerprint::stamp(target), item.hash);
+        m_relinks.insert(from.toString(), to.toString());
+        m_index->relocateSource(from, to);
+        QSqlQuery pending(m_database);
+        pending.prepare("UPDATE sync_files SET local=? WHERE local=?");
+        pending.addBindValue(target);
+        pending.addBindValue(item.from);
+        pending.exec();
+        emit sourceRelinked(from, to);
+        ++named;
+    }
+    if (!named) return;
+    loadDocumentNames();
+    announceDocumentsChanged();
 }
 
 bool ResearchStore::choosePapersFolder(const QUrl &folder)

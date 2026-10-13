@@ -1607,6 +1607,15 @@ private slots:
         QVERIFY(PaperMetadataText::fileStem(paper).size() <= 120);
         QCOMPARE(PaperMetadataText::fileStem({"A/B Test: Faster.", "", "", "", ""}), QString("A B Test - Faster"));
         QVERIFY(PaperMetadataText::fileStem({}).isEmpty());
+        // Kept PDFs: "Author Year - Title" with the first author's family name; unknown parts are left out.
+        QCOMPARE(PaperMetadataText::paperFileStem("Attention Is All You Need", "Ashish Vaswani, Noam Shazeer", "2017"),
+            QString("Vaswani 2017 - Attention Is All You Need"));
+        QCOMPARE(PaperMetadataText::paperFileStem("OpenFrontier: Navigation", "Esteban Padilla-Cerdio", ""),
+            QString("Padilla-Cerdio - OpenFrontier - Navigation"));
+        QCOMPARE(PaperMetadataText::paperFileStem("Lidar Odometry", "", "2024"), QString("2024 - Lidar Odometry"));
+        QCOMPARE(PaperMetadataText::paperFileStem("라이다 오도메트리", "홍길동", "2025"), QString("홍길동 2025 - 라이다 오도메트리"));
+        QCOMPARE(PaperMetadataText::paperFileStem("Title", "J. R. R. A/B", "20xx"), QString("A B - Title"));
+        QVERIFY(PaperMetadataText::paperFileStem("", "Ashish Vaswani", "2017").isEmpty());
 
         QTemporaryDir directory;
         ResearchStore store(directory.filePath("data"));
@@ -1619,7 +1628,8 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(named.size(), 1, 10000);
         const auto renamed = named.first().at(1).toUrl();
         QCOMPARE(named.first().at(0).toUrl(), download);
-        QCOMPARE(QFileInfo(renamed.toLocalFile()).fileName(), QString("Downloaded Paper Title.pdf"));
+        QVERIFY2(QFileInfo(renamed.toLocalFile()).fileName().endsWith("Downloaded Paper Title.pdf"),
+            qPrintable(renamed.toLocalFile()));
         QVERIFY(!QFileInfo::exists(download.toLocalFile()));
         // A file the Library uses keeps its name, and so does every download when the setting says so.
         QVERIFY(store.rememberDocument(renamed));
@@ -1642,6 +1652,7 @@ private slots:
         ResearchStore store(directory.filePath("data"));
         QString error;
         QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("library.namePdfs", "0")); // Named after their papers: namedAfterTheirPapers.
         // A PDF from elsewhere opens as Owelk's own copy, under its name; the original stays.
         const auto kept = store.adoptPdf(QUrl::fromLocalFile(path));
         QVERIFY(kept.toLocalFile().startsWith(store.papersFolder() + "/"));
@@ -1705,6 +1716,7 @@ private slots:
         {
             ResearchStore store(directory.filePath("data"));
             QVERIFY2(store.initialize(&error), qPrintable(error));
+            QVERIFY(store.setSetting("library.namePdfs", "0"));
             kept = store.adoptPdf(QUrl::fromLocalFile(original));
             QVERIFY(kept.toLocalFile().startsWith(directory.filePath("data/papers/")));
             QVERIFY(store.rememberDocument(kept));
@@ -1736,6 +1748,7 @@ private slots:
         ResearchStore store(directory.filePath("data"));
         QString error;
         QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("library.namePdfs", "0"));
         const auto added
             = store.takeDroppedPdfs({QUrl::fromLocalFile(first), QUrl::fromLocalFile(directory.filePath("Downloads/notes.txt"))});
         QCOMPARE(added.size(), 1);
@@ -1765,6 +1778,7 @@ private slots:
         {
             ResearchStore store(directory.filePath("data"));
             QVERIFY2(store.initialize(&error), qPrintable(error));
+            QVERIFY(store.setSetting("library.namePdfs", "0"));
             kept = store.adoptPdf(QUrl::fromLocalFile(original));
             QVERIFY(kept.toLocalFile().startsWith(store.papersFolder() + "/"));
             QVERIFY(store.rememberDocument(kept));
@@ -1790,6 +1804,65 @@ private slots:
         QVERIFY2(store.initialize(&error), qPrintable(error));
         QCOMPARE(store.papersFolder(), folder);
         QCOMPARE(store.documentLinkId(store.resolvedSource(kept)), id);
+    }
+    void namedAfterTheirPapers()
+    {
+        // Kept PDFs take "Author Year - Title.pdf" once their details are known or edited, each paper keeping
+        // its ID (the old path still finds it). A paper open in a tab for a while waits for the next start.
+        QTemporaryDir directory;
+        const auto first = directory.filePath("2305.01234v2.pdf"), second = directory.filePath("s41586-023.pdf");
+        writeFixture(first, "Untitled One");
+        writeFixture(second, "Untitled Two");
+        QUrl kept, open;
+        QString id, error;
+        {
+            ResearchStore store(directory.filePath("data"));
+            QVERIFY2(store.initialize(&error), qPrintable(error));
+            kept = store.adoptPdf(QUrl::fromLocalFile(first));
+            open = store.adoptPdf(QUrl::fromLocalFile(second));
+            QVERIFY(store.rememberDocument(kept));
+            QVERIFY(store.rememberDocument(open));
+            id = store.documentLinkId(kept);
+            QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+            // The second has been open in a tab for an hour.
+            {
+                WorkerConnection db(store.dataDirectory() + "/owelk.sqlite3", false);
+                QSqlQuery old(db.db);
+                QVERIFY(old.exec("UPDATE documents SET added_at='2026-01-01T00:00:00.000Z' WHERE url='" + open.toString() + "'"));
+            }
+            QVariantMap tab{{"id", "t1"}, {"source", open.toString()}, {"position", QVariantMap{{"page", 0}}}};
+            QVariantMap group{{"id", "g1"}, {"kind", "group"}, {"tabs", QVariantList{tab}}, {"activeTab", "t1"}};
+            QVERIFY(store.saveSession({{"version", 2}, {"tree", group}, {"activeGroup", "g1"}}));
+            QSignalSpy relinked(&store, &ResearchStore::sourceRelinked);
+            QVERIFY(store.updateDocumentDetails(kept, {{"title", "Attention: All You Need"},
+                                                         {"authors", "Ashish Vaswani, Noam Shazeer"}, {"year", "2017"}}));
+            QVERIFY(store.updateDocumentDetails(open, {{"title", "Open Paper"}, {"authors", "Ada Lovelace"}, {"year", "1843"}}));
+            const auto named = QUrl::fromLocalFile(store.papersFolder() + "/Vaswani 2017 - Attention - All You Need.pdf");
+            QTRY_COMPARE_WITH_TIMEOUT(store.resolvedSource(kept), named, 10000);
+            QVERIFY(QFileInfo::exists(named.toLocalFile()));
+            QVERIFY(!QFileInfo::exists(kept.toLocalFile()));
+            QVERIFY(QFileInfo::exists(first)); // The original outside the PDF folder is untouched.
+            QCOMPARE(store.documentLinkId(named), id);
+            QCOMPARE(relinked.size(), 1);
+            QCOMPARE(store.resolvedSource(open), open); // Open for a while: it waits.
+            // Named once: another pass changes nothing.
+            store.namePdfFiles();
+            QCOMPARE(relinked.size(), 1);
+            QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+        }
+        // At the next start the open paper takes its name too, and the saved tab follows it.
+        ResearchStore store(directory.filePath("data"));
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        const auto later = QUrl::fromLocalFile(store.papersFolder() + "/Lovelace 1843 - Open Paper.pdf");
+        QCOMPARE(store.resolvedSource(open), later);
+        const auto tree = store.session()["tree"].toMap();
+        QCOMPARE(tree["tabs"].toList().value(0).toMap()["source"].toString(), later.toString());
+        // Turned off, nothing is renamed.
+        QVERIFY(store.setSetting("library.namePdfs", "0"));
+        QVERIFY(store.updateDocumentDetails(later, {{"title", "Renamed Again"}}));
+        store.namePdfFiles();
+        QCOMPARE(store.resolvedSource(open), later);
+        QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
     }
     void deletedPapersWaitInTheTrash()
     {

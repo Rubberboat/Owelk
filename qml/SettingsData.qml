@@ -69,6 +69,16 @@ ColumnLayout {
         }
         SettingsRow {
             visible: root.keepPdfs
+            label: "Name files after their papers"
+            detail: "\u201cAuthor Year - Title.pdf\u201d in the PDF folder. A paper open in a tab for a while is renamed the next time Owelk starts."
+            Switch {
+                objectName: "namePdfsSwitch"
+                checked: researchStore.setting("library.namePdfs", "1") === "1"
+                onToggled: { researchStore.setSetting("library.namePdfs", checked ? "1" : "0"); if (checked) researchStore.namePdfFiles() }
+            }
+        }
+        SettingsRow {
+            visible: root.keepPdfs
             label: "Dragged-in PDFs"
             detail: "PDFs dropped on Owelk from Finder, Downloads or a browser's download list"
             ComboBox {
