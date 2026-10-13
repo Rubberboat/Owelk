@@ -35,6 +35,19 @@ ask() {
     [[ "$reply" =~ ^[Yy] ]]
 }
 cpu_count() { getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4; }
+# Size of a file or folder in KB (nothing when it is not there).
+size_kb() { if [ -e "$1" ]; then du -sk "$1" 2>/dev/null | cut -f1; fi; }
+# "Owelk.app: 10.4 MB (was 10.3 MB, +0.1 MB)": each update says what it changed on disk.
+report_size() {
+    local name="$1" before="$2" after="$3"
+    [ -n "$after" ] || return 0
+    if [ -n "$before" ]; then
+        awk -v n="$name" -v a="$after" -v b="$before" \
+            'BEGIN { a = sprintf("%.1f", a / 1024); b = sprintf("%.1f", b / 1024); printf "%s: %.1f MB (was %.1f MB, %+.1f MB)\n", n, a, b, a - b }'
+    else
+        awk -v n="$name" -v a="$after" 'BEGIN { printf "%s: %.1f MB\n", n, a / 1024 }'
+    fi
+}
 
 configure_and_build() {
     say "Building Owelk (Release) in build-release/"
@@ -54,7 +67,8 @@ install_macos() {
     # Optional, asked once: Tor for Settings › Web › Browse through Tor.
     if ! brew list --versions tor >/dev/null 2>&1 && [ ! -e "$BUILD/.no-tor" ]; then
         if ask "Also install Tor (optional, for Settings › Web › Browse through Tor)? brew install tor"; then
-            brew install tor || echo "(Tor could not be installed; Owelk works without it.)"
+            if brew install tor; then report_size "Tor" "" "$(size_kb "$(brew --cellar tor)")"
+            else echo "(Tor could not be installed; Owelk works without it.)"; fi
         else
             mkdir -p "$BUILD" && touch "$BUILD/.no-tor"
             echo "(Skipped. To add it later: brew install tor)"
@@ -72,11 +86,14 @@ install_macos() {
     done
     local target="${OWELK_APP_DIR:-$HOME/Applications}/Owelk.app"
     say "Installing $target"
+    local before
+    before="$(size_kb "$target")"
     mkdir -p "$(dirname "$target")"
     rsync -a --delete "$BUILD/owelk.app/" "$target/"
     touch "$target"
     # Finder's Open With and the Dock pick up the new copy (and its icon).
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" || true
+    report_size "Owelk.app" "$before" "$(size_kb "$target")"
     say "Done."
 }
 
@@ -115,6 +132,8 @@ install_linux() {
     # The program keeps its build path to Qt in ~/Qt; a launcher in ~/.local/bin starts it.
     local home="${OWELK_PREFIX:-$HOME/.local}"
     say "Installing into $home"
+    local before
+    before="$(size_kb "$home/lib/owelk")"
     install -Dm755 "$BUILD/owelk" "$home/lib/owelk/owelk"
     mkdir -p "$home/bin"
     cat > "$home/bin/owelk" <<EOF
@@ -127,6 +146,7 @@ EOF
     sed "s|^Exec=.*|Exec=$home/bin/owelk %F|" "$ROOT/resources/app/owelk.desktop" > "$home/share/applications/owelk.desktop"
     update-desktop-database "$home/share/applications" >/dev/null 2>&1 || true
     gtk-update-icon-cache -q "$home/share/icons/hicolor" >/dev/null 2>&1 || true
+    report_size "Owelk" "$before" "$(size_kb "$home/lib/owelk")"
     say "Done."
     case ":$PATH:" in *":$home/bin:"*) ;; *) echo "($home/bin is not on PATH; the menu entry works regardless.)" ;; esac
 }

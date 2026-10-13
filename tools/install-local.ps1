@@ -43,6 +43,19 @@ function Install-WithWinget([string]$id, [string[]]$extra = @()) {
     Update-Path
 }
 
+# Megabytes in a folder ($null when it is not there).
+function Get-SizeMB([string]$path) {
+    if (-not (Test-Path $path)) { return $null }
+    $bytes = (Get-ChildItem $path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    return [math]::Round([double]$bytes / 1MB, 1)
+}
+# "Owelk: 412.3 MB (was 412.1 MB, +0.2 MB)": each update says what it changed on disk.
+function Show-Size([string]$name, $before, $after) {
+    if ($null -eq $after) { return }
+    if ($null -eq $before) { Write-Host ('{0}: {1:0.0} MB' -f $name, $after) }
+    else { Write-Host ('{0}: {1:0.0} MB (was {2:0.0} MB, {3:+0.0;-0.0;0.0} MB)' -f $name, $after, $before, ($after - $before)) }
+}
+
 # A Python 3.10 or newer (what the Qt downloader needs): the py launcher, or python on PATH.
 function Test-Python([string]$exe, [string[]]$extra) {
     & $exe @extra -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
@@ -138,10 +151,12 @@ while (Get-Process owelk -ErrorAction SilentlyContinue | Where-Object { $_.Path 
 }
 Say "Installing $target"
 # Only the program folder is replaced; the library lives in %LOCALAPPDATA%\Owelk.
+$sizeBefore = Get-SizeMB $target
 if (Test-Path $target) { Remove-Item -Recurse -Force $target }
 & cmake --install $Build --prefix $target
 if ($LASTEXITCODE -ne 0) { Fail 'Installing failed.' }
 if (-not (Test-Path $exe)) { Fail "The program is missing from $target." }
+$sizeAfter = Get-SizeMB $target
 
 # A Start menu entry (search "Owelk"); pin it to the taskbar from there.
 $shell = New-Object -ComObject WScript.Shell
@@ -181,13 +196,13 @@ function Install-Tor([string]$dir) {
     $unpacked = $LASTEXITCODE -eq 0
     Remove-Item $archive
     if (-not $unpacked -or -not (Get-ChildItem $dir -Recurse -Filter tor.exe)) { throw 'it could not be unpacked' }
-    Say "Tor $version is in $dir"
+    Say ("Tor $version is in $dir ({0:0.0} MB)" -f (Get-SizeMB $dir))
 }
 $torHome = Join-Path $env:LOCALAPPDATA 'Owelk\tor'
 $torSkipped = Join-Path $env:LOCALAPPDATA 'Owelk\tor-skipped'
 $hasTor = [bool](Get-ChildItem $torHome -Recurse -Filter tor.exe -ErrorAction SilentlyContinue)
 if ($Tor -or (-not $hasTor -and -not (Test-Path $torSkipped))) {
-    if ($Tor -or (Ask 'Also download Tor (optional, about 10 MB, for Settings > Web > Browse through Tor)?')) {
+    if ($Tor -or (Ask 'Also download Tor (optional, about a 20 MB download, for Settings > Web > Browse through Tor)?')) {
         try {
             Install-Tor $torHome
             if (Test-Path $torSkipped) { Remove-Item $torSkipped }
@@ -197,4 +212,5 @@ if ($Tor -or (-not $hasTor -and -not (Test-Path $torSkipped))) {
         Write-Host '(Skipped. To add it later, run this script again with -Tor.)'
     }
 }
+Show-Size 'Owelk' $sizeBefore $sizeAfter
 Say 'Done. Start Owelk from the Start menu.'
