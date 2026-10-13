@@ -2,7 +2,6 @@
 #include "ResearchStore.h"
 
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QRegularExpression>

@@ -11,8 +11,6 @@
 
 #include <QColor>
 #include <QDateTime>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QImageReader>
 #include <QTextDocument>
 #include <QRegularExpression>
@@ -164,6 +162,14 @@ void ResearchStore::syncNoteLinks(const QString &noteId, const QString &body)
         if (!(match.captured(1) == "note" && match.captured(2) == noteId))
             targets.insert({match.captured(1), match.captured(2)});
     }
+    // Most saves (every few keystrokes) leave the links as they were: then nothing is written or announced.
+    QSet<QPair<QString, QString>> current;
+    QSqlQuery existing(m_database);
+    existing.prepare("SELECT to_kind,to_id FROM links WHERE from_kind='note' AND from_id=?");
+    existing.addBindValue(noteId);
+    if (existing.exec())
+        while (existing.next()) current.insert({existing.value(0).toString(), existing.value(1).toString()});
+    if (current == targets) return;
     if (!m_database.transaction()) return;
     QSqlQuery clear(m_database);
     clear.prepare("DELETE FROM links WHERE from_kind='note' AND from_id=?");
@@ -515,7 +521,8 @@ QStringList noteTerms(const QString &text, int count)
         "other", "some", "only", "over", "both", "between", "using", "used", "based", "while", "however", "about",
         "would", "could", "should", "note", "notes", "paper", "page"};
     QHash<QString, int> frequency;
-    for (const auto &word : text.toLower().split(QRegularExpression("[^\\p{L}\\p{N}]+"), Qt::SkipEmptyParts))
+    static const QRegularExpression separators("[^\\p{L}\\p{N}]+");
+    for (const auto &word : text.toLower().split(separators, Qt::SkipEmptyParts))
         if (word.size() >= 4 && !common.contains(word) && !word.front().isDigit()) ++frequency[word];
     QList<std::pair<int, QString>> ranked;
     for (auto it = frequency.cbegin(); it != frequency.cend(); ++it) ranked.append({it.value(), it.key()});

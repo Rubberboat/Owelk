@@ -22,8 +22,10 @@ public:
     };
 
 private:
-    Q_PROPERTY(QVariantList documents READ documents NOTIFY changed)
-    Q_PROPERTY(QString progress READ progress NOTIFY changed)
+    // documents reads every row: it is announced only when a document's state may have changed, and
+    // progress (every few pages) on its own.
+    Q_PROPERTY(QVariantList documents READ documents NOTIFY documentsChanged)
+    Q_PROPERTY(QString progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(bool paused READ paused NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
 public:
@@ -68,6 +70,8 @@ public:
     QVariantList matchingPages(const QStringList &terms, int limit, const QStringList &documents = {}) const;
 signals:
     void changed();
+    void documentsChanged();
+    void progressChanged();
     void contentsChanged();
     void searchFinished(int request, const QVariantList &results, const QString &error);
     void resultReady(const QUrl &source, int page);

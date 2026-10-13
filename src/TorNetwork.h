@@ -34,7 +34,6 @@ class TorNetwork : public QObject {
     Q_PROPERTY(int identity READ identity NOTIFY identityChanged)
     // Chromium reads a changed proxy only when a request comes, and that request still goes the old way.
     // So after each change the web profile loads probeUrl (this computer) first and calls routeApplied().
-    Q_PROPERTY(int route READ route NOTIFY routeChanged)
     Q_PROPERTY(QUrl probeUrl READ probeUrl NOTIFY routeChanged)
     // Until then web tabs hold the pages they are asked for (WebPane).
     Q_PROPERTY(bool routePending READ routePending NOTIFY routePendingChanged)
@@ -49,7 +48,6 @@ public:
     QString exitCountry() const { return m_exitCountry; }
     QVariantList countries() const;
     int identity() const { return m_identity; }
-    int route() const { return m_route; }
     bool routePending() const { return m_routePending; }
     QUrl probeUrl() const;
 

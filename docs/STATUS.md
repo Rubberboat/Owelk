@@ -32,6 +32,7 @@
 - Windows 설치: `tools/install-local.ps1`(x-or-b의 스크립트에 winget이 자기 자신을 부르던 문제와 32비트 PowerShell 문제 수정).
 - 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.
 - Tor로 웹 보기: Settings → Web → Browse through Tor(기본 꺼짐, 각자 켬). 켜면 Owelk가 Tor를 직접 띄워 웹 탭과 Home 웹 검색만 Tor로 내보냄(출구 나라 선택, New Identity, 웹 탭 도구 막대의 Tor 칩). 논문 정보·인용·AI·의미 검색은 그대로 직접 연결. Tor가 준비 전이거나 없으면 직접 연결로 새지 않고 기다리며, 켜고 끄는 순간에 요청한 페이지도 새 경로가 잡힐 때까지 기다림(Chromium이 바뀐 프록시를 다음 요청 때에야 읽기 때문). 설치 스크립트가 Tor를 한 번 물어봄(macOS `brew install tor`, Windows는 torproject.org의 Tor Expert Bundle을 SHA-256 확인 후 받음, `-Tor`).
+- 가볍게: Release 빌드는 기호를 빼고(macOS `-dead_strip -x`, Linux `--gc-sections --strip-all`, 숨김 visibility) -O2, MicroTeX는 크기 최적화, 글꼴 리소스 압축. Windows 설치는 번역·VC 설치 파일·소프트웨어 OpenGL·D3D 컴파일러·쓰지 않는 플러그인·WebEngine 개발자 도구를 빼고 복사. 실행 중에는 설정값·키체인·최근 논문을 메모리에 두고, 목록 행마다 읽던 읽기 위치를 열 때 읽으며, 본문 색인 진행은 문서 목록과 따로 알리고, 노트 저장은 링크가 그대로면 링크를 다시 쓰지 않음. 쓰지 않던 코드(폴더 가져오기 옛 경로, 웹 문서 등록, 신호·속성 몇 개, include) 정리.
 
 ## 이번 단계 (2026-10-10): 구조 단순화
 

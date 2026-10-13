@@ -568,11 +568,8 @@ void AiService::run(int request, const QString &id, const QVariantMap &spec, con
         m_store->appendAiMessage(threadId,
             {{"role", "assistant"}, {"content", text}, {"model", usedModel}, {"provider", id},
                 {"context", answerContext}});
-        emit finished(request, text,
-            {{"provider", id}, {"model", usedModel}, {"prompt", sent}, {"threadId", threadId},
-                {"action", spec.value("action")}, {"question", spec.value("question")},
-                {"source", spec.value("source")}, {"page", spec.value("page")}, {"cutOff", cutOff},
-                {"stopped", stopped}});
+        // Only what listeners read: the prompt (with up to a paper's text) stays here.
+        emit finished(request, text, {{"model", usedModel}, {"threadId", threadId}, {"stopped", stopped}});
     };
     connect(provider, &AiProvider::finished, this,
         [store](const QString &answer, const QString &used) { store(answer, used, false); });
@@ -785,11 +782,12 @@ QVariantList AiService::notation(const QUrl &source)
     auto symbols = QJsonDocument::fromJson(file.readAll()).object().value("symbols").toVariant().toList();
     // How each symbol may be printed, as plain forms (math letters as plain ones, no spaces), to match
     // the word under the pointer (ReferenceFinder::wordAt).
+    static const QRegularExpression space("\\s");
     for (auto &value : symbols) {
         auto entry = value.toMap();
         QStringList match;
         for (const auto &form : entry.value("text").toStringList()) {
-            const auto plain = form.normalized(QString::NormalizationForm_KC).remove(QRegularExpression("\\s"));
+            const auto plain = form.normalized(QString::NormalizationForm_KC).remove(space);
             if (!plain.isEmpty() && !match.contains(plain)) match << plain;
         }
         entry.insert("match", match);

@@ -154,7 +154,6 @@ public:
     static QString executable();
     using Callback = std::function<void(const QJsonValue &result, const QString &error)>;
     void call(const QString &method, const QJsonObject &params, Callback callback);
-    bool running() const { return m_process.state() != QProcess::NotRunning; }
 signals:
     void notification(const QString &method, const QJsonObject &params);
     void stopped(const QString &error);

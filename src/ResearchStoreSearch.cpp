@@ -5,8 +5,6 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QFutureWatcher>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QSet>
 #include <QSqlQuery>
 #include <QtConcurrent>
@@ -17,15 +15,6 @@ namespace {
 QString fileName(const QUrl &url)
 {
     return QFileInfo(url.toLocalFile()).fileName();
-}
-
-QVariantMap readingPosition(const QSqlDatabase &db, const QUrl &source)
-{
-    QSqlQuery query(db);
-    query.prepare("SELECT r.position FROM reading_positions r JOIN documents d ON d.id=r.document_id WHERE d.url=?");
-    query.addBindValue(source.toString());
-    if (!query.exec() || !query.next()) return {};
-    return QJsonDocument::fromJson(query.value(0).toByteArray()).object().toVariantMap();
 }
 
 QString snippet(const QString &text, int match, int needleSize)
@@ -130,8 +119,9 @@ QVariantList findKnowledge(const QSqlDatabase &db, const QList<QUrl> &indexed, c
             QStringList shown;
             for (const auto &detail : details)
                 if (!detail.isEmpty()) shown.append(detail);
-            QVariantMap row{{"kind", "paper"}, {"title", title}, {"source", url},
-                {"position", readingPosition(db, url)}, {"authors", details.value(0)}, {"year", details.value(1)}};
+            // Opening the paper reads its reading position then.
+            QVariantMap row{{"kind", "paper"}, {"title", title}, {"source", url}, {"authors", details.value(0)},
+                {"year", details.value(1)}};
             // Authors and year are always shown; say why it matched only when the hit is an identifier.
             if (!named && !query.matches({details.value(0), details.value(1)}))
                 row.insert("snippet", shown.join(" · "));

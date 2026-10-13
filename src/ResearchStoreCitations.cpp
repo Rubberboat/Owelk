@@ -20,7 +20,8 @@
 namespace {
 QString normalTitle(const QString &title)
 {
-    return title.toLower().remove(QRegularExpression("[^\\p{L}\\p{N}]+"));
+    static const QRegularExpression other("[^\\p{L}\\p{N}]+");
+    return title.toLower().remove(other);
 }
 
 constexpr auto fields = "title,year,authors,externalIds,citationCount";
@@ -72,7 +73,8 @@ int ResearchStore::loadCitations(const QUrl &source, bool refresh, bool cachedOn
     query.addBindValue(document);
     if (!query.exec() || !query.next()) return fail("This paper is not in the Library.");
     const auto title = query.value(0).toString().simplified(), doi = query.value(1).toString().trimmed();
-    const auto arxiv = query.value(2).toString().trimmed().remove(QRegularExpression("v\\d+$"));
+    static const QRegularExpression version("v\\d+$");
+    const auto arxiv = query.value(2).toString().trimmed().remove(version);
     const auto cachePath = m_directory + "/citations/" + document + ".json";
     QFile cached(cachePath);
     if (!refresh && cached.open(QIODevice::ReadOnly)) {
@@ -164,11 +166,12 @@ QVariantMap ResearchStore::withLibraryMatches(QVariantMap result) const
     QHash<QString, QString> byDoi, byArxiv, byTitle;
     QSqlQuery query(m_database);
     query.exec("SELECT url,doi,arxiv,title FROM documents WHERE removed_at IS NULL");
+    static const QRegularExpression version("v\\d+$");
     while (query.next()) {
         const auto url = query.value(0).toString();
         if (!query.value(1).toString().isEmpty()) byDoi.insert(query.value(1).toString().toLower(), url);
         if (!query.value(2).toString().isEmpty())
-            byArxiv.insert(query.value(2).toString().remove(QRegularExpression("v\\d+$")), url);
+            byArxiv.insert(query.value(2).toString().remove(version), url);
         const auto title = normalTitle(query.value(3).toString());
         if (title.size() >= 12) byTitle.insert(title, url);
     }

@@ -142,7 +142,7 @@ QString ResearchStore::ensureDocument(const QUrl &source)
     const auto existing = findDocument(source);
     if (!existing.isEmpty()) return existing;
     const auto url = resolvedSource(source);
-    if (!url.isLocalFile()) return {}; // Web pages are added explicitly by ensureWebDocument.
+    if (!url.isLocalFile()) return {}; // Only files on this computer join the Library.
     const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QSqlQuery query(m_database);
     query.prepare("INSERT INTO documents(id,url,added_at) VALUES(?,?,?)");
@@ -151,30 +151,6 @@ QString ResearchStore::ensureDocument(const QUrl &source)
     query.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
     if (!query.exec()) return {};
     refreshMetadata(id, url, false);
-    return id;
-}
-
-QString ResearchStore::ensureWebDocument(const QUrl &page, const QString &title)
-{
-    if (page.scheme() != "http" && page.scheme() != "https") return {};
-    auto id = findDocument(page);
-    QSqlQuery query(m_database);
-    if (id.isEmpty()) {
-        id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        query.prepare("INSERT INTO documents(id,url,added_at,kind,metadata_origin) VALUES(?,?,?,'web','web')");
-        query.addBindValue(id);
-        query.addBindValue(page.toString());
-        query.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-        if (!query.exec()) return {};
-    }
-    // The page title is its name; user-edited details win.
-    const auto name = title.simplified().left(300);
-    if (!name.isEmpty()) {
-        query.prepare("UPDATE documents SET title=? WHERE id=? AND metadata_origin<>'user'");
-        query.addBindValue(name);
-        query.addBindValue(id);
-        if (query.exec() && query.numRowsAffected() == 1) rememberTitle(page, name);
-    }
     return id;
 }
 

@@ -225,7 +225,7 @@ Item {
                 implicitHeight: inner.implicitHeight + 16
                 radius: Theme.radius
                 color: Theme.content
-                border.width: card.editing || hover.hovered ? 1 : 1
+                border.width: 1
                 border.color: card.editing ? Theme.accentBorder : hover.hovered ? Theme.border : Theme.separator
                 HoverHandler { id: hover }
                 TapHandler { enabled: !card.editing; onTapped: card.opened(); onDoubleTapped: card.editRequested() }

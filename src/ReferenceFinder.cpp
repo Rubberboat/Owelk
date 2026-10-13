@@ -32,9 +32,10 @@ int tableNumber(const QString &text)
 // Up to the end of the line (and `lines` more), at most `limit` characters.
 qsizetype lineLength(const QString &text, qsizetype start, int lines = 0, qsizetype limit = 240)
 {
+    static const QRegularExpression lineEnd("[\\r\\n]");
     qsizetype end = start;
     for (int line = 0; line <= lines; ++line) {
-        end = text.indexOf(QRegularExpression("[\\r\\n]"), end + 1);
+        end = text.indexOf(lineEnd, end + 1);
         if (end < 0) {
             end = text.size();
             break;
@@ -375,10 +376,10 @@ QVariantMap ReferenceFinder::describe(QPdfDocument &pdf, const QStringList &text
     auto text = texts[page].mid(target["start"].toInt(), target["length"].toInt());
     // Words broken at a line end: PDF text marks the break with a hyphen or a hidden character (U+0002,
     // a soft hyphen, U+FFFE) that fonts cannot show; join the word, then drop any other control character.
-    text.replace(QRegularExpression("[-\\x{0002}\\x{00AD}\\x{FFFE}]\\s*[\\r\\n]+\\s*"), "")
-        .remove(
-            QRegularExpression("[\\x{0000}-\\x{0008}\\x{000B}\\x{000C}\\x{000E}-\\x{001F}\\x{00AD}\\x{FFFE}\\x{FFFF}]"))
-        .replace(QRegularExpression("\\s+"), " ");
+    static const QRegularExpression brokenWord("[-\\x{0002}\\x{00AD}\\x{FFFE}]\\s*[\\r\\n]+\\s*"),
+        control("[\\x{0000}-\\x{0008}\\x{000B}\\x{000C}\\x{000E}-\\x{001F}\\x{00AD}\\x{FFFE}\\x{FFFF}]"),
+        spaces("\\s+");
+    text.replace(brokenWord, "").remove(control).replace(spaces, " ");
     return {{"text", text.trimmed()}, {"page", page}, {"x", box.x()}, {"y", box.y()}, {"width", box.width()},
         {"height", box.height()}, {"top", box.y() / size.height()}};
 }
@@ -458,9 +459,9 @@ QVariantMap ReferenceFinder::referenceAt(const QString &text, qsizetype index)
         if (covers(m)) return citation(m, m.captured(1), m.capturedStart(1));
     }
     // A caption is the target itself, not a reference to follow.
+    static const QRegularExpression captionMark(R"(^\s*[:.|])");
     const auto caption = [&window](const QRegularExpressionMatch &m) {
-        return lineStart(window, m.capturedStart())
-            && QRegularExpression(R"(^\s*[:.|])").match(window.mid(m.capturedEnd())).hasMatch();
+        return lineStart(window, m.capturedStart()) && captionMark.match(window.mid(m.capturedEnd())).hasMatch();
     };
     static const QRegularExpression figure(R"(\b(?:Figs?\.|Figures?|FIGS?\.?|FIGURES?|Fig)\s*(\d+))");
     for (auto it = figure.globalMatch(window); it.hasNext();) {
@@ -547,12 +548,13 @@ QVariantMap ReferenceFinder::locate(
                 while (line < text.size() && (text[line] == '\r' || text[line] == '\n')) ++line;
                 // The name early on the entry's first line, the year within the entry.
                 const auto entry = text.mid(line, 300);
-                const auto firstLine = entry.left(entry.indexOf(QRegularExpression("[\\r\\n]")));
+                static const QRegularExpression lineEnd("[\\r\\n]");
+                const auto firstLine = entry.left(entry.indexOf(lineEnd));
                 const auto name = surname.match(firstLine);
                 if (name.hasMatch() && name.capturedStart() < 80
                     && entry.left(lineLength(text, line, 2, 300)).contains(parts.value(1)))
                     return at(page, line, lineLength(text, line, 2, 300));
-                const auto next = text.indexOf(QRegularExpression("[\\r\\n]"), line);
+                const auto next = text.indexOf(lineEnd, line);
                 if (next < 0) break;
                 line = next + 1;
             }
@@ -962,7 +964,8 @@ int ReferenceFinder::wordAt(const QUrl &source, int page, const QPointF &point, 
                         = pdf.getSelectionAtIndex(page, int(from + start), int(end - start)).boundingRectangle();
                     // Plain forms for matching: math letters (𝑥, 𝐩) as ordinary ones, no spaces.
                     const auto plain = [](const QString &value) {
-                        return value.normalized(QString::NormalizationForm_KC).remove(QRegularExpression("\\s"));
+                        static const QRegularExpression space("\\s");
+                        return value.normalized(QString::NormalizationForm_KC).remove(space);
                     };
                     word = {{"word", text}, {"glyph", glyph}, {"plainWord", plain(text)}, {"plainGlyph", plain(glyph)},
                         {"page", page}, {"x", box.x()}, {"y", box.y()}, {"width", box.width()},

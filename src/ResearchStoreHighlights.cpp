@@ -6,7 +6,6 @@
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
-#include <QImageReader>
 #include <QPdfDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -87,8 +86,8 @@ QVariantMap ResearchStore::adoptAnnotations(const QUrl &source, bool removeMisfi
     if (!query.exec()) return {{"error", query.lastError().text()}};
     // One fits when its page is here and its marked words are on that page (spacing, line breaks and
     // hyphenation aside; however short the words).
-    const auto bare
-        = [](QString text) { return text.remove(QRegularExpression("[\\s\\x{00AD}\\x{0002}\\x{FFFE}-]")).toLower(); };
+    static const QRegularExpression breaks("[\\s\\x{00AD}\\x{0002}\\x{FFFE}-]");
+    const auto bare = [](QString text) { return text.remove(breaks).toLower(); };
     QHash<int, QString> pages;
     QStringList fit, misfit;
     while (query.next()) {
@@ -285,7 +284,6 @@ void ResearchStore::saveAnnotation(const QUrl &source, int page, const QVariantM
         recordAnnotation(id, before, "");
         emit highlightsChanged();
         emit homeChanged();
-        emit annotationSaved(id);
         emit annotationFinished(true, id);
     });
     watcher->setFuture(QtConcurrent::run(&m_workers, [=] {

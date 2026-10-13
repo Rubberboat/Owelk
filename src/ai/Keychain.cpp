@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QHash>
+#include <QMutex>
 #include <QSaveFile>
 
 #ifdef Q_OS_MACOS
@@ -88,9 +90,11 @@ namespace {
     }
 }
 
-bool write(const QString &account, const QString &secret, const QString &)
+static bool storeRemove(const QString &account, const QString &);
+
+static bool storeWrite(const QString &account, const QString &secret, const QString &)
 {
-    remove(account, {});
+    storeRemove(account, {});
     auto *item = query(account);
     const auto bytes = secret.toUtf8();
     auto *data = CFDataCreate(nullptr, reinterpret_cast<const UInt8 *>(bytes.constData()), bytes.size());
@@ -103,7 +107,7 @@ bool write(const QString &account, const QString &secret, const QString &)
     return status == errSecSuccess;
 }
 
-QString read(const QString &account, const QString &)
+static QString storeRead(const QString &account, const QString &)
 {
     auto *item = query(account);
     CFDictionarySetValue(item, kSecReturnData, kCFBooleanTrue);
@@ -119,7 +123,7 @@ QString read(const QString &account, const QString &)
     return secret;
 }
 
-bool remove(const QString &account, const QString &)
+static bool storeRemove(const QString &account, const QString &)
 {
     auto *item = query(account);
     const auto status = SecItemDelete(item);
@@ -135,7 +139,7 @@ namespace {
     }
 }
 
-bool write(const QString &account, const QString &secret, const QString &)
+static bool storeWrite(const QString &account, const QString &secret, const QString &)
 {
     const auto name = target(account);
     const auto bytes = secret.toUtf8();
@@ -148,7 +152,7 @@ bool write(const QString &account, const QString &secret, const QString &)
     return CredWriteW(&credential, 0);
 }
 
-QString read(const QString &account, const QString &)
+static QString storeRead(const QString &account, const QString &)
 {
     PCREDENTIALW credential = nullptr;
     if (!CredReadW(target(account).c_str(), CRED_TYPE_GENERIC, 0, &credential)) return {};
@@ -158,7 +162,7 @@ QString read(const QString &account, const QString &)
     return secret;
 }
 
-bool remove(const QString &account, const QString &)
+static bool storeRemove(const QString &account, const QString &)
 {
     return CredDeleteW(target(account).c_str(), CRED_TYPE_GENERIC, 0) || GetLastError() == ERROR_NOT_FOUND;
 }
@@ -173,7 +177,7 @@ namespace {
     }
 }
 
-bool write(const QString &account, const QString &secret, const QString &directory)
+static bool storeWrite(const QString &account, const QString &secret, const QString &directory)
 {
     GError *error = nullptr;
     const auto label = ("Owelk " + account).toUtf8();
@@ -185,7 +189,7 @@ bool write(const QString &account, const QString &secret, const QString &directo
     return ok || fileWrite(account, secret, directory);
 }
 
-QString read(const QString &account, const QString &directory)
+static QString storeRead(const QString &account, const QString &directory)
 {
     GError *error = nullptr;
     gchar *value = secret_password_lookup_sync(schema(), nullptr, &error, "service", service().toUtf8().constData(),
@@ -197,7 +201,7 @@ QString read(const QString &account, const QString &directory)
     return secret;
 }
 
-bool remove(const QString &account, const QString &directory)
+static bool storeRemove(const QString &account, const QString &directory)
 {
     fileRemove(account, directory);
     GError *error = nullptr;
@@ -207,17 +211,60 @@ bool remove(const QString &account, const QString &directory)
     return true;
 }
 #else
-bool write(const QString &account, const QString &secret, const QString &directory)
+static bool storeWrite(const QString &account, const QString &secret, const QString &directory)
 {
     return fileWrite(account, secret, directory);
 }
-QString read(const QString &account, const QString &directory)
+static QString storeRead(const QString &account, const QString &directory)
 {
     return fileRead(account, directory);
 }
-bool remove(const QString &account, const QString &directory)
+static bool storeRemove(const QString &account, const QString &directory)
 {
     return fileRemove(account, directory);
 }
 #endif
+
+// Each key is fetched from the keyring once: Settings, the AI panel and every PDF opened with a saved
+// password ask again and again, and each fetch is a keyring call (a D-Bus round trip on Linux).
+namespace {
+    QMutex cacheLock;
+    QHash<QString, QString> cache;
+    QString cacheKey(const QString &account, const QString &directory)
+    {
+        return service() + '\n' + directory + '\n' + account;
+    }
+}
+
+bool write(const QString &account, const QString &secret, const QString &directory)
+{
+    const bool ok = storeWrite(account, secret, directory);
+    QMutexLocker lock(&cacheLock);
+    if (ok)
+        cache.insert(cacheKey(account, directory), secret);
+    else
+        cache.remove(cacheKey(account, directory));
+    return ok;
+}
+
+QString read(const QString &account, const QString &directory)
+{
+    const auto key = cacheKey(account, directory);
+    {
+        QMutexLocker lock(&cacheLock);
+        if (const auto found = cache.constFind(key); found != cache.cend()) return *found;
+    }
+    const auto secret = storeRead(account, directory);
+    QMutexLocker lock(&cacheLock);
+    cache.insert(key, secret);
+    return secret;
+}
+
+bool remove(const QString &account, const QString &directory)
+{
+    const bool ok = storeRemove(account, directory);
+    QMutexLocker lock(&cacheLock);
+    cache.remove(cacheKey(account, directory));
+    return ok;
+}
 }

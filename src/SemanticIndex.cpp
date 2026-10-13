@@ -14,7 +14,6 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QSet>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QtConcurrent>

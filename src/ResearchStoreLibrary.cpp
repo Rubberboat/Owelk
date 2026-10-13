@@ -12,7 +12,6 @@
 #include <QGuiApplication>
 #include <QRegularExpression>
 #include <QSet>
-#include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
 
@@ -85,7 +84,7 @@ QVariantList ResearchStore::libraryDocuments(const QVariantMap &filter) const
             {"fileName", fileName(url)}, {"authors", query.value(2)}, {"year", query.value(3)},
             {"readingState", query.value(4)}, {"favorite", query.value(5).toBool()},
             {"excluded", query.value(6).toBool()}, {"tags", query.value(8).toString()},
-            {"duplicate", query.value(9).toBool()}, {"position", readingPosition(url)}});
+            {"duplicate", query.value(9).toBool()}});
     }
     return rows;
 }
@@ -435,18 +434,12 @@ int ResearchStore::keyboardModifiers() const
 int ResearchStore::addDocuments(const QVariantList &sources, const QString &collectionId)
 {
     const auto added = addPdfs(sources, collectionId, false);
-    if (m_quietAdd) return int(added.size());
     if (!added.isEmpty())
         emit message(added.size() == 1 ? QStringLiteral("Added 1 PDF to the Library.")
                                        : QString("Added %1 PDFs to the Library.").arg(added.size()));
     else
         emit message("No PDFs were added. Choose PDF files.");
     return int(added.size());
-}
-
-QVariantList ResearchStore::takeDroppedPdfs(const QVariantList &sources, const QString &collectionId)
-{
-    return takePdfs(sources, {{"collection", collectionId}});
 }
 
 QVariantList ResearchStore::takePdfs(const QVariantList &items, const QVariantMap &options)
@@ -524,7 +517,8 @@ QString titleKey(const QString &title)
 }
 QString arxivKey(const QString &id)
 {
-    return id.trimmed().toLower().remove(QRegularExpression("v\\d+$"));
+    static const QRegularExpression version("v\\d+$");
+    return id.trimmed().toLower().remove(version);
 }
 }
 
@@ -703,79 +697,4 @@ int ResearchStore::removeFromLibrary(const QVariantList &sources)
     emit message(removed == 1 ? QStringLiteral("Removed from the Library. The PDF file was kept.")
                               : QString("Removed %1 papers from the Library. The PDF files were kept.").arg(removed));
     return removed;
-}
-
-int ResearchStore::importFolder(const QUrl &folder, const QString &parentCollection, bool foldersAsCollections)
-{
-    const int request = ++m_importRequest;
-    const auto root = folder.toLocalFile();
-    if (!folder.isLocalFile() || !QFileInfo(root).isDir()) {
-        QMetaObject::invokeMethod(
-            this, [=, this] { emit folderImported(request, 0, 0, "Choose a folder."); }, Qt::QueuedConnection);
-        return request;
-    }
-    struct Found {
-        QString path, relativeDir;
-    };
-    emit message("Looking for PDFs in " + QFileInfo(root).fileName() + "…");
-    auto *watcher = new QFutureWatcher<QList<Found>>(this);
-    connect(watcher, &QFutureWatcher<QList<Found>>::finished, this, [=, this] {
-        const auto found = watcher->result();
-        watcher->deleteLater();
-        // Files by folder; each folder is filed into its collection (created on first use).
-        QMap<QString, QVariantList> byFolder;
-        for (const auto &f : found) byFolder[f.relativeDir].append(QUrl::fromLocalFile(f.path));
-        int added = 0, made = 0;
-        const auto childNamed = [&](const QString &parent, const QString &name) {
-            for (const auto &value : collections()) {
-                const auto c = value.toMap();
-                if (c["parentId"].toString() == parent && c["name"].toString().compare(name, Qt::CaseInsensitive) == 0)
-                    return c["id"].toString();
-            }
-            ++made;
-            return createCollection(name, parent);
-        };
-        for (auto it = byFolder.cbegin(); it != byFolder.cend(); ++it) {
-            QString target = parentCollection;
-            if (foldersAsCollections) {
-                target = childNamed(parentCollection, QFileInfo(root).fileName());
-                for (const auto &part : it.key().split('/', Qt::SkipEmptyParts)) target = childNamed(target, part);
-            }
-            m_quietAdd = true; // One summary at the end, not one message per folder.
-            added += addDocuments(it.value(), target);
-            m_quietAdd = false;
-        }
-        const auto message = found.isEmpty() ? QStringLiteral("No PDFs in that folder.") : QString();
-        emit folderImported(request, added, made, message);
-        if (!found.isEmpty())
-            emit this->message(QString("Added %1 PDFs from %2%3.")
-                    .arg(added)
-                    .arg(QFileInfo(root).fileName())
-                    .arg(made ? QString(" into %1 new collections").arg(made) : QString()));
-    });
-    const bool keep = keepsPdfs();
-    watcher->setFuture(QtConcurrent::run(
-        &m_metadataWorkers, [root, keep, directory = m_directory, papers = m_papers, relinks = m_relinks] {
-            QList<Found> found;
-            QDirIterator it(root, {"*.pdf", "*.PDF"}, QDir::Files | QDir::Readable | QDir::NoSymLinks,
-                QDirIterator::Subdirectories);
-            const QDir base(root);
-            while (it.hasNext() && found.size() < 10000) {
-                const auto path = it.next();
-                const QFileInfo info(path);
-                if (info.isHidden() || path.contains("/.")) continue;
-                found.append({path,
-                    base.relativeFilePath(info.absolutePath()) == "." ? QString()
-                                                                      : base.relativeFilePath(info.absolutePath())});
-            }
-            // Kept PDFs are copied here, off the UI thread; the folder's own files stay where they are.
-            if (keep) {
-                QStringList paths;
-                for (const auto &f : found) paths << f.path;
-                const auto adopted = adoptPdfFiles(directory, papers, relinks, paths);
-                for (int i = 0; i < found.size(); ++i) found[i].path = adopted[i];
-            }
-            return found;
-        }));
-    return request;
 }

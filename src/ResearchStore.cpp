@@ -18,12 +18,10 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
-#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPdfDocument>
 #include <QPdfSelection>
-#include <QSaveFile>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QRegularExpression>
@@ -95,6 +93,10 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     m_metadataWorkers.setMaxThreadCount(1);
     m_metadataWorkers.setThreadPriority(QThread::LowPriority);
     connect(m_index, &PaperIndex::message, this, &ResearchStore::message);
+    // Connected before any view, so the list is read again when they ask.
+    for (const auto signal : {&ResearchStore::recentDocumentsChanged, &ResearchStore::documentsChanged,
+             &ResearchStore::homeChanged})
+        connect(this, signal, this, [this] { m_recentLoaded = false; });
 }
 
 QObject *ResearchStore::semantic() const
@@ -552,8 +554,11 @@ bool ResearchStore::rememberDocument(const QUrl &url)
     return true;
 }
 
+// Read once per change: Home and the Library panel ask for it from many bindings. Opening a row reads its
+// reading position then (readingPosition), so the rows do not carry one.
 QVariantList ResearchStore::recentDocuments() const
 {
+    if (m_recentLoaded) return m_recent;
     QVariantList results;
     QSqlQuery query(m_database);
     query.exec("SELECT d.url,d.reading_state,d.favorite,d.authors,d.year FROM recent_documents r JOIN documents d ON "
@@ -562,9 +567,11 @@ QVariantList ResearchStore::recentDocuments() const
     while (query.next()) {
         const auto url = QUrl(query.value(0).toString());
         results.append(QVariantMap{{"url", url}, {"name", displayName(url)}, {"fileName", fileName(url)},
-            {"position", readingPosition(url)}, {"readingState", query.value(1)}, {"favorite", query.value(2).toBool()},
+            {"readingState", query.value(1)}, {"favorite", query.value(2).toBool()},
             {"authors", query.value(3).toString()}, {"year", query.value(4).toString()}});
     }
+    m_recent = results;
+    m_recentLoaded = m_database.isOpen();
     return results;
 }
 
@@ -728,7 +735,6 @@ void ResearchStore::saveTextSelection(const QUrl &source, int page, const QPoint
             const bool success = updateHighlight(id, color, preservedBody);
             if (success) {
                 emit highlightSaved(id, result.source);
-                emit annotationSaved(id);
             }
             emit annotationFinished(success, id);
             return;
@@ -750,7 +756,6 @@ void ResearchStore::saveTextSelection(const QUrl &source, int page, const QPoint
         emit highlightsChanged();
         emit homeChanged();
         emit highlightSaved(result.id, result.source);
-        emit annotationSaved(result.id);
         emit annotationFinished(true, result.id);
         emit message("Annotation saved. The original PDF was not modified.");
     });
@@ -821,20 +826,32 @@ bool ResearchStore::removeRecentDocument(const QUrl &url)
 QString ResearchStore::setting(const QString &key, const QString &fallback) const
 {
     if (key == "session") return fallback; // The session has its own API.
-    QSqlQuery query(m_database);
-    query.prepare("SELECT value FROM settings WHERE key=?");
-    query.addBindValue("pref." + key);
-    return query.exec() && query.next() ? query.value(0).toString() : fallback;
+    if (!m_preferencesLoaded && m_database.isOpen()) {
+        QSqlQuery query(m_database);
+        if (query.exec("SELECT substr(key,6),value FROM settings WHERE key LIKE 'pref.%'")) {
+            while (query.next()) m_preferences.insert(query.value(0).toString(), query.value(1).toString());
+            m_preferencesLoaded = true;
+        }
+    }
+    const auto found = m_preferences.constFind(key);
+    return found == m_preferences.cend() ? fallback : *found;
 }
 
 bool ResearchStore::setSetting(const QString &key, const QString &value)
 {
     if (key.isEmpty() || key.size() > 64 || value.size() > 4096) return false;
+    const auto stored = value.isNull() ? QStringLiteral("") : value;
+    setting(key); // Loads the preferences once.
+    if (m_preferencesLoaded) {
+        const auto found = m_preferences.constFind(key);
+        if (found != m_preferences.cend() && *found == stored) return true; // Unchanged: nothing to tell.
+    }
     QSqlQuery query(m_database);
     query.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)");
     query.addBindValue("pref." + key);
-    query.addBindValue(value.isNull() ? QStringLiteral("") : value);
+    query.addBindValue(stored);
     if (!query.exec()) return false;
+    m_preferences.insert(key, stored);
     emit settingsChanged();
     return true;
 }

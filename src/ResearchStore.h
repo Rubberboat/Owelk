@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QHash>
-#include <QImage>
 #include <QRectF>
 #include <QSet>
 #include <QStringList>
@@ -158,33 +157,26 @@ public:
     // Adds PDFs to the Library (and to a collection, if given) without opening them; their details and
     // text are read in the background. Returns how many were added.
     Q_INVOKABLE int addDocuments(const QVariantList &sources, const QString &collectionId = QString());
-    // PDFs dropped on Owelk join the Library like addDocuments, and while PDFs are kept they move into
-    // the PDF folder (setting library.dropMoves, on by default; from another disk the copy is checked
-    // byte for byte and the original goes to the system Trash). Returns the papers' URLs.
-    Q_INVOKABLE QVariantList takeDroppedPdfs(const QVariantList &sources, const QString &collectionId = QString());
     // What adding these would bring, before anything moves: folders open up into the PDFs they hold
     // (hidden ones and links skipped, up to 10,000), and each PDF is checked against the Library on a
     // worker: the same file, or the same paper (DOI, arXiv ID or title). Answered by pdfsInspected(request,
     // items) with items {source, name, folder, relativeDir, duplicate, reason (file|doi|arxiv|title),
     // existing, existingName, existingTitle}.
     Q_INVOKABLE int inspectPdfs(const QVariantList &sources);
-    // Adds inspected PDFs (or plain file URLs) as takeDroppedPdfs does. options: collection;
-    // foldersAsCollections (a folder becomes a collection, its subfolders sub-collections). An item with
-    // "separate" stays a paper of its own even when the Library has the same file.
+    // Adds inspected PDFs (or plain file URLs) like addDocuments, and while PDFs are kept they move into
+    // the PDF folder (setting library.dropMoves, on by default; from another disk the copy is checked
+    // byte for byte and the original goes to the system Trash). Returns the papers' URLs. options:
+    // collection; foldersAsCollections (a folder becomes a collection, its subfolders sub-collections).
+    // An item with "separate" stays a paper of its own even when the Library has the same file.
     Q_INVOKABLE QVariantList takePdfs(const QVariantList &items, const QVariantMap &options = {});
     // A fresh download nobody needs (the paper was already there) goes to the system Trash. Only a file
     // in the PDF or download folder that no paper uses.
     Q_INVOKABLE bool discardDownload(const QUrl &file);
-    // A folder on this computer (a dropped folder joins the Library through importFolder).
+    // A folder on this computer (a dropped folder joins the Library through takePdfs).
     Q_INVOKABLE bool isFolder(const QUrl &url) const;
     // Takes papers out of the Library: lists, recent papers, collections, tags and the text index.
     // The PDF file and annotations stay; opening the file again brings the paper back.
     Q_INVOKABLE int removeFromLibrary(const QVariantList &sources);
-    // Adds every PDF under a folder (subfolders included; hidden files and links skipped), found in
-    // the background. With foldersAsCollections, the folder and its subfolders become a collection
-    // tree (existing ones with the same name are reused) under parentCollection. Files are not moved.
-    // Answered by folderImported(request, added, collections, error).
-    Q_INVOKABLE int importFolder(const QUrl &folder, const QString &parentCollection, bool foldersAsCollections);
     // Collections where similar papers already are, for a paper in none of them (or to add more):
     // answered by collectionsSuggested(request, source, [{id, name}]). No AI; the related-papers
     // search, cached until the library changes.
@@ -378,7 +370,6 @@ signals:
     void linksChanged();
     void relatedFound(int request, const QVariantList &papers, const QVariantList &notes);
     void collectionsSuggested(int request, const QUrl &source, const QVariantList &suggestions);
-    void folderImported(int request, int added, int collections, const QString &error);
     void pdfsInspected(int request, const QVariantList &items);
     void citationsLoaded(int request, const QUrl &source, const QVariantMap &result);
     void ocrChanged();
@@ -392,7 +383,6 @@ signals:
     // hidden: annotations kept for another copy of this PDF (its bytes differ), not shown.
     void highlightsLoaded(int request, const QUrl &source, const QVariantList &highlights, const QString &error,
         const QString &fingerprint, int hidden);
-    void annotationSaved(const QString &id);
     void annotationFinished(bool success, const QString &id);
     void recentDocumentsChanged();
     void busyChanged();
@@ -421,7 +411,6 @@ private:
     // Saved data is keyed by document ID; QML keeps passing file URLs.
     QString findDocument(const QUrl &source) const;
     QString ensureDocument(const QUrl &source);
-    QString ensureWebDocument(const QUrl &page, const QString &title);
     void loadDocumentNames();
     void syncNoteLinks(const QString &noteId, const QString &body);
     void rememberTitle(const QUrl &url, const QString &title);
@@ -432,10 +421,15 @@ private:
     QVariantMap canonicalState(const QVariantMap &state) const;
     bool applyRelink(const QUrl &source, const QUrl &candidate, const QString &hash, QString *error);
     QHash<QString, QString> m_relinks;
+    // Preferences (setting/setSetting): read from the settings table once, then kept here. QML asks for
+    // them in many bindings; only setSetting changes them.
+    mutable QHash<QString, QString> m_preferences;
+    mutable bool m_preferencesLoaded = false;
+    // recentDocuments, until something that could change it is announced.
+    mutable QVariantList m_recent;
+    mutable bool m_recentLoaded = false;
     bool m_relinking = false;
     bool m_copyingPdfs = false;
-    static QStringList adoptPdfFiles(const QString &directory, const QString &papers,
-        const QHash<QString, QString> &relinks, const QStringList &paths);
     // Same-bytes files met earlier in one batch reuse that copy; `move` moves the file in instead.
     QUrl adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move = false, bool separate = false);
     QVariantList addPdfs(
@@ -486,9 +480,7 @@ private:
     bool replay(const QUrl &source, bool forward);
     int m_relatedRequest = 0;
     int m_suggestRequest = 0;
-    int m_importRequest = 0;
     int m_inspectRequest = 0;
-    bool m_quietAdd = false;
     QHash<QString, QVariantList> m_suggestions;
     void configureOcr();
     void scheduleAutomaticBackup();

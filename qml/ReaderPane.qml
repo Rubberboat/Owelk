@@ -59,8 +59,6 @@ Rectangle {
     function printDocument() { researchStore.printDocument(canvas.source, canvas.documentFingerprint, canvas.pageCount) }
     signal activated()
     signal changed()
-    signal documentAboutToOpen()
-    signal documentOpened()
     signal fileChosen(url source)
     color: Theme.pdfBackdrop
 
@@ -69,12 +67,10 @@ Rectangle {
     function openFile(url, position) {
         if (!researchStore.rememberDocument(url)) return false
         cancelReveal()
-        documentAboutToOpen()
         hideSearch()
         canvas.openFile(url, position || researchStore.readingPosition(url))
         activated()
         changed()
-        documentOpened()
         return true
     }
     function restore(state) {
@@ -145,7 +141,6 @@ Rectangle {
     function highlightSelection() { canvas.highlightSelection() }
     // A region of the page for the AI: dragged out once, then attached as a picture (nothing is saved).
     function startCapture() { if (canvas.ready) { activated(); canvas.tool = ""; canvas.captureMode = true } }
-    readonly property bool capturing: canvas.captureMode
     function reveal(url, page, region, passage) {
         cancelReveal()
         if (!researchStore.sameSource(source, url)) {

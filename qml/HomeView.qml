@@ -12,7 +12,8 @@ Rectangle {
     property alias results: searchModel.results
     property alias searchController: searchModel
     ResearchSearch { id: searchModel; query: searchInput.text; active: root.visible; onRewrite: function(text) { searchInput.text = text; searchInput.cursorPosition = text.length; searchInput.forceActiveFocus() } }
-    readonly property var continuation: researchStore.continueReading
+    // Read while Home shows: the session it comes from is saved every time a page stops scrolling.
+    readonly property var continuation: visible ? researchStore.continueReading : ({})
     signal openRequested()
     signal libraryRequested()
     // Unsorted chosen on Home: the Library opens filtered to it.
@@ -40,13 +41,8 @@ Rectangle {
         function onAiThreadsChanged() { listsLater.restart() }
         function onDocumentsChanged() { listsLater.restart() }
     }
-    // An address or a web search typed on Home (opens a web tab).
+    // An address or a web search chosen on Home (opens a web tab).
     signal webRequested(string url)
-    function searchWeb(text) {
-        const url = Tree.addressToUrl(text, searchModel.webTemplate)
-        if (url.length) webRequested(url)
-        return url.length > 0
-    }
     signal documentChosen(url source, var position)
     signal resultChosen(var result)
     // One field for the Library and the web: the web row (searchModel.webRow) comes first when the text
@@ -308,7 +304,7 @@ Rectangle {
                             objectName: "homeCollection-" + index
                             width: ListView.view.width
                             height: root.rowStep
-                            separator: index < Math.min(7, root.recentCollections.length) - 1
+                            separator: index < ListView.view.count - 1
                             rightPadding: 40
                             text: modelData.name
                             onClicked: root.libraryFilterRequested({collection: modelData.id})
@@ -335,7 +331,7 @@ Rectangle {
                             required property int index
                             width: ListView.view.width
                             height: root.rowStep
-                            separator: index < Math.min(7, researchStore.recentDocuments.length) - 1
+                            separator: index < ListView.view.count - 1
                             onDocumentChosen: function(source, position) { root.documentChosen(source, position) }
                             onMenuRequested: function(row) { recentMenu.show(row) }
                         }
@@ -356,7 +352,7 @@ Rectangle {
                             objectName: "homeNote-" + index
                             width: ListView.view.width
                             height: root.rowStep
-                            separator: index < Math.min(5, root.recentNotes.length) - 1
+                            separator: index < ListView.view.count - 1
                             text: modelData.title
                             onClicked: root.resultChosen({kind: "note", id: modelData.id})
                         }
@@ -379,7 +375,7 @@ Rectangle {
                             objectName: "homeThread-" + index
                             width: ListView.view.width
                             height: root.rowStep
-                            separator: index < Math.min(5, root.recentThreads.length) - 1
+                            separator: index < ListView.view.count - 1
                             text: modelData.title
                             onClicked: root.resultChosen({kind: "ai", id: modelData.id})
                             contentItem: RowLayout {

@@ -2,7 +2,6 @@
 #include "ResearchStore.h"
 #include "AppIcon.h"
 #include <QCoreApplication>
-#include <QFile>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>

@@ -1,8 +1,6 @@
 #include "ResearchStore.h"
 #include "PaperIndex.h"
 #include "FileFingerprint.h"
-#include <QFile>
-#include <QFileInfo>
 #include <QFutureWatcher>
 #include <QJsonDocument>
 #include <QJsonObject>

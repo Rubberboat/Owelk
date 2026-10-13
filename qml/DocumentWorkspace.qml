@@ -240,7 +240,6 @@ Flickable {
         target: researchStore.tor
         function onRouteChanged() { torProbe.active = false; torProbe.active = true }
     }
-    signal webTabUpdated()
     // Route an address to the right surface: local PDFs open in the reader, web addresses in a web tab
     // (a PDF on the web downloads there and then opens in the reader).
     function openResource(url, forceNew) {
@@ -269,7 +268,7 @@ Flickable {
         if (!t || t.kind !== "web" || !Tree.isWebAddress(address)) return
         if (t.source === address && t.title === title) return
         t.source = address; t.title = title || ""
-        sync(); changed(); webTabUpdated()
+        sync(); changed()
     }
     // A downloaded PDF replaces the web tab that only existed to fetch it, or opens next to it.
     // A finished download opens beside its web tab; a paper the Library already has is offered first

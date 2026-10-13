@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QHash>
 #include <QObject>
 #include <QThreadPool>
 #include <QTimer>

@@ -75,7 +75,8 @@ QString cleanAuthors(const QString &input)
         || QStringList{"author", "authors", "unknown", "user", "admin", "administrator", "owner"}.contains(lower)
         || (!authors.contains(' ') && authors == lower))
         return {};
-    authors.replace(QRegularExpression("\\s*;\\s*|\\s+and\\s+"), ", ");
+    static const QRegularExpression separator("\\s*;\\s*|\\s+and\\s+");
+    authors.replace(separator, ", ");
     return authors;
 }
 
@@ -160,7 +161,8 @@ PaperMetadata readFirstPage(QPdfDocument &pdf)
         if (parts.size() == 4) break;
     }
     result.title = parts.join(' ');
-    result.title.remove(QRegularExpression("[\\*∗†‡]+$")); // Footnote markers attached to the title.
+    static const QRegularExpression footnoteMarks("[\\*∗†‡]+$"); // Attached to the title.
+    result.title.remove(footnoteMarks);
     result.title = result.title.trimmed();
     QStringList authorLines;
     for (qsizetype i = after + 1; i >= 1 && i < lines.size() && authorLines.size() < 6; ++i) {
@@ -208,10 +210,8 @@ QString fileStem(const PaperMetadata &paper)
 {
     // "Title: Subtitle" reads as "Title - Subtitle"; characters Windows, macOS or Linux refuse in a file
     // name become spaces.
-    auto title = QString(paper.title)
-                     .replace(QRegularExpression("\\s*:\\s+"), " - ")
-                     .replace(QRegularExpression("[\\x00-\\x1f\\\\/:*?\"<>|]"), " ")
-                     .simplified();
+    static const QRegularExpression colon("\\s*:\\s+"), refused("[\\x00-\\x1f\\\\/:*?\"<>|]");
+    auto title = QString(paper.title).replace(colon, " - ").replace(refused, " ").simplified();
     if (title.isEmpty()) return {};
     if (title.size() > 120) {
         title.truncate(120);
@@ -230,8 +230,9 @@ QString paperFileStem(const QString &title, const QString &authors, const QStrin
     if (name.isEmpty()) return {};
     // "Ashish Vaswani, Noam Shazeer" -> "Vaswani"; a name written without spaces stays whole.
     auto family = authors.section(',', 0, 0).simplified().section(' ', -1);
-    family = family.replace(QRegularExpression("[\\x00-\\x1f\\\\/:*?\"<>|.]"), " ").simplified().left(40);
-    const auto when = QRegularExpression("^\\d{4}$").match(year.trimmed()).hasMatch() ? year.trimmed() : QString();
+    static const QRegularExpression refused("[\\x00-\\x1f\\\\/:*?\"<>|.]"), fourDigits("^\\d{4}$");
+    family = family.replace(refused, " ").simplified().left(40);
+    const auto when = fourDigits.match(year.trimmed()).hasMatch() ? year.trimmed() : QString();
     const auto prefix = QStringList{family, when}.join(' ').simplified();
     return prefix.isEmpty() ? name : prefix + " - " + name;
 }

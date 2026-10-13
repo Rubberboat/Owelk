@@ -542,7 +542,6 @@ Rectangle {
                     delegate: ItemDelegate {
                         id: paper
                         required property var modelData
-                        readonly property url paperUrl: modelData.url
                         // Dragging a selected paper drags the whole selection.
                         readonly property var paperUrls: root.papersFor(modelData)
                         objectName: "libraryPaper-" + modelData.id

@@ -40,7 +40,8 @@ QString normalize(QString text)
     text.remove(QChar(0x00ad));
     // Qt/PDFium emits U+FFFE for a discretionary line-end hyphen in extracted text.
     text.remove(QChar(0xfffe));
-    text.replace(QRegularExpression("(\\p{L})-[ \\t]*\\r?\\n[ \\t]*(?=\\p{L})"), "\\1");
+    static const QRegularExpression brokenWord("(\\p{L})-[ \\t]*\\r?\\n[ \\t]*(?=\\p{L})");
+    text.replace(brokenWord, "\\1");
     return text.normalized(QString::NormalizationForm_KC).simplified();
 }
 QString matchQuery(const QString &input)
@@ -365,10 +366,10 @@ QStringList distinctiveTerms(QSqlDatabase &db, const QString &document, int coun
     pages.prepare("SELECT text FROM pages WHERE document_id=? AND page<3");
     pages.addBindValue(document);
     QHash<QString, int> frequency;
+    static const QRegularExpression separators("[^\\p{L}\\p{N}]+");
     if (pages.exec())
         while (pages.next())
-            for (const auto &word :
-                pages.value(0).toString().toLower().split(QRegularExpression("[^\\p{L}\\p{N}]+"), Qt::SkipEmptyParts))
+            for (const auto &word : pages.value(0).toString().toLower().split(separators, Qt::SkipEmptyParts))
                 if (word.size() >= 4 && !common.contains(word) && !word.front().isDigit()) ++frequency[word];
     QSqlQuery total(db);
     const double pagesInLibrary
@@ -548,6 +549,7 @@ void PaperIndex::relocateSource(const QUrl &source, const QUrl &candidate)
         if (!error.isEmpty())
             emit message("Source references were saved, but the search cache needs repair. Restart to retry: " + error);
         emit changed();
+        emit documentsChanged();
         emit contentsChanged();
         enqueue(candidate);
         startNext();
@@ -615,6 +617,7 @@ void PaperIndex::remove(const QUrl &input)
         watcher->deleteLater();
         --m_relocating;
         emit changed();
+        emit documentsChanged();
         emit contentsChanged();
         startNext();
     });
@@ -683,6 +686,7 @@ void PaperIndex::startNext()
     const auto documentId = m_resolver ? m_resolver(source) : QString();
     m_progress = "Checking " + QFileInfo(source.toLocalFile()).fileName();
     emit changed();
+    emit progressChanged();
     auto *watcher = new QFutureWatcher<IndexResult>(this);
     connect(watcher, &QFutureWatcher<IndexResult>::finished, this, [this, watcher, source] {
         const auto result = watcher->result();
@@ -695,6 +699,8 @@ void PaperIndex::startNext()
         m_progress.clear();
         if (!result.error.isEmpty()) emit message("Search index: " + result.error);
         emit changed();
+        emit progressChanged();
+        emit documentsChanged();
         emit contentsChanged();
         startNext();
     });
@@ -708,7 +714,7 @@ void PaperIndex::startNext()
                                          .arg(QFileInfo(source.toLocalFile()).fileName())
                                          .arg(page)
                                          .arg(total);
-                        emit changed();
+                        emit progressChanged();
                     },
                     Qt::QueuedConnection);
             });

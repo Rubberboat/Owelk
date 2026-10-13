@@ -378,21 +378,6 @@ QUrl ResearchStore::adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bo
     return keepsPdfs() ? adoptFile(m_database, papersFolder(), url, batch, move, separate) : url;
 }
 
-QStringList ResearchStore::adoptPdfFiles(
-    const QString &directory, const QString &papers, const QHash<QString, QString> &relinks, const QStringList &paths)
-{
-    // Runs on a worker: its own read-only connection; relinked paths resolve like resolvedSource.
-    WorkerConnection db(directory + "/owelk.sqlite3", true);
-    QHash<QString, QUrl> batch;
-    QStringList adopted;
-    for (const auto &path : paths) {
-        auto url = QUrl::fromLocalFile(path).toString();
-        for (int hop = 0; hop < 16 && relinks.contains(url); ++hop) url = relinks.value(url);
-        adopted << adoptFile(db.db, papers, QUrl(url), &batch, false).toLocalFile();
-    }
-    return adopted;
-}
-
 int ResearchStore::outsidePdfCount() const
 {
     QSqlQuery query(m_database);

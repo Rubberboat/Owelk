@@ -3,7 +3,6 @@
 #include <QDir>
 
 #include <QCoreApplication>
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
