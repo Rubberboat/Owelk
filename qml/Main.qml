@@ -176,27 +176,83 @@ ApplicationWindow {
     }
     function openDocument(source, position) { if (!restoreFailed) documents.openDocument(researchStore.resolvedSource(source), position) }
     // Files dropped on the window where no panel takes them (from Finder, the Downloads folder or a
-    // browser's download list): PDFs move into the PDF folder and join the Library, and up to
-    // dropOpenLimit of them open in tabs; a folder joins the Library as collections; web addresses
-    // open in web tabs. False when the drop held none of these.
+    // browser's download list): PDFs, and the PDFs in a dropped folder, move into the PDF folder and
+    // join the Library (addPdfs), and up to dropOpenLimit of them open in tabs; web addresses open in
+    // web tabs. False when the drop held none of these.
     readonly property int dropOpenLimit: 6
     function dropFiles(urls) {
         if (restoreFailed) return false
         const drop = Tree.droppedFiles(urls, function(url) { return researchStore.isFolder(url) })
-        if (drop.pdfs.length) {
-            const papers = researchStore.takeDroppedPdfs(drop.pdfs)
-            if (papers.length && papers.length <= dropOpenLimit) {
-                papers.forEach(function(url) { window.openDocument(url) })
-                homeVisible = false
-            }
-        }
-        drop.folders.forEach(function(folder) { researchStore.importFolder(folder, "", true) })
-        if (!drop.pdfs.length && !drop.folders.length && drop.web.length) {
+        if (drop.pdfs.length || drop.folders.length) addPdfs(drop.pdfs.concat(drop.folders), {open: true})
+        else if (drop.web.length) {
             drop.web.slice(0, dropOpenLimit).forEach(function(url) { documents.openWeb(url) })
             homeVisible = false
         }
         return drop.pdfs.length + drop.folders.length + drop.web.length > 0
     }
+    // Adding PDFs, however they come (dropped anywhere, + › Add PDFs… or Add Folder…): each is looked at
+    // first, and a paper the Library already has is offered (DuplicateDialog) instead of a second copy.
+    // options: collection, foldersAsCollections, open (open what was added, up to dropOpenLimit).
+    property var intakes: ({})
+    function addPdfs(urls, options) {
+        if (restoreFailed || !urls.length) return -1
+        const request = researchStore.inspectPdfs(urls)
+        intakes[request] = {kind: "add", options: options || {}}
+        return request
+    }
+    // A finished PDF download, before it opens: done(file) with the file to read, the download itself
+    // or, when the reader prefers it, the copy of that paper already kept.
+    function checkDownload(file, done) {
+        const request = researchStore.inspectPdfs([file])
+        intakes[request] = {kind: "download", file: file, done: done}
+        return request
+    }
+    function openPapers(urls) {
+        urls.slice(0, dropOpenLimit).forEach(function(url) { window.openDocument(url) })
+        if (urls.length) homeVisible = false
+    }
+    function quoted(items) {
+        const names = items.slice(0, 3).map(function(item) { return "\u201c" + item.existingName + "\u201d" })
+        return names.join(", ") + (items.length > 3 ? " and " + (items.length - 3) + " more" : "")
+    }
+    function pdfsInspected(request, items) {
+        const intake = intakes[request]
+        if (!intake) return
+        delete intakes[request]
+        const duplicates = items.filter(function(item) { return item.duplicate })
+        if (intake.kind === "download") {
+            if (!duplicates.length) { intake.done(intake.file); return }
+            duplicateDialog.show(duplicates, true, function() {
+                researchStore.discardDownload(intake.file)
+                intake.done(duplicates[0].existing)
+                notify("Opened " + quoted(duplicates) + ", which you already had. The new download went to the Trash.")
+            }, function() {
+                researchStore.takePdfs([Object.assign({}, duplicates[0], {source: intake.file, separate: true})])
+                intake.done(intake.file)
+            }, null)
+            return
+        }
+        const options = intake.options
+        const fresh = items.filter(function(item) { return !item.duplicate })
+        const take = function(list) {
+            if (!list.length) return []
+            const added = researchStore.takePdfs(list, {collection: options.collection || "",
+                                                       foldersAsCollections: !!options.foldersAsCollections})
+            if (options.open && added.length <= dropOpenLimit) openPapers(added)
+            return added
+        }
+        if (!items.length) { notify("No PDFs there."); return }
+        if (!duplicates.length) { take(fresh); return }
+        duplicateDialog.show(duplicates, false, function() {
+            take(fresh)
+            openPapers(duplicates.map(function(item) { return item.existing }))
+            notify("Opened " + quoted(duplicates) + " from your Library; " + (duplicates.length === 1 ? "that file stays" : "those files stay") + " where " + (duplicates.length === 1 ? "it was." : "they were."))
+        }, function() {
+            take(fresh.concat(duplicates.map(function(item) { return Object.assign({}, item, {separate: true}) })))
+        }, function() { take(fresh) })
+    }
+    Connections { target: researchStore; function onPdfsInspected(request, items) { window.pdfsInspected(request, items) } }
+    DuplicateDialog { id: duplicateDialog }
     function droppable(urls) {
         const drop = Tree.droppedFiles(urls, function(url) { return researchStore.isFolder(url) })
         return drop.pdfs.length + drop.folders.length + drop.web.length > 0

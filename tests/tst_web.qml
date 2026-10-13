@@ -18,6 +18,14 @@ Item {
             workspace.homeVisible = true
             researchStore.setSetting("downloadFolder", testInput.temporaryFolder("web downloads"))
         }
+        // A paper downloaded again is offered from the Library first; these tests read the download itself.
+        function readerOpens() {
+            const dialog = findChild(workspace, "duplicateDialog")
+            return function() {
+                if (dialog && dialog.opened) findChild(dialog, "duplicateAddAnyway").clicked()
+                return activeTab().kind !== "web"
+            }
+        }
         function activeTab() {
             const d = workspace.documents, g = Tree.find(d.tree, d.activeGroup)
             return g.tabs.find(function(t) { return t.id === g.activeTab })
@@ -51,7 +59,7 @@ Item {
             // A PDF link inside the page downloads into the chosen folder and opens next to the page.
             const webTabId = activeTab().id
             pane.view.runJavaScript("document.getElementById('pdf').click()")
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
             const opened = activeTab()
             verify(opened.source.indexOf("web%20downloads") >= 0 || opened.source.indexOf("web downloads") >= 0, opened.source)
             verify(Tree.owner(d.tree, webTabId) !== undefined && Tree.owner(d.tree, webTabId) !== null) // The page stays open.
@@ -59,7 +67,7 @@ Item {
             // Opening a PDF address directly replaces the tab that only fetched it.
             verify(d.openWeb(testInput.webFixture("/paper.pdf").toString(), true))
             const fetching = activeTab().id
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
             verify(!Tree.owner(d.tree, fetching))
             verify(researchStore.downloadTarget("paper.pdf").fileName !== "paper.pdf") // Never overwrites.
         }
@@ -73,7 +81,7 @@ Item {
             pane.view.runJavaScript("document.getElementById('pdf').click()")
             tryCompare(downloads, "count", 1, 15000)
             verify(downloads.signalArguments[0][0].indexOf(".pdf") > 0)
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
             // Shown in the tab instead: no download until Open in Reader.
             d.activateTab(Tree.leaves(d.tree)[0].tabs.find(function(t) { return t.kind === "web" }).id)
             const again = webPane()
@@ -93,9 +101,26 @@ Item {
             const before = Tree.leaves(d.tree)[0].tabs.length
             button.clicked()
             tryCompare(fetched, "count", 1, 15000)
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
             compare(Tree.leaves(d.tree)[0].tabs.length, before + 1) // The web tab stays.
             again.browserPdf = false
+        }
+        function test_aPaperDownloadedAgainOffersTheOneKept() {
+            const d = workspace.documents
+            const dialog = findChild(workspace, "duplicateDialog")
+            // The first download is the Library's copy; the same paper again asks first.
+            verify(d.openWeb(testInput.webFixture("/paper.pdf").toString(), true))
+            tryVerify(readerOpens(), 15000)
+            const first = activeTab().source
+            verify(d.openWeb(testInput.webFixture("/paper.pdf").toString(), true))
+            tryCompare(dialog, "opened", true, 15000)
+            verify(dialog.download)
+            compare(dialog.items[0].existingName, researchStore.fileName(first))
+            const fresh = dialog.items[0].source
+            // Open It: the copy already kept opens and the new download goes to the Trash.
+            mouseClick(findChild(dialog, "duplicateOpenExisting"))
+            tryVerify(function() { return activeTab().kind !== "web" && researchStore.sameSource(activeTab().source, first) }, 15000)
+            tryVerify(function() { return !testInput.fileExists(fresh) })
         }
         function test_downloadBarFillsWithTheFileSize() {
             const d = workspace.documents
@@ -115,7 +140,7 @@ Item {
             verify(label.text.indexOf("%") < 0 && label.text.indexOf(" of ") < 0)
             const first = track.progress
             tryVerify(function() { return track.progress > first }, 5000)
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
         }
         function test_pageWithAFramedPdfOffersBothWays() {
             const d = workspace.documents
@@ -136,7 +161,7 @@ Item {
             downloads.clear(); downloads.target = pane
             findChild(pane, "webOpenInReader").clicked()
             tryCompare(downloads, "count", 1, 15000)
-            tryVerify(function() { return activeTab().kind !== "web" }, 15000)
+            tryVerify(readerOpens(), 15000)
             verify(Tree.owner(d.tree, webTab) !== null && Tree.owner(d.tree, webTab) !== undefined)
         }
         function test_homeTabSearchesTheWeb() {

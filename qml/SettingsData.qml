@@ -25,7 +25,7 @@ ColumnLayout {
     Connections { target: researchStore; function onBackupFinished(ok, path, message) { root.result = message } }
     SettingsGroup {
         title: "Library"
-        note: "Like a note app, Owelk keeps every PDF you open, add or download in its PDF folder. Opened and added files are copied and the originals left alone; PDFs dragged onto Owelk move there. Changing the folder moves the PDFs already in it, with their notes and annotations."
+        note: "Like a note app, Owelk keeps every PDF you open, add or download in its PDF folder. Opened files are copied and the originals left alone; PDFs you add (dragged in, or with +) move there. Changing the folder moves the PDFs already in it, with their notes and annotations."
         SettingsRow {
             label: "Keep PDFs in Owelk"
             Switch {
@@ -79,8 +79,8 @@ ColumnLayout {
         }
         SettingsRow {
             visible: root.keepPdfs
-            label: "Dragged-in PDFs"
-            detail: "PDFs dropped on Owelk from Finder, Downloads or a browser's download list"
+            label: "Adding PDFs"
+            detail: "Dropped on Owelk (files or folders) or added with + (Add PDFs\u2026, Add Folder\u2026)"
             ComboBox {
                 objectName: "dropMovesBox"
                 Layout.preferredWidth: 240

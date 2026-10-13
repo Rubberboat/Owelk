@@ -248,7 +248,17 @@ Flickable {
         sync(); changed(); webTabUpdated()
     }
     // A downloaded PDF replaces the web tab that only existed to fetch it, or opens next to it.
+    // A finished download opens beside its web tab; a paper the Library already has is offered first
+    // (Main's checkDownload), so the reader can open the copy they keep instead.
     function openDownloaded(tabId, file, replace) {
+        const window = ApplicationWindow.window
+        if (window && window.checkDownload) {
+            window.checkDownload(file, function(chosen) { placeDownloaded(tabId, chosen, replace) })
+            return true
+        }
+        return placeDownloaded(tabId, file, replace)
+    }
+    function placeDownloaded(tabId, file, replace) {
         if (!researchStore.rememberDocument(file)) return false
         const g = Tree.owner(tree, tabId)
         if (!g) return openDocument(file)

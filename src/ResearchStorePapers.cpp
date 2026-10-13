@@ -55,7 +55,8 @@ bool renameOnDisk(const QString &from, const QString &to)
 // paper that has them; anything else is copied into the PDF folder, or with `move` moved there (from
 // another disk: copied, checked byte for byte, and the original sent to the system Trash). The input
 // comes back when nothing applies or copying fails, so opening never breaks because of this.
-QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHash<QString, QUrl> *batch, bool move)
+QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHash<QString, QUrl> *batch, bool move,
+    bool separate = false)
 {
     const auto path = source.toLocalFile();
     const QFileInfo info(path);
@@ -66,12 +67,13 @@ QUrl adoptFile(QSqlDatabase &db, const QString &folder, const QUrl &source, QHas
     if (known.exec() && known.next()) return source;
     const auto hash = FileFingerprint::sha256(path);
     if (hash.isEmpty()) return source;
-    if (batch && batch->contains(hash)) return batch->value(hash);
+    if (!separate && batch && batch->contains(hash)) return batch->value(hash);
     const bool inside = info.absoluteFilePath().startsWith(folder + "/");
     QSqlQuery same(db);
     same.prepare("SELECT url FROM documents WHERE sha256=? AND kind='pdf' ORDER BY removed_at IS NOT NULL LIMIT 1");
     same.addBindValue(hash);
-    if (same.exec() && same.next()) {
+    // A separate copy (the reader chose to keep both) skips the paper that has the same bytes.
+    if (!separate && same.exec() && same.next()) {
         const QUrl existing(same.value(0).toString());
         const auto existingPath = existing.toLocalFile();
         if (QFileInfo::exists(existingPath) && QFileInfo(existingPath) != info) {
@@ -370,10 +372,10 @@ QUrl ResearchStore::adoptPdf(const QUrl &source)
     return adoptPdf(source, nullptr);
 }
 
-QUrl ResearchStore::adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move)
+QUrl ResearchStore::adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move, bool separate)
 {
     const auto url = resolvedSource(source);
-    return keepsPdfs() ? adoptFile(m_database, papersFolder(), url, batch, move) : url;
+    return keepsPdfs() ? adoptFile(m_database, papersFolder(), url, batch, move, separate) : url;
 }
 
 QStringList ResearchStore::adoptPdfFiles(

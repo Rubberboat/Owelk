@@ -27,6 +27,7 @@
 - 저장된 탭 중 열 수 없는 것만 빼고 나머지를 엶(전부 못 읽으면 탭 없이 시작, 원래 세션은 한 번 보관).
 - PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.
 - PDF 폴더 바꾸기: Settings → Data → PDF folder → `Change…`. 이미 있던 PDF도 새 폴더로 옮기고 주석·노트 연결은 그대로.
+- 추가할 때 중복 확인: 끌어 넣거나 + (Add PDFs…·Add Folder…)로 추가할 때, 웹에서 받을 때 이미 있는 논문(같은 파일, DOI·arXiv 번호·제목이 같은 논문)이면 묻고, `Open It`은 있는 것을 열고 그 파일 이름을 알려 줌. 폴더째 끌어 넣기(하위 폴더 포함)와 메뉴로 추가한 PDF도 PDF 폴더로 옮김(Settings → Data → Adding PDFs에서 복사로 바꿈).
 - PDF 파일 이름: PDF 폴더의 파일은 논문 정보가 생기거나 바뀌면 `저자 연도 - 제목.pdf`로 바뀜(같은 이름이면 번호). 한동안 탭에 열려 있던 논문은 다음 실행 때. Settings → Data에서 끔.
 - Windows 설치: `tools/install-local.ps1`(x-or-b의 스크립트에 winget이 자기 자신을 부르던 문제와 32비트 PowerShell 문제 수정).
 - 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.

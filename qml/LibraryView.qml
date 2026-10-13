@@ -9,6 +9,12 @@ import QtQuick.Dialogs as Native
 // collections and tags only group them.
 Rectangle {
     id: root
+    // PDFs and folders added here go through the window, which checks them for papers already kept.
+    function addPdfs(urls, options) {
+        const window = ApplicationWindow.window
+        if (window && window.addPdfs) window.addPdfs(urls, options)
+        else researchStore.takePdfs(urls, options)
+    }
     objectName: "libraryView"
     color: Theme.content
     property var filter: ({})
@@ -223,10 +229,13 @@ Rectangle {
             Label {
                 width: parent.width; wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSmall; color: Theme.textTertiary
-                text: (root.filter.collection ? "Inside the collection shown. " : "") + "The PDFs stay where they are; titles and text are read in the background. Hidden folders are skipped."
+                text: (root.filter.collection ? "Inside the collection shown. " : "")
+                    + (researchStore.setting("library.keepPdfs", "1") === "1" && researchStore.setting("library.dropMoves", "1") === "1"
+                       ? "The PDFs move into Owelk's PDF folder" : "The PDFs stay where they are")
+                    + "; titles and text are read in the background. Hidden folders are skipped."
             }
         }
-        onAccepted: researchStore.importFolder(folder, root.filter.collection || "", asCollections.checked)
+        onAccepted: root.addPdfs([folder], {collection: root.filter.collection || "", foldersAsCollections: asCollections.checked})
     }
     // PDFs chosen or dropped here join the Library, and the collection being shown.
     Native.FileDialog {
@@ -234,7 +243,7 @@ Rectangle {
         title: root.filter.collection ? "Add PDFs to this collection" : "Add PDFs to the Library"
         fileMode: Native.FileDialog.OpenFiles
         nameFilters: ["PDF documents (*.pdf)"]
-        onAccepted: researchStore.addDocuments(selectedFiles, root.filter.collection || "")
+        onAccepted: root.addPdfs(selectedFiles, {collection: root.filter.collection || ""})
     }
     PaperMenu {
         id: paperMenu
@@ -610,8 +619,8 @@ Rectangle {
                         anchors.fill: parent
                         keys: ["text/uri-list"]
                         onDropped: function(drop) {
-                            const pdfs = drop.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) })
-                            if (pdfs.length) { researchStore.takeDroppedPdfs(pdfs, root.filter.collection || ""); drop.acceptProposedAction() }
+                            const files = drop.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) || researchStore.isFolder(u) })
+                            if (files.length) { root.addPdfs(files, {collection: root.filter.collection || ""}); drop.acceptProposedAction() }
                         }
                         Rectangle { anchors.fill: parent; visible: parent.containsDrag; color: "transparent"; radius: Theme.radius; border.width: 2; border.color: Theme.accent }
                     }

@@ -10,6 +10,12 @@ import "WorkspaceTree.js" as Tree
 // on one to file it), tags, recent notes and the paper folder. Sections fold; the folder takes the rest.
 Item {
     id: root
+    // PDFs added here go through the window, which checks them for papers already kept.
+    function addPdfs(urls, options) {
+        const window = ApplicationWindow.window
+        if (window && window.addPdfs) window.addPdfs(urls, options)
+        else researchStore.takePdfs(urls, options)
+    }
     objectName: "libraryPanel"
     property url folder
     // The document area, for tabs dropped on a collection.
@@ -184,7 +190,7 @@ Item {
         title: "Add PDFs to " + (shelfMenu.collection.name || "the collection")
         fileMode: FileDialog.OpenFiles
         nameFilters: ["PDF documents (*.pdf)"]
-        onAccepted: researchStore.addDocuments(selectedFiles, shelfMenu.collection.id)
+        onAccepted: root.addPdfs(selectedFiles, {collection: shelfMenu.collection.id})
     }
     // A row of the navigator: an icon, a name, a count at the right.
     component NavigatorRow: ItemDelegate {
@@ -271,11 +277,11 @@ Item {
                     id: drop
                     anchors.fill: parent
                     keys: ["owelk/paper", "text/uri-list"]
-                    // A Library paper is filed here; PDF files from the desktop join the Library (moving into
-                    // the PDF folder like any dropped PDF) and are filed.
+                    // A Library paper is filed here; PDF files (or folders of them) from the desktop join the
+                    // Library like any added PDF (moving into the PDF folder) and are filed.
                     onDropped: function(event) {
                         if (event.source && event.source.paperUrls) researchStore.setDocumentsCollection(event.source.paperUrls, shelfRow.modelData.id, true)
-                        else researchStore.takeDroppedPdfs(event.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) }), shelfRow.modelData.id)
+                        else root.addPdfs(event.urls.filter(function(u) { return /\.pdf$/i.test(u.toString()) || researchStore.isFolder(u) }), {collection: shelfRow.modelData.id})
                     }
                 }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: { shelfMenu.collection = shelfRow.modelData; shelfMenu.popup() } }

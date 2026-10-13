@@ -1864,6 +1864,66 @@ private slots:
         QCOMPARE(store.resolvedSource(open), later);
         QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
     }
+    void addedPdfsAreCheckedForPapersAlreadyKept()
+    {
+        // Before anything moves, each PDF (and each one in an added folder) is checked against the Library:
+        // the same file, or the same paper by DOI, arXiv ID or title. The Library's own file is no duplicate.
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("library.namePdfs", "0"));
+        const auto title = QStringLiteral("Occupancy Grids for Legged Robots Walking Outdoors");
+        writeFixture(directory.filePath("kept.pdf"), title);
+        const auto taken = store.takePdfs({QUrl::fromLocalFile(directory.filePath("kept.pdf"))});
+        QCOMPARE(taken.size(), 1);
+        const auto kept = taken[0].toUrl();
+        QVERIFY(store.updateDocumentDetails(kept, {{"title", title}, {"doi", "10.1000/owelk.42"}, {"arxiv", "2401.01234v2"}}));
+        QVERIFY(QDir().mkpath(directory.filePath("Downloads/sub")));
+        const auto at = [&](const QString &name) { return directory.filePath("Downloads/" + name); };
+        QVERIFY(QFile::copy(kept.toLocalFile(), at("same bytes.pdf")));
+        writeFixture(at("sub/same title.pdf"), title, 9);
+        writeFixture(at("same doi.pdf"), "Another Version doi:10.1000/OWELK.42", 3);
+        writeFixture(at("same arxiv.pdf"), "Preprint arXiv:2401.01234v1", 4);
+        writeFixture(at("new paper.pdf"), "Something Entirely Different Here", 5);
+        writeFixture(at(".hidden.pdf"), "Hidden Paper Title Here", 2);
+        QSignalSpy inspected(&store, &ResearchStore::pdfsInspected);
+        const int request = store.inspectPdfs({QUrl::fromLocalFile(directory.filePath("Downloads")), kept});
+        QTRY_COMPARE_WITH_TIMEOUT(inspected.size(), 1, 20000);
+        QCOMPARE(inspected[0][0].toInt(), request);
+        QHash<QString, QVariantMap> byName;
+        for (const auto &value : inspected[0][1].toList()) byName.insert(value.toMap()["name"].toString(), value.toMap());
+        QCOMPARE(byName.size(), 6);
+        QVERIFY(!byName.contains(".hidden.pdf"));
+        QCOMPARE(byName["same bytes.pdf"]["reason"].toString(), QString("file"));
+        QCOMPARE(byName["same doi.pdf"]["reason"].toString(), QString("doi"));
+        QCOMPARE(byName["same arxiv.pdf"]["reason"].toString(), QString("arxiv"));
+        QCOMPARE(byName["same title.pdf"]["reason"].toString(), QString("title"));
+        QCOMPARE(byName["same title.pdf"]["relativeDir"].toString(), QString("sub"));
+        QCOMPARE(byName["same bytes.pdf"]["existingName"].toString(), QFileInfo(kept.toLocalFile()).fileName());
+        QCOMPARE(byName["same bytes.pdf"]["existing"].toUrl(), kept);
+        QVERIFY(!byName["new paper.pdf"]["duplicate"].toBool());
+        QVERIFY(!byName[QFileInfo(kept.toLocalFile()).fileName()]["duplicate"].toBool());
+        // Added anyway, the same bytes become a paper of their own (moved in like any added PDF), and a
+        // folder can become collections.
+        auto same = byName["same bytes.pdf"];
+        same.insert("separate", true);
+        const auto added = store.takePdfs({same, byName["new paper.pdf"], byName["same title.pdf"]},
+            {{"foldersAsCollections", true}});
+        QCOMPARE(added.size(), 3);
+        QVERIFY(!added.contains(kept));
+        QVERIFY(!QFileInfo::exists(at("same bytes.pdf")));
+        QCOMPARE(store.libraryDocuments().size(), 4);
+        const auto downloads = store.collections();
+        QVERIFY(std::any_of(downloads.begin(), downloads.end(), [](const QVariant &c) { return c.toMap()["name"] == "sub"; }));
+        // A download nobody needs goes to the Trash; a file a paper uses does not.
+        QVERIFY(!store.discardDownload(kept));
+        const auto stray = QUrl::fromLocalFile(store.papersFolder() + "/stray.pdf");
+        writeFixture(stray.toLocalFile(), "Stray Download Title Here", 2);
+        QVERIFY(store.discardDownload(stray));
+        QVERIFY(!QFileInfo::exists(stray.toLocalFile()));
+        QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+    }
     void deletedPapersWaitInTheTrash()
     {
         QTemporaryDir directory;

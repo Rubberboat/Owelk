@@ -659,24 +659,53 @@ Item {
             verify(workspace.droppable([dropped]))
             verify(!workspace.droppable(["file:///nowhere/notes.txt"]))
             const papers = researchStore.libraryDocuments({}).length
-            // One PDF: it moves into the PDF folder, joins the Library and opens.
+            // One PDF: once looked at, it moves into the PDF folder, joins the Library and opens.
             verify(workspace.dropFiles([dropped]))
-            tryCompare(workspace, "homeVisible", false)
+            tryCompare(workspace, "homeVisible", false, 10000)
             const g = Tree.find(workspace.documents.tree, workspace.documents.activeGroup)
             const tab = g.tabs.find(function(t) { return t.id === g.activeTab })
             verify(String(tab.source).indexOf(folder) === 0, String(tab.source))
             verify(!testInput.fileExists(dropped), "the dropped file left its folder")
             compare(researchStore.libraryDocuments({}).length, papers + 1)
             canvas()
-            // Many at once only join the Library.
+            // A folder of many (here, in a subfolder too): they only join the Library.
+            const where = testInput.temporaryFolder("drop folder/inner")
             const many = []
-            for (let i = 0; i < workspace.dropOpenLimit + 1; ++i) many.push(testInput.uniqueFixture("batch " + i + ".pdf"))
+            for (let i = 0; i < workspace.dropOpenLimit + 1; ++i) many.push(testInput.uniqueFixture("drop folder/" + (i % 2 ? "inner/" : "") + "batch " + i + ".pdf"))
             const count = function() { return Tree.leaves(workspace.documents.tree).reduce(function(n, leaf) { return n + leaf.tabs.length }, 0) }
             const tabs = count()
-            verify(workspace.dropFiles(many))
+            verify(workspace.dropFiles([researchStore.fileUrl(testInput.temporaryFolder("drop folder"))]))
+            tryVerify(function() { return researchStore.libraryDocuments({}).length === papers + 1 + many.length }, 15000)
             compare(count(), tabs)
-            compare(researchStore.libraryDocuments({}).length, papers + 1 + many.length)
             verify(many.every(function(url) { return !testInput.fileExists(url) }))
+        }
+        function test_aPaperAlreadyKeptIsOfferedInstead() {
+            workspace.documents.restore({}); workspace.showHome()
+            // The fixture is in the Library; a copy of it is dropped from elsewhere.
+            workspace.openDocument(fixtureSource); canvas()
+            workspace.documents.restore({}); workspace.showHome()
+            const dialog = findChild(workspace, "duplicateDialog")
+            const copy = testInput.copyFixture("the same paper again.pdf")
+            const papers = researchStore.libraryDocuments({}).length
+            verify(workspace.dropFiles([copy]))
+            tryCompare(dialog, "opened", true, 10000)
+            compare(dialog.items.length, 1)
+            compare(dialog.items[0].reason, "file")
+            compare(dialog.items[0].existingName, researchStore.fileName(fixtureSource))
+            // Open It: the copy already kept opens; the dropped file stays where it was.
+            mouseClick(findChild(dialog, "duplicateOpenExisting"))
+            tryCompare(dialog, "visible", false)
+            tryCompare(workspace, "homeVisible", false)
+            const g = Tree.find(workspace.documents.tree, workspace.documents.activeGroup)
+            verify(researchStore.sameSource(g.tabs.find(function(t) { return t.id === g.activeTab }).source, fixtureSource))
+            verify(testInput.fileExists(copy))
+            compare(researchStore.libraryDocuments({}).length, papers)
+            verify(workspace.notification.indexOf(researchStore.fileName(fixtureSource)) >= 0, workspace.notification)
+            // Add Anyway: a paper of its own, with no "same file" notice.
+            verify(workspace.dropFiles([copy]))
+            tryCompare(dialog, "opened", true, 10000)
+            mouseClick(findChild(dialog, "duplicateAddAnyway"))
+            tryVerify(function() { return researchStore.libraryDocuments({}).length === papers + 1 }, 10000)
         }
         function test_homeWebSearchChoosesItsEngine() {
             workspace.showHome()
