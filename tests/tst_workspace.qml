@@ -1054,7 +1054,22 @@ Item {
             // Closed, the panel is a thin rail.
             workspace.setTabsPanel(false)
             tryVerify(function() { return panel.width < 60 })
+            // There a paper shows its title's first letter instead of the paper icon.
+            const initial = visualChild(panel, "verticalTabInitial-" + a)
+            tryVerify(function() { return initial && initial.visible })
+            const title = Tree.tabTitle(Tree.leaves(d.tree)[0].tabs.find(function(t) { return t.id === a }), researchStore.displayName)
+            compare(initial.letter, panel.initialOf(title))
+            verify(initial.letter.length > 0)
+            compare(panel.initialOf("\u201cattention\u201d is all"), "A")
+            compare(panel.initialOf("  [3D] mapping"), "3")
+            compare(panel.initialOf("\ub17c\ubb38 \uc77d\uae30"), "\ub17c")
+            compare(panel.initialOf("\u2014"), "")
+            // Web pages, notes, Home and the Library keep their icons.
+            verify(!panel.isPaper({kind: "web"})); verify(!panel.isPaper({kind: "note"}))
+            verify(!panel.isPaper({kind: "home"})); verify(!panel.isPaper({kind: "library"}))
+            verify(panel.isPaper({source: "file:///a.pdf"}))
             workspace.setTabsPanel(true)
+            tryCompare(initial, "visible", false)
             Theme.verticalTabs = false
             tryCompare(panel, "visible", false)
             compare(view.stripHeight, Theme.barHeight)
