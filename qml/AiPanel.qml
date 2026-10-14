@@ -909,6 +909,7 @@ Item {
         spacing: 6
         // Attachments for the next turn; × removes one. Images show a thumbnail.
         Flow {
+            id: attachmentRow
             Layout.fillWidth: true; Layout.minimumWidth: 0
             spacing: 4
             visible: root.c && root.c.attachments.length > 0
@@ -943,6 +944,10 @@ Item {
                 TextArea {
                     id: question
                     objectName: "aiQuestion"
+                    // A click elsewhere in the window takes the cursor out (Main.qml); the box, its attachments
+                    // and the bar under it (send, model, attach) keep it.
+                    property bool releaseFocusOnOutsidePress: true
+                    property var keepFocusWithin: [composer, attachmentRow, bar]
                     placeholderText: root.showingThreads ? (root.askKind === "paper" ? "Ask about the paper…" : root.askKind === "general" ? "Ask in General…" : "Ask in this Thread…")
                                      : root.c && root.c.spec.scope === "library" ? (root.c.spec.collection ? "Ask this collection…" : "Ask your library…") : root.c && root.c.threadId.length ? "Ask a follow-up…" : "Ask about the paper…"
                     wrapMode: TextEdit.Wrap

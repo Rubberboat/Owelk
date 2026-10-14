@@ -85,6 +85,8 @@ Rectangle {
         }
     }
     function focusSearch() { searchInput.forceActiveFocus(); searchInput.selectAll() }
+    // Esc on an empty field: the cursor leaves it.
+    signal focusLeft()
     // A list in a slot of fixed height (rows rows): the rounded box grows with its rows up to the slot and
     // shows no more (the rest is in the Library), so the page keeps its layout however long each list is.
     readonly property real rowStep: Theme.rowHeight + 4
@@ -164,6 +166,9 @@ Rectangle {
                 TextField {
                     id: searchInput
                     objectName: "homeSearch"
+                    // A click elsewhere takes the cursor out (Main.qml); its results and engine chip keep it.
+                    property bool releaseFocusOnOutsidePress: true
+                    property var keepFocusWithin: [searchResults, engineChip]
                     Layout.fillWidth: true
                     implicitHeight: 40
                     rightPadding: engineChip.width + 12
@@ -183,7 +188,8 @@ Rectangle {
                     }
                     Keys.onDownPressed: searchResults.currentIndex = Math.min(root.rows.length - 1, searchResults.currentIndex + 1)
                     Keys.onUpPressed: searchResults.currentIndex = Math.max(0, searchResults.currentIndex - 1)
-                    Keys.onEscapePressed: clear()
+                    // Esc clears the field; on an empty one it takes the cursor out.
+                    Keys.onEscapePressed: if (text.length) clear(); else root.focusLeft()
                     // Where web searches go (the same choice as Settings › Web).
                     Chip {
                         id: engineChip

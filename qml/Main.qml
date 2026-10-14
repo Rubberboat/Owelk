@@ -503,6 +503,29 @@ ApplicationWindow {
         }
     }
     SettingsDialog { id: settingsDialog }
+    // A press anywhere else takes the cursor out of a text box that asks for it (releaseFocusOnOutsidePress: Home's
+    // search field, the AI question box); presses inside its keepFocusWithin items keep it. The layer only watches
+    // (a passive point handler), so every press still reaches what is under it.
+    function releaseFocusAt(at) {
+        const focus = window.activeFocusItem
+        if (!focus || !focus.releaseFocusOnOutsidePress) return
+        const inside = function(item) { return !!item && item.visible && item.contains(item.mapFromItem(null, at.x, at.y)) }
+        if (inside(focus) || (focus.keepFocusWithin || []).some(inside)) return
+        focusSink.forceActiveFocus()
+    }
+    // Where the cursor goes when it leaves a text box: an item that takes no keys of its own (the window's
+    // content would hand the focus straight back to the box).
+    Item { id: focusSink; objectName: "focusSink" }
+    Item {
+        objectName: "focusReleaseLayer"
+        parent: window.contentItem.parent
+        anchors.fill: parent
+        z: 100000
+        PointHandler {
+            acceptedButtons: Qt.AllButtons
+            onActiveChanged: if (active) window.releaseFocusAt(point.scenePosition)
+        }
+    }
     // Created on first use: the AI tab organizer.
     Loader { id: organizeTabs; active: false; sourceComponent: OrganizeTabsDialog { controller: documents } }
     // Created on first use: the AI paper comparison, for the PDFs open in a tab strip.
@@ -709,6 +732,7 @@ ApplicationWindow {
         }
         HomeView {
             id: homeView
+            onFocusLeft: focusSink.forceActiveFocus()
             visible: window.homeVisible
             Layout.fillWidth: true; Layout.fillHeight: true
             onOpenRequested: window.chooseFile()

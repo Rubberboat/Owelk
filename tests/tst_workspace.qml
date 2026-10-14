@@ -98,6 +98,36 @@ Item {
             tryVerify(function() { return Tree.leaves(workspace.documents.tree).some(function(g) { return g.tabs.some(function(t) { return researchStore.sameSource(t.source, paper) }) }) })
             compare(workspace.homeVisible, false)
         }
+        function test_clickElsewhereTakesTheCursorOut() {
+            workspace.documents.restore({})
+            // Keyboard focus needs an active window.
+            workspace.requestActivate()
+            tryVerify(function() { return workspace.active })
+            // Home's search field: a click elsewhere on Home takes the cursor out; Esc on an empty field too.
+            workspace.showHome()
+            const field = findChild(workspace, "homeSearch")
+            tryVerify(function() { return field.activeFocus })
+            const spot = field.mapToItem(null, -16, field.height / 2)
+            mouseClick(workspace.contentItem, spot.x, spot.y)
+            tryVerify(function() { return !field.activeFocus })
+            field.forceActiveFocus()
+            keyClick(Qt.Key_Escape)
+            tryVerify(function() { return !field.activeFocus })
+            // The AI question box: a click in the paper takes the cursor out.
+            workspace.openDocument(fixtureSource)
+            const c = canvas()
+            workspace.aiVisible = true
+            const ai = findChild(workspace, "aiController")
+            ai.newThread()
+            let question = null
+            tryVerify(function() { question = findChild(findChild(workspace, workspace.aiSide === "left" ? "leftDock" : "rightDock"), "aiQuestion"); return question !== null })
+            question.forceActiveFocus()
+            tryVerify(function() { return question.activeFocus })
+            mouseClick(c, c.width / 2, c.height / 2)
+            tryVerify(function() { return !question.activeFocus })
+            ai.showThreads()
+            workspace.aiVisible = false
+        }
         function test_backAndForwardShortcuts() {
             workspace.openDocument(fixtureSource); const c = canvas()
             workspace.homeVisible = false
