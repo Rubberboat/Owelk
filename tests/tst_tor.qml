@@ -196,6 +196,10 @@ Item {
             verify(!toggle.checked)
             compare(visualChild(page, "torStatus").text, "Off. Web tabs connect directly.")
             verify(!visualChild(page, "torNewIdentity").visible)
+            // Scrolled to it: the page is taller than the dialog (every search engine has a row).
+            const flick = findChild(settings, "settingsScroller").contentItem
+            flick.contentY = Math.max(0, Math.min(toggle.mapToItem(flick.contentItem, 0, 0).y - 40, flick.contentHeight - flick.height))
+            wait(80)
             mouseClick(toggle)
             verify(tor.enabled)
             tryCompare(tor, "state", "ready", 10000)
