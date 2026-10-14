@@ -27,9 +27,11 @@ QString ResearchStore::createAiThread(const QVariantMap &thread)
     auto title = thread.value("title").toString().simplified().left(160);
     if (title.isEmpty())
         title = source.isValid() && !source.isEmpty() ? displayName(source) : QStringLiteral("New thread");
-    // Started in a Thread of the reader's own, it stays there; otherwise it follows its paper.
+    // Started in a Thread (one of the reader's own, General, a paper's), it stays there; otherwise it
+    // follows its paper.
     auto topic = thread.value("topic").toString();
-    if (!topic.isEmpty() && !aiTopicIds().contains(topic)) topic.clear();
+    if (!isAiTopicKey(topic, aiTopicIds())) topic.clear();
+    topic = aiKeptTopic(topic, source.isValid() ? source.toString() : QString());
     QSqlQuery query(m_database);
     query.prepare("INSERT INTO ai_threads(id,title,provider,model,source,created_at,updated_at,topic_id) "
                   "VALUES(?,?,?,?,?,?,?,?)");
@@ -109,10 +111,35 @@ QSet<QString> ResearchStore::aiTopicIds() const
     return ids;
 }
 
+bool ResearchStore::isAiTopicKey(const QString &key, const QSet<QString> &topics)
+{
+    return topics.contains(key) || key == QStringLiteral("general")
+        || (key.startsWith(QStringLiteral("paper:")) && key.size() > 6);
+}
+
+QString ResearchStore::aiKeptTopic(const QString &key, const QString &source) const
+{
+    if (key.isEmpty() || aiTopicIds().contains(key)) return key;
+    return key == aiTopicFor(QUrl(source)) ? QString() : key;
+}
+
+QUrl ResearchStore::aiTopicSource(const QString &key) const
+{
+    if (!key.startsWith(QStringLiteral("paper:"))) return {};
+    const auto rest = key.mid(6);
+    QSqlQuery query(m_database);
+    query.prepare("SELECT url FROM documents WHERE id=?");
+    query.addBindValue(rest);
+    if (query.exec() && query.next()) return QUrl(query.value(0).toString());
+    // A paper outside the Library: its address.
+    const QUrl address(rest);
+    return address.scheme().isEmpty() ? QUrl() : address;
+}
+
 QString ResearchStore::aiChatTopic(
     const QString &topicId, const QString &source, const QSet<QString> &topics, QHash<QString, QString> *papers) const
 {
-    if (!topicId.isEmpty() && topics.contains(topicId)) return topicId;
+    if (!topicId.isEmpty() && isAiTopicKey(topicId, topics)) return topicId;
     if (source.isEmpty()) return QStringLiteral("general");
     if (!papers->contains(source)) papers->insert(source, aiTopicFor(QUrl(source)));
     return papers->value(source);
@@ -140,16 +167,20 @@ QVariantList ResearchStore::aiTopics() const
     QSqlQuery chats(m_database);
     chats.exec("SELECT topic_id,source,updated_at FROM ai_threads WHERE trashed_at IS NULL");
     while (chats.next()) {
-        const auto source = chats.value(1).toString(), updated = chats.value(2).toString();
-        const auto key = aiChatTopic(chats.value(0).toString(), source, topics, &papers);
+        const auto kept = chats.value(0).toString(), source = chats.value(1).toString();
+        const auto updated = chats.value(2).toString();
+        const auto key = aiChatTopic(kept, source, topics, &papers);
         auto &row = rows[key];
         if (row.isEmpty()) {
             const bool general = key == QStringLiteral("general");
-            const auto paper = resolvedSource(QUrl(source));
-            row = {{"key", key}, {"kind", general ? "general" : "paper"},
-                {"title", general ? QStringLiteral("General") : displayName(paper)}, {"chats", 0},
-                {"updatedAt", QString()}};
-            if (!general) row.insert("source", paper);
+            row = {{"key", key}, {"kind", general ? "general" : "paper"}, {"title", QStringLiteral("General")},
+                {"chats", 0}, {"updatedAt", QString()}};
+            if (!general) {
+                // A chat put in another paper's Thread names that paper, not its own.
+                const auto paper = kept == key ? aiTopicSource(key) : resolvedSource(QUrl(source));
+                row.insert("source", paper);
+                row.insert("title", paper.isEmpty() ? QStringLiteral("Paper") : displayName(paper));
+            }
         }
         row["chats"] = row.value("chats").toInt() + 1;
         if (updated > row.value("updatedAt").toString()) row["updatedAt"] = updated;
@@ -215,14 +246,19 @@ int ResearchStore::moveAiThreads(const QStringList &ids, const QString &topicId)
 {
     // An empty ID from QML may arrive as a null string, which SQLite would store as NULL.
     const auto topic = text(topicId);
-    if (!topic.isEmpty() && !aiTopicIds().contains(topic)) return 0;
+    if (!topic.isEmpty() && !isAiTopicKey(topic, aiTopicIds())) return 0;
     int moved = 0;
     for (const auto &id : ids) {
+        QSqlQuery source(m_database);
+        source.prepare("SELECT source FROM ai_threads WHERE id=?");
+        source.addBindValue(id);
+        if (!source.exec() || !source.next()) continue;
+        const auto kept = text(aiKeptTopic(topic, source.value(0).toString()));
         QSqlQuery query(m_database);
         query.prepare("UPDATE ai_threads SET topic_id=? WHERE id=? AND topic_id<>?");
-        query.addBindValue(topic);
+        query.addBindValue(kept);
         query.addBindValue(id);
-        query.addBindValue(topic);
+        query.addBindValue(kept);
         if (query.exec()) moved += query.numRowsAffected();
     }
     if (!moved) return 0;

@@ -279,8 +279,8 @@ public:
     Q_INVOKABLE bool renameAiThread(const QString &id, const QString &title);
     // The AI panel shows conversations ("chats", the threads above) in Threads: one per paper, made as
     // its chats are ("paper:<document>"), General for chats about no paper ("general"), and Threads of
-    // the reader's own (their ids), which may hold chats about several papers. A chat moved into one of
-    // those keeps it; otherwise it follows its paper.
+    // the reader's own (their ids), which may hold chats about several papers. A chat moved into a
+    // Thread (any of these) keeps it; otherwise it follows its paper.
     // [{key, kind (paper, general, custom), title, source (paper), chats, updatedAt}], newest first.
     Q_INVOKABLE QVariantList aiTopics() const;
     // The key of a paper's Thread ("general" for none).
@@ -289,7 +289,8 @@ public:
     Q_INVOKABLE bool renameAiTopic(const QString &id, const QString &title);
     // Its chats go back to their papers' Threads; none is deleted.
     Q_INVOKABLE bool deleteAiTopic(const QString &id);
-    // Into a Thread of one's own (its id), or back to their papers' ("").
+    // Into any Thread (a key from aiTopics: one of one's own, General, a paper's), where they stay, or
+    // back to their papers' ("").
     Q_INVOKABLE int moveAiThreads(const QStringList &ids, const QString &topicId);
     Q_INVOKABLE bool appendNoteLink(const QString &noteId, const QString &kind, const QString &id);
     int documentsRevision() const { return m_documentsRevision; }
@@ -469,10 +470,16 @@ private:
     int m_historyRevision = 0;
     QVariantMap annotationState(const QString &id) const;
     bool deleteAiThread(const QString &id);
-    // The Thread a chat shows in: its own when it has one that still exists, else its paper's.
+    // The Thread a chat shows in: the one it was put in when that still exists, else its paper's.
     QSet<QString> aiTopicIds() const;
     QString aiChatTopic(const QString &topicId, const QString &source, const QSet<QString> &topics,
         QHash<QString, QString> *papers) const;
+    // A Thread's key: one of the reader's own (topics), General or a paper's.
+    static bool isAiTopicKey(const QString &key, const QSet<QString> &topics);
+    // What a chat about source keeps for the Thread key: "" when its paper puts it there anyway.
+    QString aiKeptTopic(const QString &key, const QString &source) const;
+    // The paper a paper's Thread is about (empty when it is gone).
+    QUrl aiTopicSource(const QString &key) const;
     void revealAnchor(const QVariantMap &anchor);
     bool applyAnnotationState(const QString &id, const QVariantMap &state);
     void recordAnnotation(const QString &id, const QVariantMap &before, const QString &label);

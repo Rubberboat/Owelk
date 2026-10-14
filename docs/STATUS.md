@@ -23,6 +23,7 @@
 ## 이번 단계 (2026-10-12): 손에 익게
 
 - AI: Chat이 Thread에 모임(논문마다 자동 Thread, 여러 논문을 묶는 나만의 Thread; 스키마 17).
+- AI Thread 정리: 모든 Thread(General·논문·나만의)에 `…` 버튼(행에 마우스를 올리거나 선택했을 때, 위쪽 제목 줄 오른쪽)과 우클릭 메뉴: New Chat, Rename…(나만의), Merge Into ▸(다른 Thread로 Chat을 옮겨 합침), Delete Thread and Chats…(Chat은 Library의 Trash로, 되살릴 수 있음), Delete Thread, Keep Chats(나만의). Chat 행에도 `…`. Chat은 General·논문 Thread로도 옮길 수 있고 옮긴 곳에 남음. Thread 목록에서 질문하면 그 Thread에 새 Chat(논문 Thread는 그 논문, General은 논문 없이, All Chats는 앞에 열린 논문의 Thread, 없으면 General). 좁은 패널의 Threads 목록 아래에도 질문 칸. Chat을 열면 맨 아래(가장 최근 질문)부터 보이고, 답이 와도 보던 자리를 지킴.
 - 단축키 한눈에 보기: `?`, `⌘/`, 상태 표시줄 `?`, Help 메뉴, `/shortcuts`(`/list`).
 - 저장된 탭 중 열 수 없는 것만 빼고 나머지를 엶(전부 못 읽으면 탭 없이 시작, 원래 세션은 한 번 보관).
 - PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.

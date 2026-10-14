@@ -32,8 +32,31 @@ Item {
         function cleanupTestCase() {
             for (const t of researchStore.aiTopics()) if (t.kind === "custom") researchStore.deleteAiTopic(t.key)
             researchStore.purgeAiThreads(made)
+            researchStore.ai.clearApiKey("claude")
+            researchStore.setSetting("ai.consent.claude", "")
         }
         function chats() { return findChild(panel, "aiThreadList") }
+        // A visible item by objectName under item (findChild also finds menu items that are not shown).
+        function shown(item, name) {
+            if (item.objectName === name && item.visible) return item
+            const children = item.children || []
+            for (let i = 0; i < children.length; ++i) { const found = shown(children[i], name); if (found) return found }
+            return null
+        }
+        function menuItem(menu, name) {
+            for (let i = 0; i < menu.count; ++i) if (menu.itemAt(i) && menu.itemAt(i).objectName === name) return menu.itemAt(i)
+            return null
+        }
+        // A chat with many turns, long enough to scroll.
+        function longChat(title, turns) {
+            const id = chat(title, outlineSource)
+            for (let i = 0; i < turns; ++i) {
+                verify(researchStore.appendAiMessage(id, {role: "user", content: "Question " + i, display: "Question " + i}))
+                verify(researchStore.appendAiMessage(id, {role: "assistant", content: "Answer " + i + ". " + "Some words. ".repeat(30)}))
+            }
+            return id
+        }
+        function atEnd(view) { return view.count > 0 && Math.abs(view.contentY + view.height - view.contentHeight - view.originY) < 2 }
         function topicRow(title) {
             const list = findChild(panel, "aiTopicList")
             for (let i = 0; i < list.count; ++i) {
@@ -161,7 +184,160 @@ Item {
             tryCompare(column, "visible", false)
             compare(controller.topicKey, second)
             tryCompare(chats(), "count", 1)
+            // The question box stays below the Threads: asked there, it starts a chat in the Thread chosen.
+            mouseClick(back)
+            tryCompare(column, "visible", true)
+            const area = findChild(panel, "aiComposerArea"), box = findChild(panel, "aiQuestion")
+            verify(area.visible && box.visible)
+            verify(column.y + column.height <= area.y + 1)
+            compare(box.placeholderText, "Ask about the paper…")
             panel.width = 600
+        }
+        function test_7_everyThreadHasAMenuAndMerges() {
+            reader.source = outlineSource
+            const loose = chat("Loose", "")
+            panel.chooseTopic("")
+            // General has a menu too, from its "…" button (shown on hover) or a right-click.
+            const general = topicRow("General")
+            verify(general !== null)
+            mouseMove(general, general.width / 2, general.height / 2)
+            const more = shown(general, "aiTopicMore")
+            verify(more !== null)
+            mouseClick(more)
+            const menu = findChild(panel, "aiTopicMenu")
+            tryCompare(menu, "opened", true)
+            compare(menu.row.key, "general")
+            verify(!menuItem(menu, "aiRenameTopic").visible)
+            verify(!menuItem(menu, "aiDeleteTopic").visible)
+            verify(menuItem(menu, "aiTrashTopic").enabled)
+            menu.close()
+            tryCompare(menu, "opened", false)
+            // Merged into a Thread of one's own, its chats move there; that one merged into a paper's,
+            // they stay in the paper's Thread and the merged Thread goes.
+            panel.saveTopic("", "Gathered", [])
+            const gathered = controller.topicKey
+            mouseClick(topicRow("General"), 10, 10, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            const merge = findChild(panel, "aiMergeMenu")
+            const into = menuItem(merge, "aiMergeInto-Gathered")
+            verify(into !== null)
+            into.triggered()
+            menu.close()
+            tryVerify(function() { return researchStore.aiThread(loose).topic === gathered })
+            verify(topicRow("General") === null)
+            panel.chooseTopic(gathered)
+            mouseClick(findChild(panel, "aiMoreButton"))
+            tryCompare(menu, "opened", true)
+            compare(menu.row.key, gathered)
+            verify(menuItem(menu, "aiRenameTopic").visible)
+            menuItem(merge, "aiMergeInto-" + researchStore.displayName(linkSource)).triggered()
+            menu.close()
+            tryVerify(function() { return researchStore.aiThread(loose).topic === second })
+            compare(controller.topicKey, second)
+            verify(topicRow("Gathered") === null)
+            // A chat's "…" (on hover) moves it into any Thread, General too, and back out.
+            const list = chats()
+            tryVerify(function() { return list.count > 0 && list.itemAtIndex(0) !== null })
+            let row = null
+            for (let i = 0; i < list.count; ++i) if (list.itemAtIndex(i) && list.itemAtIndex(i).modelData.id === loose) row = list.itemAtIndex(i)
+            verify(row !== null)
+            mouseMove(row, row.width / 2, row.height / 2)
+            const chatMore = shown(row, "aiChatMore")
+            verify(chatMore !== null)
+            mouseClick(chatMore)
+            const chatMenu = findChild(panel, "aiThreadMenu")
+            tryCompare(chatMenu, "opened", true)
+            verify(findChild(panel, "aiRemoveFromTopic").visible)
+            const toGeneral = menuItem(findChild(panel, "aiMoveMenu"), "aiMoveTo-General")
+            verify(toGeneral !== null)
+            toGeneral.triggered()
+            chatMenu.close()
+            tryVerify(function() { return researchStore.aiThread(loose).topic === "general" })
+            // Deleted with its chats, a Thread's chats go to the Trash once confirmed.
+            panel.chooseTopic("general")
+            mouseClick(findChild(panel, "aiThreadTitle"), 10, 5, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            compare(menu.row.key, "general")
+            menuItem(menu, "aiTrashTopic").triggered()
+            menu.close()
+            const confirm = findChild(panel, "aiDeleteTopicDialog")
+            tryCompare(confirm, "opened", true)
+            confirm.accept()
+            tryVerify(function() { return researchStore.aiThread(loose).trashed === true })
+        }
+        function test_8_askingInAThreadStartsAChatThere() {
+            researchStore.setSetting("ai.baseUrl.claude", testInput.webFixture("/").toString())
+            researchStore.ai.provider = "claude"
+            verify(researchStore.ai.setApiKey("claude", "sk-ui-test-key"))
+            researchStore.ai.giveConsent("claude")
+            reader.source = outlineSource
+            const box = findChild(panel, "aiQuestion")
+            const ask = function(key, question) {
+                controller.showThreads()
+                panel.chooseTopic(key)
+                tryCompare(controller, "conversationOpen", false)
+                box.forceActiveFocus()
+                box.text = question
+                keyClick(Qt.Key_Return)
+                compare(box.text, "")
+                compare(controller.conversationOpen, true)
+                tryCompare(controller, "streaming", false, 10000)
+                verify(controller.threadId.length > 0)
+                made.push(controller.threadId)
+                compare(controller.messages.length, 2)
+                return researchStore.aiThread(controller.threadId)
+            }
+            // General: a chat about no paper, in General, even with a paper in front.
+            panel.chooseTopic("general")
+            compare(box.placeholderText, "Ask in General…")
+            let asked = ask("general", "Anything new?")
+            compare(asked.topic, "general")
+            compare(asked.source.toString(), "")
+            compare(controller.topicKey, "general")
+            // A paper's Thread (not the paper in front): a chat about that paper, there.
+            asked = ask(second, "What is the main claim?")
+            compare(asked.topic, second)
+            verify(researchStore.sameSource(asked.source, linkSource))
+            // One's own: it stays there; All Chats: the paper in front's Thread.
+            panel.saveTopic("", "Asked here", [])
+            const own = controller.topicKey
+            asked = ask(own, "Compare them?")
+            compare(asked.topic, own)
+            asked = ask("", "And this one?")
+            compare(asked.topic, first)
+            compare(controller.topicKey, "")
+            // + in General starts a chat about no paper.
+            panel.chooseTopic("general")
+            mouseClick(findChild(panel, "aiNewThread"))
+            compare(controller.conversationOpen, true)
+            compare(controller.spec.source, undefined)
+            controller.showThreads()
+        }
+        function test_9_aChatOpensAtItsLatestTurn() {
+            reader.source = outlineSource
+            panel.chooseTopic(first)
+            const many = longChat("Long", 15), other = longChat("Other", 12)
+            const view = findChild(panel, "aiConversation")
+            verify(controller.openThread(many, true))
+            tryVerify(function() { return view.count === 30 && view.contentHeight > view.height * 2 })
+            tryVerify(function() { return atEnd(view) })
+            wait(200)
+            verify(atEnd(view))
+            // Scrolled up there, another chat still opens at its end; so does the first one again.
+            view.contentY = view.originY
+            verify(!view.following)
+            controller.showThreads()
+            verify(controller.openThread(other, true))
+            tryVerify(function() { return view.count === 24 && atEnd(view) })
+            controller.showThreads()
+            verify(controller.openThread(many, true))
+            tryVerify(function() { return view.count === 30 && atEnd(view) })
+            // An answer coming in reloads the chat: it stays at the end.
+            verify(researchStore.appendAiMessage(many, {role: "user", content: "One more", display: "One more"}))
+            verify(researchStore.appendAiMessage(many, {role: "assistant", content: "Last answer."}))
+            controller.thread = researchStore.aiThread(many)
+            tryVerify(function() { return view.count === 32 && atEnd(view) })
+            controller.showThreads()
         }
     }
 }

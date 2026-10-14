@@ -63,6 +63,15 @@ Item {
     property string topicKey: ""
     function isCustomTopic(key) { return !!key && key !== "general" && key.indexOf("paper:") !== 0 }
     function chooseTopic(key) { topicKey = key || "" }
+    // The Thread a new chat started from the panel stays in (startIn), whatever it attaches.
+    property string keepIn: ""
+    // The paper a paper's Thread is about ("" for the others).
+    function topicSource(key) {
+        if (!key || key.indexOf("paper:") !== 0) return ""
+        if (readerPaper.length && researchStore.aiTopicFor(reader.source) === key) return reader.source
+        const row = researchStore.aiTopics().find(function(t) { return t.key === key })
+        return row && row.source ? row.source : ""
+    }
     // Another paper in front: the panel turns to its Thread, and a conversation about a different paper
     // gives way to that Thread's chats. Inside a Thread of the reader's own everything stays: its chats
     // may be about several papers.
@@ -184,6 +193,7 @@ Item {
         stop()
         answer = ""; error = ""; pendingQuestion = ""; usedModel = ""; truncated = false
         thinkingText = ""; thinkingSeconds = 0
+        keepIn = ""
     }
     // Attaching (a figure or region, the selection, a picture) adds to the conversation open in the AI panel, even
     // while the panel is hidden, or starts one; a page translation starts its own thread.
@@ -201,14 +211,36 @@ Item {
         if (spec.action === "ask") focusRequested()
         else send("")
     }
+    // The whole paper with the first question (from the page in front when it is the reader's).
+    function paperSpec(paper) {
+        if (!paper || !paper.toString().length) return ({})
+        return {source: paper, scope: "paper", page: reader && researchStore.sameSource(reader.source, paper) ? reader.currentPage || 0 : 0}
+    }
     // A new conversation about the given paper (or the one in the reader).
     function newThread(source) {
         reset()
         threadId = ""; thread = ({})
-        const paper = source !== undefined && source.toString().length ? source : reader && reader.source ? reader.source : ""
-        spec = paper.toString().length ? {source: paper, scope: "paper", page: reader && researchStore.sameSource(reader.source, paper) ? reader.currentPage || 0 : 0} : ({})
+        spec = paperSpec(source !== undefined && source.toString().length ? source : reader && reader.source ? reader.source : "")
         conversationOpen = true
         focusRequested()
+    }
+    // A new chat in a Thread, which it stays in: about the Thread's paper, about no paper (General), or
+    // about the paper in front (a Thread of the reader's own).
+    function startIn(key) {
+        const paper = key === "general" ? "" : isCustomTopic(key) ? (readerPaper.length ? reader.source : "") : topicSource(key)
+        reset()
+        threadId = ""; thread = ({})
+        spec = paperSpec(paper)
+        keepIn = key
+        conversationOpen = true
+        focusRequested()
+    }
+    // A question asked from a Thread's list: a new chat there, with what was attached meanwhile.
+    function askIn(key, question) {
+        const added = spec
+        startIn(key)
+        spec = Object.assign({}, spec, added)
+        return send(question)
     }
     // Opened from the panel's list, the panel stays on the Thread it shows (All Chats included);
     // from elsewhere (Home, search, a link), it turns to the chat's Thread.
@@ -277,8 +309,12 @@ Item {
                         imageNames: images.map(function(i) { return i.name || "" })}
         if (efforts.length) choice.effort = effectiveEffort
         if (effectiveFast) choice.fast = true
-        // A new chat started in a Thread of the reader's own stays there; otherwise it follows its paper.
-        if (!threadId.length && isCustomTopic(topicKey)) choice.topic = topicKey
+        // A new chat started in a Thread (or while one of the reader's own is shown) stays there;
+        // otherwise it follows its paper.
+        if (!threadId.length) {
+            const keep = keepIn || (isCustomTopic(topicKey) ? topicKey : "")
+            if (keep.length) choice.topic = keep
+        }
         request = ai.ask(Object.assign({}, spec, choice))
         images = []
         return true

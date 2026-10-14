@@ -1493,7 +1493,7 @@ private slots:
             return QVariantMap();
         };
         const auto a1 = chat("A1", first), a2 = chat("A2", first), b1 = chat("B1", second);
-        chat("G1", QUrl());
+        const auto g1 = chat("G1", QUrl());
         // One Thread per paper, made as its chats are, and General for chats about no paper.
         const auto paperA = store.aiTopicFor(first), paperB = store.aiTopicFor(second);
         QVERIFY(paperA.startsWith("paper:"));
@@ -1543,6 +1543,23 @@ private slots:
         QCOMPARE(topic(paperA)["chats"].toInt(), 3);
         QCOMPARE(store.aiThreads().size(), 6);
         QVERIFY(!store.deleteAiTopic(own));
+        // Any Thread keeps the chats put in it: General one about a paper, a paper's Thread one about
+        // another paper or none (still named after its paper). Put back where its paper puts it, a chat
+        // follows its paper again.
+        QCOMPARE(store.moveAiThreads({b1, c1}, "general"), 2);
+        QCOMPARE(store.moveAiThreads({g1}, paperB), 1);
+        QCOMPARE(store.aiThread(b1)["topic"].toString(), QString("general"));
+        QCOMPARE(store.aiThread(g1)["topic"].toString(), paperB);
+        QCOMPARE(topic("general")["chats"].toInt(), 2);
+        QCOMPARE(topic(paperB)["chats"].toInt(), 1);
+        QCOMPARE(topic(paperB)["title"].toString(), store.displayName(second));
+        QCOMPARE(store.aiThread(chat("E1", first, "general"))["topic"].toString(), QString("general"));
+        QCOMPARE(store.moveAiThreads({b1}, paperB), 1);
+        QCOMPARE(store.aiThread(b1)["topic"].toString(), paperB);
+        QCOMPARE(store.moveAiThreads({b1}, paperB), 0); // Already there.
+        QCOMPARE(store.moveAiThreads({g1}, "general"), 1);
+        QCOMPARE(store.aiThread(g1)["topic"].toString(), QString("general"));
+        QCOMPARE(store.aiThreads().size(), 7);
     }
     void oneTrashForPapersNotesAndConversations()
     {
