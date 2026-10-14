@@ -53,57 +53,90 @@ ColumnLayout {
             }
         }
     }
+    // Every engine: the default (a small accent pill), shown on Home's engine button or hidden there,
+    // and engines of one's own (a site such as google.com is enough), which can be removed.
     SettingsGroup {
-        title: "Browsing"
-        note: "The start page opens with " + Platform.keys("Ctrl+L") + " when no web tab is in front. Home's web search can switch the engine too, and arxiv: or scholar: before the words searches there just once."
-        SettingsRow {
-            label: "Search with"
-            ComboBox {
-                objectName: "searchEngineBox"
-                Layout.preferredWidth: 200
-                model: root.engines.map(function(e) { return e.name })
-                currentIndex: Math.max(0, root.engines.findIndex(function(e) { return e.template === root.defaultEngine }))
-                onActivated: function(index) { WebSearch.setDefault(researchStore, root.engines[index].template); root.revision++ }
-            }
-        }
-        // Engines of one's own: a name and the search address, %s standing for the words; each can be the
-        // default above (and on Home's engine button) or removed.
+        objectName: "searchEngineGroup"
+        title: "Search engines"
+        note: "Home's web search starts on the default engine; its engine button offers the ones shown here. arxiv: or scholar: before the words searches there just once."
         Repeater {
-            model: root.engines.filter(function(e) { return !WebSearch.isBuiltIn(e.template) })
+            model: root.engines
             delegate: SettingsRow {
+                id: engineRow
                 required property var modelData
+                readonly property bool isDefault: root.defaultEngine === modelData.template
+                readonly property bool isHidden: (root.revision, WebSearch.hidden(researchStore).indexOf(modelData.template) >= 0) && !isDefault
+                objectName: "engineRow-" + modelData.name
                 label: modelData.name
                 detail: modelData.template
+                opacity: isHidden ? .55 : 1
+                // Small and quiet; the default one is filled with the accent.
+                AbstractButton {
+                    objectName: "defaultEngine-" + engineRow.modelData.name
+                    implicitWidth: defaultLabel.implicitWidth + 14; implicitHeight: Theme.controlHeightSmall - 4
+                    checkable: true
+                    checked: engineRow.isDefault
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: height / 2
+                        color: engineRow.isDefault ? Theme.accent : parent.hovered ? Theme.hover : "transparent"
+                        border.color: engineRow.isDefault ? Theme.accent : Theme.border
+                    }
+                    contentItem: Label {
+                        id: defaultLabel
+                        text: "Default"
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        font.pixelSize: Theme.fontCaption
+                        color: engineRow.isDefault ? Theme.onAccent : Theme.textSecondary
+                    }
+                    onClicked: { WebSearch.setDefault(researchStore, engineRow.modelData.template); root.revision++ }
+                }
                 IconButton {
-                    objectName: "removeEngine-" + modelData.name
+                    objectName: "showEngine-" + engineRow.modelData.name
+                    enabled: !engineRow.isDefault
+                    icon.name: engineRow.isHidden ? "hidden" : "preview"
+                    tint: engineRow.isHidden ? Theme.textDisabled : Theme.icon
+                    description: engineRow.isDefault ? "The default engine is always shown" : engineRow.isHidden ? "Show on Home's engine button" : "Hide from Home's engine button"
+                    onClicked: { WebSearch.setHidden(researchStore, engineRow.modelData.template, !engineRow.isHidden); root.revision++ }
+                }
+                IconButton {
+                    visible: !WebSearch.isBuiltIn(engineRow.modelData.template)
+                    objectName: "removeEngine-" + engineRow.modelData.name
                     icon.name: "trash"; description: "Remove"
-                    onClicked: { WebSearch.remove(researchStore, modelData.template); root.revision++ }
+                    onClicked: { WebSearch.remove(researchStore, engineRow.modelData.template); root.revision++ }
                 }
             }
         }
+        // A site is enough ("google.com"); its search address and name are filled in.
         SettingsRow {
-            label: "Add an engine"
-            detail: "Its search address, with %s where the words go."
             wide: true
-            TextField { id: engineName; objectName: "engineNameField"; Layout.preferredWidth: 120; placeholderText: "Name" }
+            detail: engineAddress.text.trim().length ? (root.typedTemplate.length ? "\u2192 " + root.typedTemplate : "Type a site such as google.com, or an address with %s for the words.") : ""
             TextField {
                 id: engineAddress
                 objectName: "engineAddressField"
                 Layout.fillWidth: true
-                placeholderText: "https://example.org/search?q=%s"
+                placeholderText: "Add a site (google.com) or an address with %s"
                 onAccepted: addEngine.clicked()
             }
+            TextField { id: engineName; objectName: "engineNameField"; Layout.preferredWidth: 130; placeholderText: root.typedName.length ? root.typedName : "Name" }
             Button {
                 id: addEngine
                 objectName: "addEngine"
                 text: "Add"
-                enabled: engineName.text.trim().length > 0 && engineAddress.text.indexOf("%s") >= 0
+                enabled: root.typedTemplate.length > 0
                 onClicked: {
-                    if (WebSearch.add(researchStore, engineName.text, engineAddress.text)) { engineName.clear(); engineAddress.clear(); root.revision++ }
-                    else researchStore.notify("Use a web address with %s where the words go, not one already listed.")
+                    const name = engineName.text.trim().length ? engineName.text : root.typedName
+                    if (WebSearch.add(researchStore, name, root.typedTemplate)) { engineName.clear(); engineAddress.clear(); root.revision++ }
+                    else researchStore.notify("That engine is already listed.")
                 }
             }
         }
+    }
+    readonly property string typedTemplate: WebSearch.templateFor(engineAddress.text)
+    readonly property string typedName: WebSearch.nameFor(engineAddress.text)
+    SettingsGroup {
+        title: "Browsing"
+        note: "The start page opens with " + Platform.keys("Ctrl+L") + " when no web tab is in front."
         SettingsRow {
             label: "Start page"
             wide: true

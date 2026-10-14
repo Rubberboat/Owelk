@@ -800,6 +800,13 @@ Item {
             compare(Tree.addressToUrl("slam", home.searchController.webTemplate), "https://arxiv.org/search/?query=slam&searchtype=all")
             researchStore.setSetting("searchEngine", "")
             tryCompare(chip, "text", "Scholar")
+            // Engines hidden in Settings › Web leave the menu; the default one always stays.
+            const all = menu.count
+            const duck = Tree.searchEngines.find(function(e) { return e.name === "DuckDuckGo" }).template
+            researchStore.setSetting("web.hiddenEngines", JSON.stringify([duck, Tree.searchEngines[0].template]))
+            tryCompare(menu, "count", all - 1)
+            researchStore.setSetting("web.hiddenEngines", "")
+            tryCompare(menu, "count", all)
         }
         function test_oneFieldForTheLibraryAndTheWeb() {
             workspace.showHome()

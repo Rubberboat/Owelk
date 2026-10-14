@@ -58,6 +58,7 @@ splitDown rows-2
 symbols sigma
 gloss languages
 preview eye
+hidden eye-off
 check check
 home house
 library library

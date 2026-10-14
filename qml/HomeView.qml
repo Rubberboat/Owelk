@@ -207,7 +207,7 @@ Rectangle {
                             id: engineMenu
                             objectName: "homeSearchEngineMenu"
                             Instantiator {
-                                model: (searchModel.enginesRevision, WebSearch.all(researchStore))
+                                model: (searchModel.enginesRevision, WebSearch.shown(researchStore))
                                 delegate: MenuItem {
                                     required property var modelData
                                     objectName: "homeEngine-" + modelData.label

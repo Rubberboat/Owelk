@@ -57,29 +57,56 @@ Item {
             tryVerify(function() { return page() !== null })
             const name = visualChild(settings.contentItem, "engineNameField"), address = visualChild(settings.contentItem, "engineAddressField")
             const add = visualChild(settings.contentItem, "addEngine")
-            // An address without %s cannot be added.
-            name.text = "Semantic"; address.text = "https://www.semanticscholar.org/"
+            // Neither a site nor an address with %s: nothing to add.
+            name.text = ""; address.text = "semantic scholar"
             verify(!add.enabled)
-            address.text = "https://www.semanticscholar.org/search?q=%s"
+            // An address with %s is taken as it is, under the name typed.
+            name.text = "Semantic"; address.text = "https://www.semanticscholar.org/search?q=%s"
             verify(add.enabled)
             add.clicked()
             tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Semantic") !== null })
             compare(name.text, "")
-            // Chosen as the default: searches go there, named after it.
-            const box = visualChild(settings.contentItem, "searchEngineBox")
-            const at = box.model.indexOf("Semantic")
-            verify(at >= Tree.searchEngines.length)
-            box.activated(at)
+            // Chosen as the default (the small pill): searches go there, named after it.
+            visualChild(settings.contentItem, "defaultEngine-Semantic").clicked()
             const template = "https://www.semanticscholar.org/search?q=%s"
             compare(researchStore.setting("searchEngine"), template)
+            tryVerify(function() { return visualChild(settings.contentItem, "defaultEngine-Semantic").checked })
             compare(Tree.searchEngine(template).label, "Semantic")
             compare(Tree.webIntent("slam", template).title, "Search Semantic for \u201cslam\u201d")
             compare(Tree.webIntent("slam", template).url, "https://www.semanticscholar.org/search?q=slam")
+            // The default is always shown; its eye cannot hide it.
+            verify(!visualChild(settings.contentItem, "showEngine-Semantic").enabled)
             // Removed, the first built-in engine is the default again.
             visualChild(settings.contentItem, "removeEngine-Semantic").clicked()
             compare(researchStore.setting("searchEngine"), Tree.searchEngines[0].template)
             tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Semantic") === null })
-            compare(box.model.indexOf("Semantic"), -1)
+            // A site is enough: its search address and name are filled in.
+            address.text = "www.naver.com"
+            compare(page().typedTemplate, "https://search.naver.com/search.naver?query=%s")
+            compare(name.placeholderText, "Naver")
+            add.clicked()
+            tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Naver") !== null })
+            address.text = "example.org/"
+            compare(page().typedTemplate, "https://example.org/search?q=%s")
+            compare(page().typedName, "Example")
+            address.text = ""
+            visualChild(settings.contentItem, "removeEngine-Naver").clicked()
+            tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Naver") === null })
+        }
+        function test_hiddenEngineShowsCrossedEye() {
+            settings.openPage("web"); tryCompare(settings, "opened", true)
+            let eye = null
+            tryVerify(function() { eye = visualChild(settings.contentItem, "showEngine-DuckDuckGo"); return eye !== null })
+            const duck = Tree.searchEngines.find(function(e) { return e.name === "DuckDuckGo" }).template
+            compare(eye.icon.name, "preview")
+            eye.clicked()
+            tryVerify(function() { return eye.icon.name === "hidden" })
+            verify(visualChild(settings.contentItem, "engineRow-DuckDuckGo").opacity < 1, "dimmed")
+            verify(JSON.parse(researchStore.setting("web.hiddenEngines")).indexOf(duck) >= 0)
+            eye.clicked()
+            tryVerify(function() { return eye.icon.name === "preview" })
+            compare(visualChild(settings.contentItem, "engineRow-DuckDuckGo").opacity, 1)
+            researchStore.setSetting("web.hiddenEngines", "")
         }
         function test_categoriesLoadOneAtATime() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)
