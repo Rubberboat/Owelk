@@ -70,7 +70,13 @@ ColumnLayout {
         SettingsRow {
             visible: root.keepPdfs
             label: "Name files after their papers"
-            detail: "\u201cAuthor Year - Title.pdf\u201d in the PDF folder. A paper open in a tab for a while is renamed the next time Owelk starts."
+            detail: "\u201cAuthor Year - Title.pdf\u201d in the PDF folder. A paper open in a tab for a while is renamed the next time Owelk starts, or now with Rename Now (also in a paper\u2019s menu and a Library selection). Off, files keep their names until renamed by hand, then after the title alone."
+            Button {
+                objectName: "renameKeptPdfs"
+                text: "Rename Now"
+                enabled: !researchStore.copyingPdfs
+                onClicked: researchStore.renamePapersToTitles(researchStore.libraryDocuments({}).map(function(d) { return d.url }))
+            }
             Switch {
                 objectName: "namePdfsSwitch"
                 checked: researchStore.setting("library.namePdfs", "1") === "1"

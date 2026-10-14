@@ -6,6 +6,7 @@ import "../qml/WorkspaceTree.js" as Tree
 Item {
     width: 1440; height: 930
     App.Main { id: workspace }
+    Component { id: paperMenuComponent; App.PaperMenu {} }
     TestCase {
         name: "Library"
         when: windowShown
@@ -152,6 +153,27 @@ Item {
             compare(view.view, "papers")
             tryVerify(function() { return view.rows.some(function(r) { return researchStore.sameSource(r.url, copy) }) })
             compare(view.trashCount, 0)
+        }
+        function test_keptPdfOffersRenameAfterPaper() {
+            // Only Owelk's own copy (in its PDF folder) offers Rename File After Paper.
+            const keeping = researchStore.setting("library.keepPdfs", "1")
+            researchStore.setSetting("library.keepPdfs", "1")
+            const copy = testInput.uniqueFixture("rename me.pdf")
+            const kept = researchStore.adoptPdf(copy)
+            researchStore.setSetting("library.keepPdfs", keeping)
+            verify(researchStore.rememberDocument(kept))
+            verify(researchStore.keptByOwelk(kept))
+            verify(!researchStore.keptByOwelk(copy))
+            const papers = createTemporaryObject(paperMenuComponent, workspace)
+            papers.show({url: kept, title: "Rename me"})
+            tryCompare(papers.menu, "opened", true)
+            verify(findChild(papers.menu, "renameToTitleOption").visible)
+            papers.menu.close()
+            tryCompare(papers.menu, "opened", false)
+            papers.show({url: copy, title: "Rename me"})
+            tryCompare(papers.menu, "opened", true)
+            verify(!findChild(papers.menu, "renameToTitleOption").visible)
+            papers.menu.close()
         }
         function test_newCollectionButton() {
             workspace.documents.openLibrary({})

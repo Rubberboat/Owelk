@@ -66,6 +66,13 @@ Item {
             onTriggered: researchStore.setExcludedFromIndex(root.paper.url, !root.paper.excluded)
         }
         MenuItem { text: "Locate Original PDF…"; onTriggered: researchStore.requestRelink(root.paper.url) }
+        // Owelk's own copy named after its paper now (also while open in a tab, or with naming off: the title).
+        MenuItem {
+            objectName: "renameToTitleOption"
+            visible: menu.opened && researchStore.keptByOwelk(root.paper.url); height: visible ? implicitHeight : 0
+            text: "Rename File After Paper"
+            onTriggered: researchStore.renamePapersToTitles([root.paper.url])
+        }
         MenuSeparator {}
         MenuItem {
             objectName: "removeRecentOption"

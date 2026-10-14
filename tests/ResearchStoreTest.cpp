@@ -1883,6 +1883,25 @@ private slots:
         store.namePdfFiles();
         QCOMPARE(store.resolvedSource(open), later);
         QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+        // Renamed by hand (a paper's menu, a Library selection, Settings › Data): at once, with naming off
+        // the title alone. A file outside the PDF folder is never Owelk's to rename.
+        QVERIFY(store.keptByOwelk(later));
+        QVERIFY(!store.keptByOwelk(QUrl::fromLocalFile(first)));
+        QSignalSpy relinked(&store, &ResearchStore::sourceRelinked);
+        QCOMPARE(store.renamePapersToTitles({later, QUrl::fromLocalFile(first)}), 1);
+        const auto byHand = QUrl::fromLocalFile(store.papersFolder() + "/Renamed Again.pdf");
+        QCOMPARE(store.resolvedSource(open), byHand);
+        QVERIFY(QFileInfo::exists(byHand.toLocalFile()));
+        QVERIFY(QFileInfo::exists(first));
+        QCOMPARE(relinked.size(), 1);
+        QCOMPARE(store.renamePapersToTitles({byHand}), 0); // Already so named.
+        // With naming on, by hand gives the full name too.
+        QVERIFY(store.updateDocumentDetails(byHand, {{"title", "Renamed Again"}, {"authors", "Ada Lovelace"}, {"year", "1843"}}));
+        QVERIFY(store.setSetting("library.namePdfs", "1"));
+        QCOMPARE(store.renamePapersToTitles({byHand}), 1);
+        QCOMPARE(store.resolvedSource(open),
+            QUrl::fromLocalFile(store.papersFolder() + "/Lovelace 1843 - Renamed Again.pdf"));
+        QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
     }
     void addedPdfsAreCheckedForPapersAlreadyKept()
     {

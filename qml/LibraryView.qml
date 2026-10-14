@@ -194,6 +194,7 @@ Rectangle {
         MenuItem { text: "Add to Favorites"; onTriggered: batchMenu.urls.forEach(function(u) { researchStore.setFavorite(u, true) }) }
         MenuSeparator {}
         MenuItem { text: "Copy BibTeX"; onTriggered: { researchStore.copyText(researchStore.bibtex(batchMenu.urls)); researchStore.notify("BibTeX copied.") } }
+        MenuItem { objectName: "batchRenameToTitles"; text: "Rename Files After Papers"; onTriggered: researchStore.renamePapersToTitles(batchMenu.urls) }
         MenuSeparator {}
         MenuItem {
             objectName: "batchDeletePapers"; text: "Delete Papers"; palette.windowText: Theme.danger

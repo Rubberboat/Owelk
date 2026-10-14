@@ -29,7 +29,7 @@
 - PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.
 - PDF 폴더 바꾸기: Settings → Data → PDF folder → `Change…`. 이미 있던 PDF도 새 폴더로 옮기고 주석·노트 연결은 그대로.
 - 추가할 때 중복 확인: 끌어 넣거나 + (Add PDFs…·Add Folder…)로 추가할 때, 웹에서 받을 때 이미 있는 논문(같은 파일, DOI·arXiv 번호·제목이 같은 논문)이면 묻고, `Open It`은 있는 것을 열고 그 파일 이름을 알려 줌. 폴더째 끌어 넣기(하위 폴더 포함)와 메뉴로 추가한 PDF도 PDF 폴더로 옮김(Settings → Data → Adding PDFs에서 복사로 바꿈).
-- PDF 파일 이름: PDF 폴더의 파일은 논문 정보가 생기거나 바뀌면 `저자 연도 - 제목.pdf`로 바뀜(같은 이름이면 번호). 한동안 탭에 열려 있던 논문은 다음 실행 때. Settings → Data에서 끔.
+- PDF 파일 이름: PDF 폴더의 파일은 논문 정보가 생기거나 바뀌면 `저자 연도 - 제목.pdf`로 바뀜(같은 이름이면 번호). 한동안 탭에 열려 있던 논문은 다음 실행 때. Settings → Data에서 끔. 원본(x-or-b)의 수동 이름 바꾸기도 가져옴: 논문 메뉴 `Rename File After Paper`, Library 선택 `Rename Files After Papers`, Settings → Data `Rename Now`(열려 있는 논문도 바로; 자동 이름이 꺼져 있으면 제목만). Owelk PDF 폴더의 파일만 바꾸고, 노트·주석은 그대로.
 - Windows 설치: `tools/install-local.ps1`(x-or-b의 스크립트에 winget이 자기 자신을 부르던 문제와 32비트 PowerShell 문제 수정).
 - 웹 검색: Home 웹 검색 칸 오른쪽에서 Scholar·arXiv·Google·DuckDuckGo를 바로 고름. 어디서든 `arxiv: 단어`, `scholar: 단어`로 한 번만 다른 곳에서 검색.
 - Tor로 웹 보기: Settings → Web → Browse through Tor(기본 꺼짐, 각자 켬). 켜면 Owelk가 Tor를 직접 띄워 웹 탭과 Home 웹 검색만 Tor로 내보냄(출구 나라 선택, New Identity, 웹 탭 도구 막대의 Tor 칩). 논문 정보·인용·AI·의미 검색은 그대로 직접 연결. Tor가 준비 전이거나 없으면 직접 연결로 새지 않고 기다리며, 켜고 끄는 순간에 요청한 페이지도 새 경로가 잡힐 때까지 기다림(Chromium이 바뀐 프록시를 다음 요청 때에야 읽기 때문). 설치 스크립트가 Tor를 한 번 물어봄(macOS `brew install tor`, Windows는 torproject.org의 Tor Expert Bundle을 SHA-256 확인 후 받음, `-Tor`).

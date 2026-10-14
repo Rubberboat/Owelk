@@ -51,6 +51,14 @@ bool renameOnDisk(const QString &from, const QString &to)
         && QFile::rename(from, to);
 }
 
+// Already named stem, or so with the number another file of that name made necessary.
+bool namedAs(const QString &current, const QString &stem)
+{
+    const QRegularExpression numbered(
+        "^" + QRegularExpression::escape(stem) + " \\(\\d+\\)$", QRegularExpression::CaseInsensitiveOption);
+    return current.compare(stem, Qt::CaseInsensitive) == 0 || numbered.match(current).hasMatch();
+}
+
 // The Library's file for a PDF: a path the Library already uses stays; identical bytes map to the
 // paper that has them; anything else is copied into the PDF folder, or with `move` moved there (from
 // another disk: copied, checked byte for byte, and the original sent to the system Trash). The input
@@ -238,39 +246,87 @@ void ResearchStore::namePdfFiles(bool starting)
         const auto stem = PaperMetadataText::paperFileStem(
             query.value(1).toString(), query.value(2).toString(), query.value(3).toString());
         if (stem.isEmpty()) continue;
-        // Already so named, or so with the number another file of that name made necessary.
-        const auto current = info.completeBaseName();
-        const QRegularExpression numbered(
-            "^" + QRegularExpression::escape(stem) + " \\(\\d+\\)$", QRegularExpression::CaseInsensitiveOption);
-        if (current.compare(stem, Qt::CaseInsensitive) == 0 || numbered.match(current).hasMatch()) continue;
+        if (namedAs(info.completeBaseName(), stem)) continue;
         renames.append({info.absoluteFilePath(), stem, query.value(4).toString()});
     }
     query.finish();
     int named = 0;
-    for (const auto &item : std::as_const(renames)) {
-        const auto target = uniqueFile(m_papers, item.stem + ".pdf");
-        // A file another program holds open (on Windows) is named on a later pass.
-        if (!renameOnDisk(item.from, target)) continue;
-        const auto from = QUrl::fromLocalFile(item.from), to = QUrl::fromLocalFile(target);
-        QString error;
-        if (!applyRelink(from, to, item.hash, &error)) {
-            QFile::rename(target, item.from);
-            continue;
-        }
-        if (!item.hash.isEmpty()) FileFingerprint::remember(target, FileFingerprint::stamp(target), item.hash);
-        m_relinks.insert(from.toString(), to.toString());
-        m_index->relocateSource(from, to);
-        QSqlQuery pending(m_database);
-        pending.prepare("UPDATE sync_files SET local=? WHERE local=?");
-        pending.addBindValue(target);
-        pending.addBindValue(item.from);
-        pending.exec();
-        emit sourceRelinked(from, to);
-        ++named;
-    }
+    // A file another program holds open (on Windows) is named on a later pass.
+    for (const auto &item : std::as_const(renames))
+        if (renameKeptPdf(item.from, item.stem, item.hash)) ++named;
     if (!named) return;
     loadDocumentNames();
     announceDocumentsChanged();
+}
+
+bool ResearchStore::renameKeptPdf(const QString &path, const QString &stem, const QString &hash)
+{
+    const auto target = uniqueFile(m_papers, stem + ".pdf");
+    if (!renameOnDisk(path, target)) return false;
+    const auto from = QUrl::fromLocalFile(path), to = QUrl::fromLocalFile(target);
+    QString error;
+    if (!applyRelink(from, to, hash, &error)) {
+        QFile::rename(target, path);
+        return false;
+    }
+    if (!hash.isEmpty()) FileFingerprint::remember(target, FileFingerprint::stamp(target), hash);
+    m_relinks.insert(from.toString(), to.toString());
+    m_index->relocateSource(from, to);
+    QSqlQuery pending(m_database);
+    pending.prepare("UPDATE sync_files SET local=? WHERE local=?");
+    pending.addBindValue(target);
+    pending.addBindValue(path);
+    pending.exec();
+    emit sourceRelinked(from, to);
+    return true;
+}
+
+bool ResearchStore::keptByOwelk(const QUrl &source) const
+{
+    const auto url = resolvedSource(source);
+    if (!url.isLocalFile()) return false;
+    const QFileInfo info(url.toLocalFile());
+    return info.isFile() && info.absolutePath() == m_papers;
+}
+
+int ResearchStore::renamePapersToTitles(const QVariantList &sources)
+{
+    if (m_copyingPdfs || m_relinking) {
+        emit message("PDFs are being copied or moved; rename them once that is done.");
+        return 0;
+    }
+    const bool full = setting("library.namePdfs", "1") == "1";
+    int renamed = 0, held = 0;
+    for (const auto &value : sources) {
+        const auto from = resolvedSource(value.toUrl());
+        if (!keptByOwelk(from)) continue;
+        QSqlQuery query(m_database);
+        query.prepare("SELECT title,authors,year,sha256 FROM documents WHERE url=? AND removed_at IS NULL");
+        query.addBindValue(from.toString());
+        if (!query.exec() || !query.next()) continue;
+        PaperMetadata paper;
+        paper.title = query.value(0).toString();
+        const auto stem = full ? PaperMetadataText::paperFileStem(paper.title, query.value(1).toString(), query.value(2).toString())
+                               : PaperMetadataText::fileStem(paper);
+        const auto hash = query.value(3).toString();
+        query.finish();
+        const auto path = from.toLocalFile();
+        if (stem.isEmpty() || namedAs(QFileInfo(path).completeBaseName(), stem)) continue;
+        if (renameKeptPdf(path, stem, hash)) ++renamed;
+        else ++held;
+    }
+    if (renamed) {
+        loadDocumentNames();
+        announceDocumentsChanged();
+    }
+    if (held)
+        emit message(QString("Renamed %1 of %2 PDFs; the rest are open in another program.").arg(renamed).arg(renamed + held));
+    else if (renamed)
+        emit message(renamed == 1 ? QString("Renamed the PDF after its paper.")
+                                  : QString("Renamed %1 PDFs after their papers.").arg(renamed));
+    else
+        emit message("No PDF needed a new name (only Owelk's own copies of papers with a known title are renamed).");
+    return renamed;
 }
 
 bool ResearchStore::choosePapersFolder(const QUrl &folder)

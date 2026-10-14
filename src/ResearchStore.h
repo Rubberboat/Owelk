@@ -87,6 +87,12 @@ public:
     // paper open in a tab for a while keeps its file until the next start, so no reader reloads under
     // the reader (a fresh one, just dropped or downloaded, is named at once).
     Q_INVOKABLE void namePdfFiles(bool starting = false);
+    // The same at once for the papers given (a paper's menu, a Library selection, Settings › Data), papers
+    // open in a tab included (they follow their file); with library.namePdfs off, the title alone. Only
+    // Owelk's own copies with a known title are renamed; answers how many were.
+    Q_INVOKABLE int renamePapersToTitles(const QVariantList &sources);
+    // Whether a paper's file is Owelk's own copy, in the PDF folder: the only files ever renamed.
+    Q_INVOKABLE bool keptByOwelk(const QUrl &source) const;
     // The URL to open for a PDF: the Library's own copy (made now if needed) while PDFs are kept.
     Q_INVOKABLE QUrl adoptPdf(const QUrl &source);
     // Library papers whose file is still outside papers/, and copying them in (one by one, each
@@ -437,6 +443,9 @@ private:
         const QVariantList &sources, const QString &collectionId, bool move, const QSet<QString> &separate = {});
     QString collectionAt(const QString &parent, const QStringList &names, int *made);
     void scheduleNamingPdfs();
+    // A kept PDF renamed to stem (numbered when taken), its paper following it; false when the file
+    // could not be renamed (held open elsewhere) or the paper not moved.
+    bool renameKeptPdf(const QString &path, const QString &stem, const QString &hash);
     bool m_namingPending = false;
     QSet<QString> openSources() const;
     static QString defaultPapersFolder(const QString &directory);
