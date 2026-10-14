@@ -33,19 +33,22 @@ Popup {
             action("search"), action("commands"),
             fixed("Keyboard Shortcuts", ["?", "Ctrl+/"]),
             fixed("Open PDF", ["Ctrl+O"]), fixed("Settings", ["Ctrl+,"]),
-            action("home"), action("library"), action("newNote"), action("openWeb"), action("tabsPanel")]},
+            action("home"), action("library"), action("openWeb")]},
         {title: "Tabs", rows: [
             action("newTab"), action("closeTab"), action("reopenTab"), action("nextTab"), action("previousTab"),
             fixed("Next / Previous Tab", ["Ctrl+Shift+]", "Ctrl+Shift+["]),
             fixed("Next or Last Used Tab (Settings › Appearance)", [mac ? "Meta+Tab" : "Ctrl+Tab"]),
             fixed("Tab 1–8 / Last Tab", ["Ctrl+1…8", "Ctrl+9"])]},
+        {title: "Panels", rows: [
+            action("tabsPanel"), action("filesPanel"), action("documentPanel"), action("annotations"), action("aiPanel")]},
         {title: "Reading", rows: [
-            fixed("Previous / Next Page", ["Ctrl+[", "Ctrl+]"]),
+            action("previousPage"), action("nextPage"),
             action("jumpBack"), action("jumpForward"),
             fixed("Find in This PDF", ["Ctrl+F"]),
             fixed("Zoom In / Out", ["Ctrl+Plus", "Ctrl+-"]),
+            action("fitWidth"), action("fitPage"),
             fixed("Copy Selected Text", ["Ctrl+C"]),
-            action("markRegion"),
+            action("highlight"), action("comment"), action("markRegion"), action("darkPages"),
             fixed("Undo / Redo Annotation", ["Ctrl+Z", mac ? "Ctrl+Shift+Z" : "Ctrl+Y"]),
             fixed("Delete Selected Mark", ["Delete"]),
             fixed("Stop Drawing or Marking", ["Esc"]),
@@ -53,7 +56,8 @@ Popup {
         {title: "Splits", rows: [
             action("splitRight"), action("splitDown"), action("moveRight"), action("moveDown"),
             action("nextSplit"), action("previousSplit")]},
-        {title: "AI and Notes", rows: [
+        {title: "Notes and AI", rows: [
+            action("newNote"), action("askAi"),
             fixed("Send Question", ["Return"]), fixed("New Line in a Question", ["Shift+Return"]),
             fixed("Done with a Note (saves)", ["Esc"])]}
     ]

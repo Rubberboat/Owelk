@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import Owelk.Ui
 import "Platform.js" as Platform
+import "Shortcuts.js" as Shortcuts
 
 Rectangle {
     id: root
@@ -346,7 +347,7 @@ Rectangle {
                 spacing: 3
                 IconButton {
                     objectName: "previousPage"; icon.name: "back"; implicitWidth: 24
-                    description: "Previous page · " + Platform.keys("Ctrl+["); enabled: canvas.currentPage > 0
+                    description: "Previous page" + (root.keysFor("previousPage").length ? " · " + Platform.keys(root.keysFor("previousPage")) : ""); enabled: canvas.currentPage > 0
                     onClicked: { root.activated(); canvas.previousPage() }
                 }
                 TextField {
@@ -364,7 +365,7 @@ Rectangle {
                 Label { text: "/ " + canvas.pageCount; color: Theme.textTertiary }
                 IconButton {
                     objectName: "nextPage"; icon.name: "forward"; implicitWidth: 24
-                    description: "Next page · " + Platform.keys("Ctrl+]"); enabled: canvas.currentPage < canvas.pageCount - 1
+                    description: "Next page" + (root.keysFor("nextPage").length ? " · " + Platform.keys(root.keysFor("nextPage")) : ""); enabled: canvas.currentPage < canvas.pageCount - 1
                     onClicked: { root.activated(); canvas.nextPage() }
                 }
             }
@@ -696,15 +697,19 @@ Rectangle {
         enabled: root.isActive && canvas.ready && (researchStore.historyRevision, researchStore.canRedo(root.source))
         onActivated: researchStore.redo(root.source)
     }
+    // Page keys as set in Settings › Shortcuts.
+    property var keyOverrides: Shortcuts.parse(researchStore.setting("shortcuts"))
+    Connections { target: researchStore; function onSettingsChanged() { root.keyOverrides = Shortcuts.parse(researchStore.setting("shortcuts")) } }
+    function keysFor(id) { return Shortcuts.keys(id, keyOverrides, Qt.platform.os) }
     Shortcut {
         objectName: "previousPageShortcut"
-        sequence: "Ctrl+["
+        sequence: root.keysFor("previousPage")
         enabled: root.isActive && canvas.ready
         onActivated: canvas.previousPage()
     }
     Shortcut {
         objectName: "nextPageShortcut"
-        sequence: "Ctrl+]"
+        sequence: root.keysFor("nextPage")
         enabled: root.isActive && canvas.ready
         onActivated: canvas.nextPage()
     }

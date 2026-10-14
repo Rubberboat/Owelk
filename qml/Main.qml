@@ -89,6 +89,12 @@ ApplicationWindow {
     // Reader actions bring the AI panel forward and start a thread there.
     function showAi() { setPanelShown("ai", true); closeOthers("ai") }
     function askAi(spec) { showAi(); aiController.begin(spec) }
+    // Ask AI (shortcut): about the selection in the paper in front, or a new chat about that paper.
+    function askAiNow() {
+        if (!homeVisible && currentReader && currentReader.selectedText.length) { currentReader.askAboutSelection(); return }
+        showAi()
+        aiController.newThread()
+    }
     function openAiThread(id) { if (aiController.openThread(id)) showAi() }
     // The Document panel's Annotations view (the reader toolbar button opens and closes it).
     function toggleAnnotations() {
@@ -484,9 +490,18 @@ ApplicationWindow {
             Action { text: "Zoom out"; shortcut: StandardKey.ZoomOut; enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.zoom(1 / 1.2) }
             Action { objectName: "jumpBackAction"; text: "Back to Previous Spot"; shortcut: window.keys("jumpBack"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.goBack() }
             Action { objectName: "jumpForwardAction"; text: "Forward to Next Spot"; shortcut: window.keys("jumpForward"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.goForward() }
-            Action { objectName: "fitWidthAction"; text: "Fit Width"; enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitWidth() }
-            Action { objectName: "fitPageAction"; text: "Fit Page"; enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitPage() }
+            Action { objectName: "fitWidthAction"; text: "Fit Width"; shortcut: window.keys("fitWidth"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitWidth() }
+            Action { objectName: "fitPageAction"; text: "Fit Page"; shortcut: window.keys("fitPage"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitPage() }
             Action { objectName: "markRegionAction"; text: "Mark Region"; shortcut: window.keys("markRegion"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.setTool("area") }
+            Action { objectName: "highlightAction"; text: "Highlight Selection"; shortcut: window.keys("highlight"); enabled: !window.homeVisible && !!window.currentReader; onTriggered: window.currentReader.useHighlight() }
+            Action { objectName: "commentAction"; text: "Comment"; shortcut: window.keys("comment"); enabled: !window.homeVisible && !!window.currentReader; onTriggered: window.currentReader.setTool("comment") }
+            Action { objectName: "darkPagesAction"; text: "Dark Pages"; shortcut: window.keys("darkPages"); checkable: true; checked: Theme.invertPages; enabled: Theme.canInvertPages; onTriggered: Theme.invertPages = checked }
+            Action { objectName: "askAiAction"; text: "Ask AI"; shortcut: window.keys("askAi"); enabled: !window.restoreFailed; onTriggered: window.askAiNow() }
+            MenuSeparator {}
+            Action { objectName: "filesPanelAction"; text: "Library Panel"; shortcut: window.keys("filesPanel"); onTriggered: window.togglePanel("files") }
+            Action { objectName: "documentPanelAction"; text: "Document Panel"; shortcut: window.keys("documentPanel"); onTriggered: window.togglePanel("document") }
+            Action { objectName: "annotationsAction"; text: "Annotations"; shortcut: window.keys("annotations"); enabled: !window.homeVisible; onTriggered: window.toggleAnnotations() }
+            Action { objectName: "aiPanelAction"; text: "AI Chat"; shortcut: window.keys("aiPanel"); onTriggered: window.togglePanel("ai") }
             MenuSeparator {}
             Action { objectName: "splitRightAction"; text: "Duplicate to Right Split"; shortcut: window.keys("splitRight"); enabled: !window.homeVisible && window.canSwitchTabs; onTriggered: documents.duplicateSplit("right") }
             Action { objectName: "splitDownAction"; text: "Duplicate to Bottom Split"; shortcut: window.keys("splitDown"); enabled: !window.homeVisible && window.canSwitchTabs; onTriggered: documents.duplicateSplit("bottom") }

@@ -1084,6 +1084,52 @@ Item {
             researchStore.setSetting("shortcuts", "{}")
             compare(workspace.keys("newTab"), "Ctrl+T")
         }
+        function test_shortcutsInSectionsAndTheNewOnes() {
+            const settings = findChild(workspace, "settingsDialog")
+            settings.openPage("shortcuts"); tryCompare(settings, "opened", true)
+            tryVerify(function() { return visualChild(settings.contentItem, "shortcutSection-Reading") !== null })
+            for (const name of ["Search and places", "Tabs", "Splits", "Panels", "Reading", "Notes and AI"])
+                verify(visualChild(settings.contentItem, "shortcutSection-" + name), name)
+            // Next Page set to keys of one's own; the reader answers them.
+            const button = visualChild(visualChild(settings.contentItem, "shortcutSection-Reading"), "shortcut-nextPage")
+            verify(button)
+            button.clicked()
+            testInput.keyClick(button, Qt.Key_Y, Qt.ControlModifier | Qt.ShiftModifier)
+            compare(JSON.parse(researchStore.setting("shortcuts")).nextPage, "Ctrl+Shift+Y")
+            settings.close(); tryCompare(settings, "visible", false)
+            workspace.documents.restore({})
+            workspace.openDocument(fixtureSource); const c = canvas()
+            workspace.homeVisible = false
+            c.jump(0, 0, 0); tryCompare(c, "restoring", false)
+            testInput.keyClick(workspace.currentReader, Qt.Key_Y, Qt.ControlModifier | Qt.ShiftModifier)
+            tryCompare(c, "currentPage", 1)
+            compare(visualChild(workspace.currentReader, "nextPage").description.indexOf("Next page · "), 0)
+            researchStore.setSetting("shortcuts", "{}")
+            // The new View actions.
+            const annotations = findChild(workspace, "annotationsAction")
+            annotations.trigger()
+            tryCompare(workspace, "documentVisible", true); compare(workspace.navigationMode, 1)
+            annotations.trigger()
+            tryCompare(workspace, "documentVisible", false)
+            findChild(workspace, "commentAction").trigger()
+            compare(c.tool, "comment")
+            findChild(workspace, "commentAction").trigger()
+            compare(c.tool, "")
+            findChild(workspace, "highlightAction").trigger()
+            compare(c.tool, "highlight")
+            findChild(workspace, "highlightAction").trigger()
+            compare(c.tool, "")
+            // Ask AI without a selection: a new chat about the paper in front.
+            const ai = findChild(workspace, "aiController")
+            workspace.aiVisible = false
+            findChild(workspace, "askAiAction").trigger()
+            tryCompare(workspace, "aiVisible", true)
+            compare(ai.conversationOpen, true)
+            verify(researchStore.sameSource(ai.spec.source, fixtureSource))
+            findChild(workspace, "aiPanelAction").trigger()
+            tryCompare(workspace, "aiVisible", false)
+            ai.reset(); ai.showThreads()
+        }
         function test_relatedTabAsksOnlyWhenShown() {
             workspace.documents.restore({})
             workspace.openDocument(fixtureSource); canvas()

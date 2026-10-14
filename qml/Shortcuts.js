@@ -3,28 +3,42 @@
 // Customizable shortcuts: one list feeds the menus and Settings → Shortcuts. "Ctrl" is Command on macOS.
 // Linux and Windows defaults avoid Ctrl+Alt+arrows (desktops use them to switch workspaces) and
 // Ctrl+Alt+\ (AltGr on many keyboards).
+// Settings › Shortcuts shows them in these sections, in this order.
+const groups = ["Search and places", "Tabs", "Splits", "Panels", "Reading", "Notes and AI"]
 const actions = [
-    {id: "search", name: "Search", mac: "Ctrl+K", other: "Ctrl+K"},
-    {id: "commands", name: "Command Palette", mac: "Ctrl+Shift+P", other: "Ctrl+Shift+P"},
-    {id: "home", name: "Home", mac: "Ctrl+Shift+H", other: "Ctrl+Shift+H"},
-    {id: "library", name: "Library", mac: "Ctrl+Shift+L", other: "Ctrl+Shift+L"},
-    {id: "tabsPanel", name: "Show or Hide Vertical Tabs", mac: "Ctrl+Shift+B", other: "Ctrl+Shift+B"},
-    {id: "newTab", name: "New Tab", mac: "Ctrl+T", other: "Ctrl+T"},
-    {id: "closeTab", name: "Close Tab", mac: "Ctrl+W", other: "Ctrl+W"},
-    {id: "reopenTab", name: "Reopen Closed Tab", mac: "Ctrl+Shift+T", other: "Ctrl+Shift+T"},
-    {id: "nextTab", name: "Next Tab", mac: "Ctrl+Alt+Right", other: "Ctrl+PgDown"},
-    {id: "previousTab", name: "Previous Tab", mac: "Ctrl+Alt+Left", other: "Ctrl+PgUp"},
-    {id: "newNote", name: "New Note", mac: "Ctrl+Shift+N", other: "Ctrl+Shift+N"},
-    {id: "openWeb", name: "Open Web Page", mac: "Ctrl+L", other: "Ctrl+L"},
-    {id: "jumpBack", name: "Back to Previous Spot", mac: "Alt+Left", other: "Alt+Left"},
-    {id: "jumpForward", name: "Forward to Next Spot", mac: "Alt+Right", other: "Alt+Right"},
-    {id: "markRegion", name: "Mark Region", mac: "Ctrl+Shift+C", other: "Ctrl+Shift+C"},
-    {id: "splitRight", name: "Duplicate to Right Split", mac: "Ctrl+\\", other: "Ctrl+\\"},
-    {id: "splitDown", name: "Duplicate to Bottom Split", mac: "Ctrl+Alt+\\", other: "Ctrl+Shift+\\"},
-    {id: "moveRight", name: "Move Tab to Right Split", mac: "Ctrl+Shift+Alt+Right", other: "Ctrl+Shift+Alt+."},
-    {id: "moveDown", name: "Move Tab to Bottom Split", mac: "Ctrl+Shift+Alt+Down", other: "Ctrl+Shift+Alt+,"},
-    {id: "nextSplit", name: "Focus Next Split", mac: "Ctrl+Alt+Down", other: "Ctrl+Alt+."},
-    {id: "previousSplit", name: "Focus Previous Split", mac: "Ctrl+Alt+Up", other: "Ctrl+Alt+,"}
+    {id: "search", group: "Search and places", name: "Search", mac: "Ctrl+K", other: "Ctrl+K"},
+    {id: "commands", group: "Search and places", name: "Command Palette", mac: "Ctrl+Shift+P", other: "Ctrl+Shift+P"},
+    {id: "home", group: "Search and places", name: "Home", mac: "Ctrl+Shift+H", other: "Ctrl+Shift+H"},
+    {id: "library", group: "Search and places", name: "Library", mac: "Ctrl+Shift+L", other: "Ctrl+Shift+L"},
+    {id: "openWeb", group: "Search and places", name: "Open Web Page", mac: "Ctrl+L", other: "Ctrl+L"},
+    {id: "newTab", group: "Tabs", name: "New Tab", mac: "Ctrl+T", other: "Ctrl+T"},
+    {id: "closeTab", group: "Tabs", name: "Close Tab", mac: "Ctrl+W", other: "Ctrl+W"},
+    {id: "reopenTab", group: "Tabs", name: "Reopen Closed Tab", mac: "Ctrl+Shift+T", other: "Ctrl+Shift+T"},
+    {id: "nextTab", group: "Tabs", name: "Next Tab", mac: "Ctrl+Alt+Right", other: "Ctrl+PgDown"},
+    {id: "previousTab", group: "Tabs", name: "Previous Tab", mac: "Ctrl+Alt+Left", other: "Ctrl+PgUp"},
+    {id: "splitRight", group: "Splits", name: "Duplicate to Right Split", mac: "Ctrl+\\", other: "Ctrl+\\"},
+    {id: "splitDown", group: "Splits", name: "Duplicate to Bottom Split", mac: "Ctrl+Alt+\\", other: "Ctrl+Shift+\\"},
+    {id: "moveRight", group: "Splits", name: "Move Tab to Right Split", mac: "Ctrl+Shift+Alt+Right", other: "Ctrl+Shift+Alt+."},
+    {id: "moveDown", group: "Splits", name: "Move Tab to Bottom Split", mac: "Ctrl+Shift+Alt+Down", other: "Ctrl+Shift+Alt+,"},
+    {id: "nextSplit", group: "Splits", name: "Focus Next Split", mac: "Ctrl+Alt+Down", other: "Ctrl+Alt+."},
+    {id: "previousSplit", group: "Splits", name: "Focus Previous Split", mac: "Ctrl+Alt+Up", other: "Ctrl+Alt+,"},
+    {id: "tabsPanel", group: "Panels", name: "Vertical Tabs", mac: "Ctrl+Shift+B", other: "Ctrl+Shift+B"},
+    {id: "filesPanel", group: "Panels", name: "Library Panel", mac: "Ctrl+Shift+E", other: "Ctrl+Shift+E"},
+    {id: "documentPanel", group: "Panels", name: "Document Panel", mac: "Ctrl+Shift+O", other: "Ctrl+Shift+O"},
+    {id: "annotations", group: "Panels", name: "Annotations", mac: "Ctrl+Shift+M", other: "Ctrl+Shift+M"},
+    {id: "aiPanel", group: "Panels", name: "AI Chat", mac: "Ctrl+Shift+I", other: "Ctrl+Shift+I"},
+    {id: "previousPage", group: "Reading", name: "Previous Page", mac: "Ctrl+[", other: "Ctrl+["},
+    {id: "nextPage", group: "Reading", name: "Next Page", mac: "Ctrl+]", other: "Ctrl+]"},
+    {id: "jumpBack", group: "Reading", name: "Back to Previous Spot", mac: "Alt+Left", other: "Alt+Left"},
+    {id: "jumpForward", group: "Reading", name: "Forward to Next Spot", mac: "Alt+Right", other: "Alt+Right"},
+    {id: "fitWidth", group: "Reading", name: "Fit Width", mac: "Ctrl+0", other: "Ctrl+0"},
+    {id: "fitPage", group: "Reading", name: "Fit Page", mac: "Ctrl+Alt+0", other: "Ctrl+Alt+0"},
+    {id: "highlight", group: "Reading", name: "Highlight Selection", mac: "Ctrl+Meta+H", other: "Ctrl+Alt+H"},
+    {id: "comment", group: "Reading", name: "Comment", mac: "Ctrl+Meta+M", other: "Ctrl+Alt+M"},
+    {id: "markRegion", group: "Reading", name: "Mark Region", mac: "Ctrl+Shift+C", other: "Ctrl+Shift+C"},
+    {id: "darkPages", group: "Reading", name: "Dark Pages", mac: "Ctrl+Shift+D", other: "Ctrl+Shift+D"},
+    {id: "newNote", group: "Notes and AI", name: "New Note", mac: "Ctrl+Shift+N", other: "Ctrl+Shift+N"},
+    {id: "askAi", group: "Notes and AI", name: "Ask AI (the selection, or the paper)", mac: "Ctrl+Shift+A", other: "Ctrl+Shift+A"}
 ]
 
 function defaultKeys(id, os) {

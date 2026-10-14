@@ -26,6 +26,12 @@ TestCase {
         compare(Shortcuts.fromEvent(Qt.Key_Shift, Qt.ShiftModifier, ""), "")
         compare(Shortcuts.fromEvent(Qt.Key_Y, 0, "y"), "") // A plain letter is typing, not a shortcut.
         compare(Shortcuts.fromEvent(Qt.Key_F5, 0, ""), "F5")
+        // Every action sits in a section, and every section has some.
+        verify(Shortcuts.actions.every(function(a) { return Shortcuts.groups.indexOf(a.group) >= 0 }))
+        verify(Shortcuts.groups.every(function(g) { return Shortcuts.actions.some(function(a) { return a.group === g }) }))
+        compare(Shortcuts.defaultKeys("previousPage", "linux"), "Ctrl+[")
+        compare(Shortcuts.defaultKeys("highlight", "osx"), "Ctrl+Meta+H")
+        compare(Shortcuts.defaultKeys("highlight", "windows"), "Ctrl+Alt+H")
     }
     function test_shortcutHintsFollowThePlatform() {
         if (Qt.platform.os === "osx") {
