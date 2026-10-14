@@ -419,5 +419,63 @@ Item {
             compare(researchStore.aiThread(kept).topic, first)
             verify(!trashed(kept))
         }
+        // By key: a paper's title may change once its details are read.
+        function keyRow(key) {
+            const list = findChild(panel, "aiTopicList")
+            for (let i = 0; i < list.count; ++i) {
+                list.positionViewAtIndex(i, ListView.Contain)
+                const row = list.itemAtIndex(i)
+                if (row && row.modelData.key === key) return row
+            }
+            return null
+        }
+        function test_9zz_aPaperThreadEmptiedGoesEvenForThePaperInFront() {
+            verify(researchStore.rememberDocument(fixtureSource))
+            const paper = researchStore.aiTopicFor(fixtureSource)
+            reader.source = fixtureSource
+            tryCompare(controller, "topicKey", paper)
+            // Before its first chat, the paper in front shows its Thread.
+            tryVerify(function() { return keyRow(paper) !== null })
+            compare(keyRow(paper).modelData.chats, 0)
+            // Its only chat moved to the Trash: the Thread goes too, and All Chats shows.
+            const fx = chat("Fx", fixtureSource)
+            tryVerify(function() { return keyRow(paper) !== null && keyRow(paper).modelData.chats === 1 })
+            panel.trashThreads([fx])
+            tryVerify(function() { return keyRow(paper) === null })
+            compare(findChild(panel, "aiThreadTitle").text, "All Chats")
+            tryVerify(function() { return chats().count > 0 })
+            // Back from the Trash, it is there again; deleted with its chats (after asking), it goes.
+            verify(researchStore.trashAiThreads([fx], false) === 1)
+            tryVerify(function() { return keyRow(paper) !== null })
+            mouseClick(keyRow(paper), 10, 10, Qt.RightButton)
+            const menu = findChild(panel, "aiTopicMenu"), confirm = findChild(panel, "aiDeleteTopicDialog")
+            tryCompare(menu, "opened", true)
+            menuItem(menu, "aiTrashTopic").triggered()
+            menu.close()
+            tryCompare(confirm, "opened", true)
+            confirm.accept()
+            tryVerify(function() { return keyRow(paper) === null && researchStore.aiThread(fx).trashed === true })
+            // It stays gone after the Trash is emptied, until a new chat about the paper.
+            researchStore.purgeAiThreads([fx])
+            reader.source = ""; reader.source = fixtureSource
+            wait(50)
+            verify(keyRow(paper) === null)
+            const again = chat("Fx again", fixtureSource)
+            tryVerify(function() { return keyRow(paper) !== null && keyRow(paper).modelData.chats === 1 })
+            // The empty Thread of the paper in front can be deleted too (asks; it has no chats).
+            researchStore.purgeAiThreads([again])
+            tryVerify(function() { return keyRow(paper) !== null && keyRow(paper).modelData.chats === 0 })
+            mouseClick(keyRow(paper), 10, 10, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            const item = menuItem(menu, "aiTrashTopic")
+            verify(item.enabled)
+            item.triggered()
+            menu.close()
+            tryCompare(confirm, "opened", true)
+            verify(confirm.message.indexOf("Are you sure?") >= 0)
+            confirm.accept()
+            tryVerify(function() { return keyRow(paper) === null })
+            researchStore.setSetting("ai.hiddenPaperThreads", "")
+        }
     }
 }

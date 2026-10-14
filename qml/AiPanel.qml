@@ -28,7 +28,7 @@ Item {
         if (!ids.length) return
         if (ids.indexOf(c.threadId) >= 0) c.showThreads()
         selectedThreads = []
-        researchStore.trashAiThreads(ids)
+        emptying(function() { researchStore.trashAiThreads(ids) })
     }
     // One chat goes to the Trash at once; several (a selection) only after asking.
     function askTrashThreads(ids) {
@@ -43,19 +43,55 @@ Item {
     readonly property real topicWidth: Math.round(Math.min(200, Math.max(140, width * .3)))
     property bool topicsOpen: false
     property int topicRevision: 0
-    Connections { target: researchStore; function onAiThreadsChanged() { root.topicRevision++ } }
+    Connections { target: researchStore; function onAiThreadsChanged() { root.reviveHiddenPapers(); root.topicRevision++ } }
     Connections { target: root.c; function onTopicKeyChanged() { root.topicsOpen = false } }
     // The paper in front has its Thread at the top even before its first chat.
     readonly property string readerTopic: c && c.reader && c.reader.source && c.reader.source.toString().length ? researchStore.aiTopicFor(c.reader.source) : ""
+    // A paper's Thread lasts while it has chats. One left empty (its chats deleted, moved or merged away)
+    // or deleted itself is gone for the paper in front too, until a new chat about the paper; kept across
+    // starts (ai.hiddenPaperThreads).
+    property var hiddenPapers: {
+        try {
+            const keys = JSON.parse(researchStore.setting("ai.hiddenPaperThreads", "") || "[]")
+            return Array.isArray(keys) ? keys : []
+        } catch (e) { return [] }
+    }
+    function setHiddenPapers(keys) {
+        hiddenPapers = keys.slice(-500)
+        researchStore.setSetting("ai.hiddenPaperThreads", hiddenPapers.length ? JSON.stringify(hiddenPapers) : "")
+    }
+    function hidePapers(keys) {
+        const add = keys.filter(function(k) { return k.indexOf("paper:") === 0 && root.hiddenPapers.indexOf(k) < 0 })
+        if (!add.length) return
+        setHiddenPapers(hiddenPapers.concat(add))
+        if (add.indexOf(c.topicKey) >= 0) c.chooseTopic("")
+    }
+    // Runs a change to the chats; papers' Threads it leaves empty go.
+    function emptying(change) {
+        const before = researchStore.aiTopics().filter(function(t) { return t.kind === "paper" }).map(function(t) { return t.key })
+        change()
+        const after = researchStore.aiTopics().map(function(t) { return t.key })
+        hidePapers(before.filter(function(k) { return after.indexOf(k) < 0 }))
+    }
     readonly property var topics: {
         const revision = topicRevision
         const list = researchStore.aiTopics()
         const rows = [{key: "", kind: "all", title: "All Chats", chats: list.reduce(function(n, t) { return n + t.chats }, 0)}]
-        if (readerTopic.length && !list.some(function(t) { return t.key === readerTopic }))
+        if (readerTopic.length && hiddenPapers.indexOf(readerTopic) < 0 && !list.some(function(t) { return t.key === readerTopic }))
             rows.push({key: readerTopic, kind: "paper", title: researchStore.displayName(c.reader.source), chats: 0})
         return rows.concat(list)
     }
-    readonly property var currentTopic: (c && topics.find(function(t) { return t.key === c.topicKey })) || topics[0]
+    // A paper's Thread with chats again (a new one, or back from the Trash) is no longer kept hidden.
+    function reviveHiddenPapers() {
+        if (!hiddenPapers.length) return
+        const live = researchStore.aiTopics().map(function(t) { return t.key })
+        const back = hiddenPapers.filter(function(k) { return live.indexOf(k) >= 0 })
+        if (back.length) setHiddenPapers(hiddenPapers.filter(function(k) { return back.indexOf(k) < 0 }))
+    }
+    // The Thread shown; General before its first chat; All Chats when the one chosen is not there (a
+    // paper's Thread that went).
+    readonly property var currentTopic: (c && topics.find(function(t) { return t.key === c.topicKey }))
+                                        || (c && c.topicKey === "general" ? {key: "general", kind: "general", title: "General", chats: 0} : topics[0])
     // Where a question typed below the lists goes: the Thread shown; from All Chats, the paper in front's,
     // else General.
     readonly property string askKey: c ? c.topicKey || readerTopic || "general" : "general"
@@ -94,7 +130,7 @@ Item {
     }
     function moveChats(ids, key) {
         if (!ids.length) return
-        researchStore.moveAiThreads(ids, key)
+        emptying(function() { researchStore.moveAiThreads(ids, key) })
         selectedThreads = []
     }
     // A name for a new Thread (the chats given move into it) or a new name for one.
@@ -121,13 +157,16 @@ Item {
         const ids = topicChats(from.key)
         if (ids.length) researchStore.moveAiThreads(ids, into.key)
         if (from.kind === "custom") researchStore.deleteAiTopic(from.key)
+        else hidePapers([from.key])
         if (c.topicKey === from.key) c.chooseTopic(into.key)
         researchStore.notify("Merged \u201c" + from.title + "\u201d into \u201c" + into.title + "\u201d.")
     }
     // A Thread with its chats: they go to the Trash in the Library, where they can be restored.
+    // A paper's Thread goes even with no chats (the paper in front's before its first).
     function trashTopic(row) {
         trashThreads(topicChats(row.key))
         if (row.kind === "custom") deleteTopic(row.key)
+        else hidePapers([row.key])
     }
     // Deleting a Thread asks first: with its chats, or (one's own) leaving them to their papers.
     function askDeleteTopic(row, keepChats) {
@@ -412,7 +451,7 @@ Item {
                     width: ListView.view.width
                     height: Theme.rowHeightTall
                     // The Thread shown, and the one a dragged chat would go into.
-                    highlighted: (root.c && root.c.topicKey === modelData.key) || chatDrop.containsDrag
+                    highlighted: root.currentTopic.key === modelData.key || chatDrop.containsDrag
                     onClicked: root.chooseTopic(modelData.key)
                     HoverHandler { id: topicHover }
                     contentItem: RowLayout {
@@ -530,7 +569,7 @@ Item {
             focus: visible
             // Read again when threads change.
             property int revision: 0
-            model: (revision, researchStore.aiThreads().filter(function(t) { return !root.c || !root.c.topicKey.length || t.topic === root.c.topicKey }))
+            model: (revision, researchStore.aiThreads().filter(function(t) { return !root.currentTopic.key.length || t.topic === root.currentTopic.key }))
             Connections {
                 target: researchStore
                 function onAiThreadsChanged() { threadList.revision++ }
@@ -1217,7 +1256,7 @@ Item {
         }
         MenuItem {
             objectName: "aiTrashTopic"
-            enabled: topicMenu.row.chats > 0
+            enabled: topicMenu.row.chats > 0 || topicMenu.row.kind === "paper"
             text: "Delete Thread and Chats…"
             palette.windowText: Theme.danger
             onTriggered: root.askDeleteTopic(topicMenu.row, false)
@@ -1231,14 +1270,15 @@ Item {
         property bool keepChats: false
         readonly property int chats: row.chats || 0
         readonly property string name: "\u201c" + (row.title || "") + "\u201d"
-        title: keepChats ? "Delete this Thread?" : "Delete this Thread and its chats?"
+        title: keepChats || chats === 0 ? "Delete this Thread?" : "Delete this Thread and its chats?"
         message: keepChats
                  ? "The Thread " + name + " will be deleted. Are you sure?\n\n" + (chats === 1 ? "Its chat is kept and goes" : "Its " + chats + " chats are kept and go")
                    + " back to their papers' Threads (or General)."
+                 : chats === 0 ? "The Thread " + name + " will be deleted. Are you sure?\n\nIt has no chats; asking about the paper again makes it anew."
                  : name + " and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
                    + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
                    + (chats === 1 ? "it" : "they") + " can be restored there."
-        actionText: keepChats ? "Delete Thread" : "Delete Thread and Chats"
+        actionText: keepChats || chats === 0 ? "Delete Thread" : "Delete Thread and Chats"
         onConfirmed: keepChats ? root.deleteTopic(row.key) : root.trashTopic(row)
     }
     // Asked once before several chats (a selection) go to the Trash.
