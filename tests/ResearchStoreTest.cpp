@@ -1930,7 +1930,9 @@ private slots:
         QVERIFY(QFileInfo::exists(byHand.toLocalFile()));
         QVERIFY(QFileInfo::exists(first));
         QCOMPARE(relinked.size(), 1);
-        QCOMPARE(store.renamePapersToTitles({byHand}), 0); // Already so named.
+        QSignalSpy said(&store, &ResearchStore::message);
+        QCOMPARE(store.renamePapersToTitles({byHand}), 0); // Already so named, and it says so.
+        QCOMPARE(said.last().at(0).toString(), QString("The PDF already has this name."));
         // With naming on, by hand gives the full name too.
         QVERIFY(store.updateDocumentDetails(byHand, {{"title", "Renamed Again"}, {"authors", "Ada Lovelace"}, {"year", "1843"}}));
         QVERIFY(store.setSetting("library.namePdfs", "1"));
@@ -1949,7 +1951,24 @@ private slots:
         QVERIFY(store.setSetting("pdfNames.parts", "title,-author,-year,-arxiv"));
         QCOMPARE(store.displayName(open), QString("Radar: Odometry at Night"));
         QCOMPARE(store.renamePapersToTitles({open}), 1);
-        QCOMPARE(store.resolvedSource(open), QUrl::fromLocalFile(store.papersFolder() + "/Radar - Odometry at Night.pdf"));
+        const auto radar = QUrl::fromLocalFile(store.papersFolder() + "/Radar - Odometry at Night.pdf");
+        QCOMPARE(store.resolvedSource(open), radar);
+        // A twin by name: "Name (1)" beside "Name" stays so, run after run, by hand or not.
+        writeFixture(directory.filePath("twin.pdf"), "Twin Copy");
+        const auto twin = store.adoptPdf(QUrl::fromLocalFile(directory.filePath("twin.pdf")));
+        QVERIFY(store.rememberDocument(twin));
+        QVERIFY(store.updateDocumentDetails(twin, {{"title", "Radar: Odometry at Night"}}));
+        QCOMPARE(store.renamePapersToTitles({twin}), 1);
+        const auto numbered = QUrl::fromLocalFile(store.papersFolder() + "/Radar - Odometry at Night (1).pdf");
+        QCOMPARE(store.resolvedSource(twin), numbered);
+        for (int run = 0; run < 2; ++run) {
+            QCOMPARE(store.renamePapersToTitles({radar, numbered}), 0);
+            QCOMPARE(said.last().at(0).toString(), QString("Every PDF already has this name."));
+            QVERIFY(store.setSetting("library.namePdfs", "1"));
+            store.namePdfFiles(true);
+            QCOMPARE(store.resolvedSource(twin), numbered);
+            QCOMPARE(store.resolvedSource(open), radar);
+        }
         QVERIFY(store.setSetting("pdfNames.parts", ""));
         QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
     }
