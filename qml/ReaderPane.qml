@@ -631,17 +631,29 @@ Rectangle {
                 }
             }
 
+            // A PDF is added like one dropped anywhere else (checked for a copy already kept); pictures (PNG,
+            // JPEG, HEIC…) dropped on a page are placed there as image annotations.
             DropArea {
+                id: readerDrop
+                objectName: "readerDrop"
                 anchors.fill: parent
-                onDropped: function(drop) {
-                    if (drop.hasUrls && /\.pdf$/i.test(drop.urls[0].toString())) {
-                        // A dropped PDF is added like one dropped anywhere else (checked for a copy already kept).
-                        const window = ApplicationWindow.window
-                        if (window && window.dropFiles) window.dropFiles([drop.urls[0]])
-                        else if (root.managed) root.fileChosen(drop.urls[0]); else root.openFile(drop.urls[0])
-                        drop.acceptProposedAction()
+                function take(urls, x, y) {
+                    const images = urls.filter(function(u) { return /\.(png|jpe?g|gif|webp|bmp|tiff?|heic|heif)$/i.test(u.toString()) })
+                    if (images.length) {
+                        const at = canvas.mapFromItem(readerDrop, x, y)
+                        if (canvas.dropImages(images, at.x, at.y)) return true
+                        researchStore.notify("Drop pictures onto a page to place them there.")
+                        return false
                     }
+                    if (urls.length && /\.pdf$/i.test(urls[0].toString())) {
+                        const window = ApplicationWindow.window
+                        if (window && window.dropFiles) window.dropFiles([urls[0]])
+                        else if (root.managed) root.fileChosen(urls[0]); else root.openFile(urls[0])
+                        return true
+                    }
+                    return false
                 }
+                onDropped: function(drop) { if (drop.hasUrls && take(drop.urls, drop.x, drop.y)) drop.acceptProposedAction() }
                 Rectangle {
                     anchors.fill: parent
                     visible: parent.containsDrag
