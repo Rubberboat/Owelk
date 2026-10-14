@@ -652,6 +652,49 @@ Item {
             verify(c.goBack())
             tryCompare(c, "currentPage", 0)
         }
+        function test_9zzzzzy_aPaperThreadLeadsBackToItsPaper() {
+            // Reading paper B, paper A's Thread brings A's tab forward, or opens A again once closed.
+            const ai = findChild(workspace, "aiController")
+            workspace.documents.restore({})
+            workspace.openDocument(fixtureSource)
+            canvas()
+            const other = testInput.uniqueFixture("another paper.pdf")
+            workspace.openDocument(other)
+            tryVerify(function() { return workspace.currentReader !== null && researchStore.sameSource(workspace.currentReader.source, other) })
+            workspace.aiVisible = true
+            const p = panel()
+            const key = researchStore.aiTopicFor(fixtureSource)
+            tryVerify(function() { return p.topics.some(function(t) { return t.key === key }) })
+            const tabsOf = function(source) {
+                return Tree.leaves(workspace.documents.tree).reduce(function(n, g) {
+                    return n + g.tabs.filter(function(t) { return !t.kind && researchStore.sameSource(t.source, source) }).length }, 0)
+            }
+            const menu = findChild(p, "aiTopicMenu")
+            const paperItem = function() {
+                p.openTopicMenu(p.topics.find(function(t) { return t.key === key }), p, 10, 10)
+                tryCompare(menu, "opened", true)
+                for (let i = 0; i < menu.count; ++i) if (menu.itemAt(i).objectName === "aiTopicPaper") return menu.itemAt(i)
+                return null
+            }
+            let item = paperItem()
+            compare(item.text, "Go to Paper")
+            item.triggered()
+            menu.close()
+            tryVerify(function() { return researchStore.sameSource(workspace.currentReader.source, fixtureSource) })
+            compare(tabsOf(fixtureSource), 1)
+            // Closed, it opens again.
+            const tab = Tree.leaves(workspace.documents.tree)[0].tabs.find(function(t) { return researchStore.sameSource(t.source, fixtureSource) })
+            workspace.documents.closeTab(tab.id)
+            tryVerify(function() { return tabsOf(fixtureSource) === 0 })
+            tryVerify(function() { return workspace.currentReader !== null && researchStore.sameSource(workspace.currentReader.source, other) })
+            item = paperItem()
+            compare(item.text, "Open Paper")
+            item.triggered()
+            menu.close()
+            tryVerify(function() { return workspace.currentReader !== null && researchStore.sameSource(workspace.currentReader.source, fixtureSource) })
+            compare(tabsOf(fixtureSource), 1)
+            workspace.aiVisible = false
+        }
         function test_9zzzzzz_symbolHintsMatchWhatIsPrinted() {
             workspace.documents.restore({})
             workspace.openDocument(fixtureSource)

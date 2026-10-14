@@ -117,6 +117,8 @@ public:
     Q_INVOKABLE int trashDays() const;
     void purgeExpired();
     Q_INVOKABLE QUrl resolvedSource(const QUrl &source) const;
+    // Whether a paper's file is there to open (a web address counts as there); when not, requestRelink.
+    Q_INVOKABLE bool paperFileExists(const QUrl &source) const;
     Q_INVOKABLE void requestRelink(const QUrl &source);
     Q_INVOKABLE void relinkSource(const QUrl &source, const QUrl &candidate);
 

@@ -51,6 +51,7 @@ Rectangle {
         id: aiPanel
         AiPanel {
             controller: root.aiController
+            documents: root.documents
             onLinkActivated: function(link) { root.linkActivated(link) }
             onSettingsRequested: root.settingsRequested()
             onTrashRequested: root.libraryFilterRequested({view: "trash"})

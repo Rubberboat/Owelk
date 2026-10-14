@@ -177,12 +177,32 @@ Item {
     function openTopicMenu(row, item, x, y) {
         if (!row || !row.key) return
         topicMenu.row = row
+        topicMenu.paper = row.kind === "paper" ? c.topicSource(row.key) : ""
+        topicMenu.place = paperPlace(topicMenu.paper)
         topicMenu.popup(item, x, y)
     }
     function openChatMenu(ids, row, item, x, y) {
         threadMenu.ids = ids
         threadMenu.row = row
+        threadMenu.paper = ids.length === 1 && row.source ? row.source : ""
+        threadMenu.place = paperPlace(threadMenu.paper)
         threadMenu.popup(item, x, y)
+    }
+    // The document area (Main.qml): a paper's tab brought to the front, or the paper opened again.
+    property var documents: null
+    // Where a paper's Thread (or a chat about one paper) can take the reader: "open" (its tab, wherever
+    // it is), "closed" (opened again), "missing" (its file is gone: Locate PDF…), or "" (no paper, or it
+    // is the one in front).
+    function paperPlace(source) {
+        if (!documents || !source || !source.toString().length) return ""
+        if (!researchStore.paperFileExists(source)) return "missing"
+        if (c.readerPaper.length && researchStore.sameSource(c.reader.source, source)) return ""
+        return documents.paperTab(source) ? "open" : "closed"
+    }
+    readonly property var placeLabels: ({open: "Go to Paper", closed: "Open Paper", missing: "Locate PDF\u2026"})
+    function goToPaper(source, place) {
+        if (place === "missing") researchStore.requestRelink(source)
+        else documents.showPaper(source)
     }
     // The header's menu: the Thread shown, or the open chat.
     function openHeaderMenu(item, x, y) {
@@ -1169,6 +1189,16 @@ Item {
         objectName: "aiThreadMenu"
         property var ids: []
         property var row: ({})
+        property var paper: ""
+        property string place: ""
+        // A chat about a paper: back to that paper.
+        MenuItem {
+            objectName: "aiChatPaper"
+            visible: threadMenu.place.length > 0; height: visible ? implicitHeight : 0
+            text: root.placeLabels[threadMenu.place] || ""
+            onTriggered: root.goToPaper(threadMenu.paper, threadMenu.place)
+        }
+        MenuSeparator { visible: threadMenu.place.length > 0; height: visible ? implicitHeight : 0 }
         MenuItem {
             visible: threadMenu.ids.length === 1
             height: visible ? implicitHeight : 0
@@ -1225,7 +1255,18 @@ Item {
         id: topicMenu
         objectName: "aiTopicMenu"
         property var row: ({})
+        property var paper: ""
+        property string place: ""
         readonly property bool own: row.kind === "custom"
+        // A paper's Thread: back to its paper, wherever its tab is, opened again when closed, or its file
+        // found when it moved.
+        MenuItem {
+            objectName: "aiTopicPaper"
+            visible: topicMenu.place.length > 0; height: visible ? implicitHeight : 0
+            text: root.placeLabels[topicMenu.place] || ""
+            onTriggered: root.goToPaper(topicMenu.paper, topicMenu.place)
+        }
+        MenuSeparator { visible: topicMenu.place.length > 0; height: visible ? implicitHeight : 0 }
         MenuItem { objectName: "aiTopicNewChat"; text: "New Chat"; onTriggered: root.newChatIn(topicMenu.row.key) }
         MenuItem {
             objectName: "aiRenameTopic"

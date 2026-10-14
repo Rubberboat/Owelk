@@ -9,7 +9,16 @@ Item {
     width: 1000; height: 700
     QtObject { id: reader; property url source: ""; property bool pdfReady: true; property int pageCount: 3; property int currentPage: 0; property string selectedText: "" }
     App.AiController { id: controller; reader: reader.source.toString().length ? reader : null }
-    App.AiPanel { id: panel; width: 600; height: 700; controller: controller }
+    Component { id: signalSpy; SignalSpy {} }
+    // A stand-in document area: the papers open in tabs, and the one last brought to the front.
+    QtObject {
+        id: docs
+        property var tabs: []
+        property var shown: null
+        function paperTab(source) { return tabs.find(function(t) { return researchStore.sameSource(t, source) }) || null }
+        function showPaper(source) { shown = source; return true }
+    }
+    App.AiPanel { id: panel; width: 600; height: 700; controller: controller; documents: docs }
     TestCase {
         name: "AiThreads"
         when: windowShown
@@ -527,6 +536,68 @@ Item {
             const conv = findChild(panel, "aiConversation")
             tryVerify(function() { const label = findChild(conv, "aiCutOff-1"); return label !== null && label.visible && label.text === "Stopped." })
             controller.showThreads()
+        }
+        function test_9zzzz_aPaperThreadTakesYouBackToItsPaper() {
+            // Reading another paper, a paper's Thread (and a chat about it) leads back to its paper.
+            reader.source = linkSource
+            panel.chooseTopic("")
+            const menu = findChild(panel, "aiTopicMenu")
+            const paperItem = function() {
+                mouseClick(topicRow(researchStore.displayName(outlineSource)), 10, 10, Qt.RightButton)
+                tryCompare(menu, "opened", true)
+                const item = menuItem(menu, "aiTopicPaper")
+                return item.visible ? item : null
+            }
+            // In a tab behind the one in front: Go to Paper brings that tab forward.
+            docs.tabs = [outlineSource]
+            let item = paperItem()
+            verify(item !== null)
+            compare(item.text, "Go to Paper")
+            item.triggered()
+            menu.close()
+            verify(researchStore.sameSource(docs.shown, outlineSource))
+            // Closed: Open Paper opens it again.
+            docs.tabs = []
+            docs.shown = null
+            item = paperItem()
+            compare(item.text, "Open Paper")
+            item.triggered()
+            menu.close()
+            verify(researchStore.sameSource(docs.shown, outlineSource))
+            // The paper in front: nothing to go to.
+            reader.source = outlineSource
+            verify(paperItem() === null)
+            menu.close()
+            tryCompare(menu, "opened", false)
+            // Its file gone: Locate PDF… asks where it is now.
+            const gone = Qt.resolvedUrl("missing-paper.pdf")
+            const lost = chat("About a lost file", gone)
+            const key = researchStore.aiTopicFor(gone)
+            tryVerify(function() { return keyRow(key) !== null })
+            const relinks = signalSpy.createObject(null, {target: researchStore, signalName: "relinkRequested"})
+            mouseClick(keyRow(key), 10, 10, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            item = menuItem(menu, "aiTopicPaper")
+            verify(item.visible)
+            compare(item.text, "Locate PDF\u2026")
+            item.triggered()
+            menu.close()
+            compare(relinks.count, 1)
+            relinks.destroy()
+            // A chat about a paper offers the same.
+            reader.source = linkSource
+            docs.tabs = [outlineSource]
+            panel.chooseTopic(first)
+            const list = chats()
+            tryVerify(function() { return list.count > 0 && list.itemAtIndex(0) !== null })
+            mouseClick(list.itemAtIndex(0), 10, 10, Qt.RightButton)
+            const chatMenu = findChild(panel, "aiThreadMenu")
+            tryCompare(chatMenu, "opened", true)
+            const chatItem = findChild(panel, "aiChatPaper")
+            verify(chatItem.visible)
+            compare(chatItem.text, "Go to Paper")
+            chatMenu.close()
+            docs.tabs = []
         }
     }
 }

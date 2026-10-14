@@ -183,6 +183,20 @@ Flickable {
         if (!g) return
         prepare(); g.activeTab = id; activeGroup = g.id; sync(); changed(); opened()
     }
+    // The tab showing a paper, in any group; null when none does.
+    function paperTab(source) {
+        for (const leaf of Tree.leaves(tree)) {
+            const t = leaf.tabs.find(function(tab) { return !tab.kind && researchStore.sameSource(tab.source, source) })
+            if (t) return t
+        }
+        return null
+    }
+    // A paper in front: its tab wherever it is, or the paper opened again.
+    function showPaper(source) {
+        const t = paperTab(source)
+        if (t) { activateTab(t.id); return true }
+        return openDocument(source)
+    }
     function openDocument(source, position, forceNew) {
         // A PDF from elsewhere opens as the Library's own copy while PDFs are kept in Owelk.
         source = researchStore.adoptPdf(source)

@@ -1,6 +1,7 @@
 #include "ResearchStore.h"
 #include "PaperIndex.h"
 #include "FileFingerprint.h"
+#include <QFileInfo>
 #include <QFutureWatcher>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -44,6 +45,11 @@ QUrl ResearchStore::resolvedSource(const QUrl &source) const
         current = m_relinks.value(current);
     }
     return QUrl(current);
+}
+bool ResearchStore::paperFileExists(const QUrl &source) const
+{
+    const auto url = resolvedSource(source);
+    return url.isLocalFile() ? QFileInfo(url.toLocalFile()).isFile() : url.isValid() && !url.isEmpty();
 }
 QVariantMap ResearchStore::canonicalState(const QVariantMap &state) const
 {
