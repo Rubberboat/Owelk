@@ -94,6 +94,31 @@ Item {
             verify(visualChild(settings.contentItem, "syncFolder") !== null)
             verify(visualChild(settings.contentItem, "renameKeptPdfs") !== null)
         }
+        function test_paperNamePartsTurnOnAndMove() {
+            researchStore.setSetting("pdfNames.parts", "")
+            settings.openPage("data"); tryCompare(settings, "opened", true)
+            // The rows are made again on each change: find them each time.
+            const control = function(name) { let found = null; tryVerify(function() { found = visualChild(settings.contentItem, name); return found !== null }); return found }
+            const flip = function(key) { const s = control("pdfNameSwitch-" + key); s.toggle(); s.toggled() }
+            control("pdfNameSwitch-year")
+            const p = page()
+            // Author, year and title by default, as kept PDFs were named.
+            compare(p.namesOn, ["author", "year", "title"])
+            verify(findChild(settings, "pdfNameGroup").note.indexOf("Vaswani et al. - 2017 - Attention") >= 0)
+            flip("year")
+            compare(researchStore.setting("pdfNames.parts"), "author,-year,title,-arxiv")
+            flip("author")
+            compare(p.namesOn, ["title"])
+            verify(!control("pdfNameSwitch-title").enabled, "the last part on stays on")
+            // Year on and moved up, above the title.
+            flip("year")
+            control("pdfNameUp-year").clicked()
+            compare(p.namesOn, ["year", "title"])
+            compare(researchStore.setting("pdfNames.parts"), "year,-author,title,-arxiv")
+            compare(researchStore.sampleFileName(p.namesOn), "2017 - Attention Is All You Need.pdf")
+            verify(findChild(settings, "pdfNameGroup").note.indexOf("Example: 2017 - Attention") >= 0)
+            researchStore.setSetting("pdfNames.parts", "")
+        }
         function test_themeAccentAndTextSizeApplyAtOnce() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)
             tryVerify(function() { return visualChild(settings.contentItem, "themeTile-dark") !== null })

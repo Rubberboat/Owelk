@@ -883,7 +883,7 @@ private slots:
         QVERIFY2(store.initialize(&error), qPrintable(error));
         QVERIFY(store.rememberDocument(QUrl::fromLocalFile(pdf)));
         // The title is read from the PDF in the background.
-        QTRY_COMPARE_WITH_TIMEOUT(store.displayName(QUrl::fromLocalFile(pdf)), QString("Service Paper"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(store.paperTitle(QUrl::fromLocalFile(pdf)), QString("Service Paper"), 10000);
         auto *ai = qobject_cast<AiService *>(store.ai());
         QVERIFY(ai);
         MockServer server;

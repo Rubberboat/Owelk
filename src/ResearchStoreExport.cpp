@@ -76,7 +76,7 @@ QString ResearchStore::exportPaperMarkdown(const QUrl &source, const QString &fo
         return {};
     }
     const auto details = documentDetails(source);
-    const auto title = displayName(source);
+    const auto title = paperTitle(source);
     const auto base = safeName(title);
     const auto path = freePath(directory, base, ".md");
     const auto images = QFileInfo(path).completeBaseName() + " images";
@@ -170,7 +170,7 @@ QString ResearchStore::bibtex(const QVariantList &sources) const
     for (const auto &value : sources) {
         const QUrl source(value.toString());
         const auto details = documentDetails(source);
-        const auto title = displayName(source);
+        const auto title = paperTitle(source);
         const auto authors = details.value("authors").toString();
         const auto year = details.value("year").toString();
         const auto doi = details.value("doi").toString(), arxiv = details.value("arxiv").toString();

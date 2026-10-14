@@ -157,9 +157,34 @@ QString ResearchStore::ensureDocument(const QUrl &source)
 void ResearchStore::loadDocumentNames()
 {
     m_titles.clear();
+    m_nameParts = fileNameParts();
     QSqlQuery query(m_database);
-    query.exec("SELECT url,title FROM documents WHERE title<>''");
-    while (query.next()) m_titles.insert(query.value(0).toString(), query.value(1).toString());
+    query.exec("SELECT url,title,authors,year,arxiv,kind FROM documents WHERE title<>''");
+    while (query.next()) {
+        const auto title = query.value(1).toString();
+        m_titles.insert(query.value(0).toString(),
+            query.value(5).toString() == "web"
+                ? title
+                : PaperMetadataText::paperName(
+                      {title, query.value(2).toString(), query.value(3).toString(), "", query.value(4).toString()},
+                      m_nameParts));
+    }
+}
+
+void ResearchStore::rememberPaperName(const QUrl &url)
+{
+    QSqlQuery query(m_database);
+    query.prepare("SELECT title,authors,year,arxiv,kind FROM documents WHERE url=?");
+    query.addBindValue(url.toString());
+    if (!query.exec() || !query.next()) return;
+    const auto title = query.value(0).toString();
+    if (m_nameParts.isEmpty()) m_nameParts = fileNameParts();
+    rememberTitle(url,
+        query.value(4).toString() == "web"
+            ? title
+            : PaperMetadataText::paperName(
+                  {title, query.value(1).toString(), query.value(2).toString(), "", query.value(3).toString()},
+                  m_nameParts));
 }
 
 void ResearchStore::rememberTitle(const QUrl &url, const QString &title)
@@ -186,6 +211,17 @@ QString ResearchStore::displayName(const QUrl &source) const
     const auto title = m_titles.value(url.toString());
     if (!title.isEmpty()) return title;
     return url.isLocalFile() ? fileName(url) : url.host() + url.path();
+}
+
+QString ResearchStore::paperTitle(const QUrl &source) const
+{
+    const auto url = resolvedSource(source);
+    QSqlQuery query(m_database);
+    query.prepare("SELECT title FROM documents WHERE url=?");
+    query.addBindValue(url.toString());
+    if (query.exec() && query.next() && !query.value(0).toString().trimmed().isEmpty())
+        return query.value(0).toString().simplified();
+    return displayName(url);
 }
 
 QVariantMap ResearchStore::documentDetails(const QUrl &source) const
@@ -223,7 +259,7 @@ bool ResearchStore::updateDocumentDetails(const QUrl &source, const QVariantMap 
         emit message("Cannot save paper details.");
         return false;
     }
-    rememberTitle(resolvedSource(source), title);
+    rememberPaperName(resolvedSource(source));
     announceDocumentsChanged();
     return true;
 }
@@ -280,7 +316,7 @@ void ResearchStore::refreshMetadata(const QString &id, const QUrl &url, bool for
             update.addBindValue(id);
             update.addBindValue(url.toString());
             if (update.exec() && update.numRowsAffected() == 1) {
-                rememberTitle(url, m.title);
+                rememberPaperName(url);
                 announceDocumentsChanged();
             }
         }

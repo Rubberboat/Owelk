@@ -166,6 +166,28 @@ void ResearchStore::relocatePapers()
     if (moved) m_startupMessage = QString("Owelk's PDFs now live in %1.").arg(QDir::toNativeSeparators(m_papers));
 }
 
+QStringList ResearchStore::fileNameParts() const
+{
+    static const QStringList known{"title", "author", "year", "arxiv"};
+    // Unset (or emptied): author, year and title, as kept PDFs were named before parts could be chosen.
+    auto chosen = setting("pdfNames.parts").trimmed();
+    if (chosen.isEmpty()) chosen = QStringLiteral("author,year,title,-arxiv");
+    QStringList parts;
+    for (auto part : chosen.split(',', Qt::SkipEmptyParts)) {
+        part = part.trimmed();
+        if (!part.startsWith('-') && known.contains(part) && !parts.contains(part)) parts << part;
+    }
+    return parts.isEmpty() ? QStringList{"title"} : parts;
+}
+
+QString ResearchStore::sampleFileName(const QStringList &parts) const
+{
+    return PaperMetadataText::fileStem(
+               {"Attention Is All You Need", "Ashish Vaswani, Noam Shazeer", "2017", "", "1706.03762"},
+               parts.isEmpty() ? QStringList{"title"} : parts)
+        + ".pdf";
+}
+
 void ResearchStore::nameDownloadedPdf(const QUrl &file)
 {
     const auto path = file.toLocalFile();
@@ -193,13 +215,9 @@ void ResearchStore::nameDownloadedPdf(const QUrl &file)
         }
         emit downloadNamed(file, named);
     });
-    // The same name kept PDFs take ("Author Year - Title"), or the title alone when that is turned off.
-    const bool full = setting("library.namePdfs", "1") == "1";
-    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [path, full] {
-        const auto paper = extractPaperMetadata(path);
-        const auto stem = full ? PaperMetadataText::paperFileStem(paper.title, paper.authors, paper.year)
-                               : PaperMetadataText::fileStem(paper);
-        return Named(stem, FileFingerprint::sha256(path));
+    // The same name kept PDFs take (Settings › Data › Paper names).
+    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [path, parts = fileNameParts()] {
+        return Named(PaperMetadataText::fileStem(extractPaperMetadata(path), parts), FileFingerprint::sha256(path));
     }));
 }
 
@@ -232,8 +250,9 @@ void ResearchStore::namePdfFiles(bool starting)
         QString from, stem, hash;
     };
     QList<Rename> renames;
+    const auto parts = fileNameParts();
     QSqlQuery query(m_database);
-    if (!query.exec("SELECT url,title,authors,year,sha256,added_at FROM documents "
+    if (!query.exec("SELECT url,title,authors,year,sha256,added_at,arxiv FROM documents "
                     "WHERE kind='pdf' AND removed_at IS NULL AND url LIKE 'file:%'"))
         return;
     while (query.next()) {
@@ -243,8 +262,10 @@ void ResearchStore::namePdfFiles(bool starting)
         // A paper read for a while keeps its file until the next start; a fresh one is named now.
         const auto added = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
         if (open.contains(url.toString()) && (!added.isValid() || added.secsTo(now) > 120)) continue;
-        const auto stem = PaperMetadataText::paperFileStem(
-            query.value(1).toString(), query.value(2).toString(), query.value(3).toString());
+        const auto stem = PaperMetadataText::fileStem(
+            {query.value(1).toString(), query.value(2).toString(), query.value(3).toString(), "",
+                query.value(6).toString()},
+            parts);
         if (stem.isEmpty()) continue;
         if (namedAs(info.completeBaseName(), stem)) continue;
         renames.append({info.absoluteFilePath(), stem, query.value(4).toString()});
@@ -295,20 +316,19 @@ int ResearchStore::renamePapersToTitles(const QVariantList &sources)
         emit message("PDFs are being copied or moved; rename them once that is done.");
         return 0;
     }
-    const bool full = setting("library.namePdfs", "1") == "1";
+    const auto parts = fileNameParts();
     int renamed = 0, held = 0;
     for (const auto &value : sources) {
         const auto from = resolvedSource(value.toUrl());
         if (!keptByOwelk(from)) continue;
         QSqlQuery query(m_database);
-        query.prepare("SELECT title,authors,year,sha256 FROM documents WHERE url=? AND removed_at IS NULL");
+        query.prepare("SELECT title,authors,year,arxiv,sha256 FROM documents WHERE url=? AND removed_at IS NULL");
         query.addBindValue(from.toString());
         if (!query.exec() || !query.next()) continue;
-        PaperMetadata paper;
-        paper.title = query.value(0).toString();
-        const auto stem = full ? PaperMetadataText::paperFileStem(paper.title, query.value(1).toString(), query.value(2).toString())
-                               : PaperMetadataText::fileStem(paper);
-        const auto hash = query.value(3).toString();
+        const auto stem = PaperMetadataText::fileStem({query.value(0).toString(), query.value(1).toString(),
+                                                          query.value(2).toString(), "", query.value(3).toString()},
+            parts);
+        const auto hash = query.value(4).toString();
         query.finish();
         const auto path = from.toLocalFile();
         if (stem.isEmpty() || namedAs(QFileInfo(path).completeBaseName(), stem)) continue;

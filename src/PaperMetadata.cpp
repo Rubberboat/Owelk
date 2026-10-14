@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QHash>
 #include <QPdfDocument>
 #include <QPdfSelection>
 #include <QRegularExpression>
@@ -206,35 +207,63 @@ QStringList authorNames(const QStringList &lines)
 }
 
 namespace PaperMetadataText {
-QString fileStem(const PaperMetadata &paper)
-{
-    // "Title: Subtitle" reads as "Title - Subtitle"; characters Windows, macOS or Linux refuse in a file
-    // name become spaces.
-    static const QRegularExpression colon("\\s*:\\s+"), refused("[\\x00-\\x1f\\\\/:*?\"<>|]");
-    auto title = QString(paper.title).replace(colon, " - ").replace(refused, " ").simplified();
-    if (title.isEmpty()) return {};
-    if (title.size() > 120) {
-        title.truncate(120);
-        const auto space = title.lastIndexOf(' ');
-        if (space > 60) title.truncate(space);
+namespace {
+    // The chosen parts joined with " - ". For a file name, "Title: Subtitle" reads as "Title - Subtitle",
+    // characters Windows, macOS or Linux refuse become spaces and the whole stays within 120 characters.
+    QString composeName(const PaperMetadata &paper, const QStringList &parts, bool forFile)
+    {
+        static const QRegularExpression colon("\\s*:\\s+"), refused("[\\x00-\\x1f\\\\/:*?\"<>|]"),
+            separators("\\s*(?:[,;&]|\\band\\b)\\s*"), fourDigits("^\\d{4}$");
+        const auto clean = [forFile](QString text) {
+            if (forFile) text.replace(colon, " - ").replace(refused, " ");
+            return text.simplified();
+        };
+        auto title = clean(paper.title);
+        if (title.isEmpty()) return {};
+        // The first author's family name ("Ashish Vaswani, Noam Shazeer": "Vaswani et al.").
+        const auto names = paper.authors.split(separators, Qt::SkipEmptyParts);
+        QString author;
+        if (!names.isEmpty()) {
+            author = clean(names.first()).section(' ', -1).left(40);
+            if (forFile) while (author.endsWith('.')) author.chop(1);
+            if (!author.isEmpty() && names.size() > 1) author += " et al.";
+        }
+        const auto year = fourDigits.match(paper.year.trimmed()).hasMatch() ? paper.year.trimmed() : QString();
+        const auto arxiv = clean(paper.arxiv);
+        const QHash<QString, QString> values{{"author", author}, {"year", year}, {"arxiv", arxiv}};
+        if (forFile) {
+            // The title gets what the other parts leave of 120 characters.
+            int others = 0;
+            for (const auto &part : parts)
+                if (part != "title" && !values.value(part).isEmpty()) others += int(values.value(part).size()) + 3;
+            const int room = qMax(40, 120 - others);
+            if (title.size() > room) {
+                title.truncate(room);
+                const auto space = title.lastIndexOf(' ');
+                if (space > room / 2) title.truncate(space);
+            }
+            while (title.endsWith('.') || title.endsWith(' ') || title.endsWith('-')) title.chop(1);
+        }
+        QStringList pieces;
+        for (const auto &part : parts) {
+            const auto value = part == "title" ? title : values.value(part);
+            if (!value.isEmpty() && !pieces.contains(value)) pieces << value;
+        }
+        auto name = pieces.isEmpty() ? title : pieces.join(" - ");
+        if (forFile)
+            while (name.endsWith('.') || name.endsWith(' ') || name.endsWith('-')) name.chop(1);
+        return name;
     }
-    while (title.endsWith('.') || title.endsWith(' ') || title.endsWith('-')) title.chop(1);
-    return title;
 }
 
-QString paperFileStem(const QString &title, const QString &authors, const QString &year)
+QString fileStem(const PaperMetadata &paper, const QStringList &parts)
 {
-    PaperMetadata paper;
-    paper.title = title;
-    const auto name = fileStem(paper);
-    if (name.isEmpty()) return {};
-    // "Ashish Vaswani, Noam Shazeer" -> "Vaswani"; a name written without spaces stays whole.
-    auto family = authors.section(',', 0, 0).simplified().section(' ', -1);
-    static const QRegularExpression refused("[\\x00-\\x1f\\\\/:*?\"<>|.]"), fourDigits("^\\d{4}$");
-    family = family.replace(refused, " ").simplified().left(40);
-    const auto when = fourDigits.match(year.trimmed()).hasMatch() ? year.trimmed() : QString();
-    const auto prefix = QStringList{family, when}.join(' ').simplified();
-    return prefix.isEmpty() ? name : prefix + " - " + name;
+    return composeName(paper, parts, true);
+}
+
+QString paperName(const PaperMetadata &paper, const QStringList &parts)
+{
+    return composeName(paper, parts, false);
 }
 }
 

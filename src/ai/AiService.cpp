@@ -251,7 +251,7 @@ int AiService::ask(const QVariantMap &input)
         QStringList documents, names, urls;
         for (const auto &url : std::as_const(searched)) {
             if (!wholeLibrary) documents << m_store->documentLinkId(url);
-            names << m_store->displayName(url);
+            names << m_store->paperTitle(url);
             if (url != source) urls << url.toString();
         }
         spec.insert("searchDocuments", documents);
@@ -271,12 +271,12 @@ int AiService::ask(const QVariantMap &input)
     QStringList markers, readNames, pageDocuments;
     for (qsizetype i = 0; i < numbered.size(); ++i) {
         pageDocuments << m_store->documentLinkId(numbered[i]);
-        if (!others.isEmpty()) markers << QStringLiteral("P%1: %2").arg(i + 1).arg(m_store->displayName(numbered[i]));
+        if (!others.isEmpty()) markers << QStringLiteral("P%1: %2").arg(i + 1).arg(m_store->paperTitle(numbered[i]));
     }
     QList<QPair<QUrl, QString>> reads;
     for (const auto &url : std::as_const(toRead)) {
         reads.append({url, others.isEmpty() ? QString() : markers.value(numbered.indexOf(url))});
-        if (url != source) readNames << m_store->displayName(url);
+        if (url != source) readNames << m_store->paperTitle(url);
     }
     spec.insert("pageDocuments", pageDocuments);
     spec.insert("paperNames", readNames);
@@ -284,7 +284,7 @@ int AiService::ask(const QVariantMap &input)
     prepared.insert("paperMarkers", markers);
     if (source.isValid() && !source.isEmpty()) {
         const auto details = m_store->documentDetails(source);
-        prepared.insert({{"title", m_store->displayName(source)}, {"authors", details.value("authors")},
+        prepared.insert({{"title", m_store->paperTitle(source)}, {"authors", details.value("authors")},
             {"year", details.value("year")}});
     }
     // Images the reader attached (files, drops, pasted screenshots).

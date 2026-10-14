@@ -621,7 +621,7 @@ Item {
             verify(researchStore.sameSource(asked.source, linkSource))
             const question = asked.messages[0]
             verify(question.context.attachments.indexOf("papers") >= 0)
-            compare(question.context.papers, [researchStore.displayName(outlineSource)])
+            compare(question.context.papers, [researchStore.paperTitle(outlineSource)])
             verify(question.content.indexOf("=== P2: ") >= 0)
             // The other paper finds the chat among its links; the next question goes without it.
             verify(researchStore.backlinks("document", researchStore.documentLinkId(outlineSource)).some(function(b) { return b.id === controller.threadId }))

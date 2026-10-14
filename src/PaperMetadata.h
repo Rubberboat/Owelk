@@ -19,10 +19,12 @@ QString findDoi(const QString &text);
 QString findArxiv(const QString &text);
 // Person names from the lines between a title and its abstract; affiliations and footnote marks are dropped.
 QStringList authorNames(const QStringList &lines);
-// A readable file name (without .pdf) for a paper: its title, safe on every system.
-// Empty when the title is unknown.
-QString fileStem(const PaperMetadata &paper);
-// The name a kept PDF takes, "Author Year - Title" (the first author's family name; parts that are
-// unknown are left out). Empty when the title is unknown.
-QString paperFileStem(const QString &title, const QString &authors, const QString &year);
+// A readable file name (without .pdf) for a paper, safe on every system: the parts asked for, in their
+// order, joined with " - " ("title"; "author": the first author's family name, "et al." when there are
+// more; "year": four digits only; "arxiv"; Settings › Data › Paper names). The title takes what the other
+// parts leave of 120 characters (at least 40). Empty when the title is unknown; a part the paper lacks is
+// left out.
+QString fileStem(const PaperMetadata &paper, const QStringList &parts = {QStringLiteral("title")});
+// How Owelk shows a paper (Library, tabs, search): the same parts in the same order, the title as written.
+QString paperName(const PaperMetadata &paper, const QStringList &parts);
 }

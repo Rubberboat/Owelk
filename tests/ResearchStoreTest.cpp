@@ -242,8 +242,9 @@ private slots:
         QString error;
         ResearchStore mac(directory.filePath("mac"));
         QVERIFY2(mac.initialize(&error), qPrintable(error));
+        QVERIFY(mac.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         QVERIFY(mac.rememberDocument(source));
-        QTRY_COMPARE_WITH_TIMEOUT(mac.displayName(source), QString("Shared Paper"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(mac.paperTitle(source), QString("Shared Paper"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!scalar(mac, "SELECT sha256 FROM documents").toString().isEmpty(), 10000);
         const auto sha = scalar(mac, "SELECT sha256 FROM documents").toString();
         annotate(mac, source, "Check the drift term");
@@ -266,6 +267,7 @@ private slots:
         // A second computer choosing the same folder gets everything, the PDF and images included.
         ResearchStore ubuntu(directory.filePath("ubuntu"));
         QVERIFY2(ubuntu.initialize(&error), qPrintable(error));
+        QVERIFY(ubuntu.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         auto *ubuntuSync = ubuntu.librarySync();
         QCOMPARE(ubuntuSync->setFolder(QUrl::fromLocalFile(drive)), QString());
         const auto outcome = ubuntuSync->syncBlocking();
@@ -309,6 +311,7 @@ private slots:
         QVERIFY(QFile::copy(path, own));
         ResearchStore laptop(directory.filePath("laptop"));
         QVERIFY2(laptop.initialize(&error), qPrintable(error));
+        QVERIFY(laptop.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         QVERIFY(laptop.rememberDocument(QUrl::fromLocalFile(own)));
         QTRY_VERIFY_WITH_TIMEOUT(!scalar(laptop, "SELECT sha256 FROM documents").toString().isEmpty(), 10000);
         annotate(laptop, QUrl::fromLocalFile(own), "Laptop remark");
@@ -591,7 +594,7 @@ private slots:
         QVERIFY2(store.initialize(&error), qPrintable(error));
         QVERIFY(store.rememberDocument(source));
         // The title is read from the PDF in the background.
-        QTRY_COMPARE_WITH_TIMEOUT(store.displayName(source), QString("Linked Paper"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(store.paperTitle(source), QString("Linked Paper"), 10000);
         const auto region = markRegion(store, source, 1);
         QVERIFY(!region.isEmpty());
         const auto paper = store.documentLinkId(source);
@@ -640,8 +643,9 @@ private slots:
         ResearchStore store(directory.filePath("data"));
         QString error;
         QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         for (const auto &paper : papers) QVERIFY(store.rememberDocument(paper));
-        QTRY_COMPARE_WITH_TIMEOUT(store.displayName(papers[2]), titles[2], 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(store.paperTitle(papers[2]), titles[2], 10000);
         QCOMPARE(store.libraryDocuments().size(), 3);
         // Collections nest; a parent shows its sub-collections' papers. Deleting keeps the papers.
         const auto robotics = store.createCollection("Robotics"), slam = store.createCollection("SLAM", robotics);
@@ -943,6 +947,7 @@ private slots:
             ResearchStore fresh(directory.filePath("data"));
             QString error;
             QVERIFY2(fresh.initialize(&error), qPrintable(error));
+            QVERIFY(fresh.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         }
         {
             // Rebuild the schema-2 shape (every table keyed by file URL) as the previous release wrote it.
@@ -1003,6 +1008,7 @@ private slots:
         ResearchStore store(directory.filePath("data"));
         QString error;
         QVERIFY2(store.initialize(&error), qPrintable(error));
+        QVERIFY(store.setSetting("pdfNames.parts", "title")); // Shown by their titles alone here.
         const QUrl source(url);
         QCOMPARE(store.recentDocuments().size(), 1);
         QCOMPARE(store.readingPosition(source)["page"].toInt(), 5);
@@ -1015,7 +1021,8 @@ private slots:
         QCOMPARE(topic["name"].toString(), QString("Topic"));
         QCOMPARE(topic["count"].toInt(), 1);
         QCOMPARE(QDir(directory.filePath("data/backups")).entryList({"before-schema-3-*.sqlite3"}).size(), 1);
-        // Details are read from the PDF in the background and replace the file name for display.
+        // Details are read from the PDF in the background and replace the file name (for display, with the
+        // parts chosen in Settings › Data).
         QTRY_COMPARE_WITH_TIMEOUT(store.displayName(source), QString("Kept Paper Title"), 10000);
         QCOMPARE(store.searchKnowledge("Kept Paper Title").first().toMap()["kind"].toString(), QString("paper"));
         QVERIFY(store.updateDocumentDetails(
@@ -1627,20 +1634,49 @@ private slots:
         QVERIFY(PaperMetadataText::fileStem(paper).size() <= 120);
         QCOMPARE(PaperMetadataText::fileStem({"A/B Test: Faster.", "", "", "", ""}), QString("A B Test - Faster"));
         QVERIFY(PaperMetadataText::fileStem({}).isEmpty());
-        // Kept PDFs: "Author Year - Title" with the first author's family name; unknown parts are left out.
-        QCOMPARE(PaperMetadataText::paperFileStem("Attention Is All You Need", "Ashish Vaswani, Noam Shazeer", "2017"),
-            QString("Vaswani 2017 - Attention Is All You Need"));
-        QCOMPARE(PaperMetadataText::paperFileStem("OpenFrontier: Navigation", "Esteban Padilla-Cerdio", ""),
+        // Parts chosen in Settings, in their order, joined with " - ": the first author's family name ("et al."
+        // when there are more), a four-digit year; a part the paper lacks is left out.
+        const QStringList usual{"author", "year", "title"};
+        QCOMPARE(PaperMetadataText::fileStem({"Attention Is All You Need", "Ashish Vaswani, Noam Shazeer", "2017", "", ""}, usual),
+            QString("Vaswani et al. - 2017 - Attention Is All You Need"));
+        QCOMPARE(PaperMetadataText::fileStem({"OpenFrontier: Navigation", "Esteban Padilla-Cerdio", "", "", ""}, usual),
             QString("Padilla-Cerdio - OpenFrontier - Navigation"));
-        QCOMPARE(PaperMetadataText::paperFileStem("Lidar Odometry", "", "2024"), QString("2024 - Lidar Odometry"));
-        QCOMPARE(PaperMetadataText::paperFileStem("라이다 오도메트리", "홍길동", "2025"), QString("홍길동 2025 - 라이다 오도메트리"));
-        QCOMPARE(PaperMetadataText::paperFileStem("Title", "J. R. R. A/B", "20xx"), QString("A B - Title"));
-        QVERIFY(PaperMetadataText::paperFileStem("", "Ashish Vaswani", "2017").isEmpty());
+        QCOMPARE(PaperMetadataText::fileStem({"Lidar Odometry", "", "2024", "", ""}, usual), QString("2024 - Lidar Odometry"));
+        QCOMPARE(PaperMetadataText::fileStem({"라이다 오도메트리", "홍길동", "2025", "", ""}, usual),
+            QString("홍길동 - 2025 - 라이다 오도메트리"));
+        QCOMPARE(PaperMetadataText::fileStem({"Solo", "Jane Doe", "20xx", "", ""}, usual), QString("Doe - Solo"));
+        QCOMPARE(PaperMetadataText::fileStem({"Untitled Authors", "", "", "", ""}, {"author", "title"}),
+            QString("Untitled Authors"));
+        QVERIFY(PaperMetadataText::fileStem({"", "Ashish Vaswani", "2017", "", ""}, usual).isEmpty());
+        paper.title = "OpenFrontier: General Navigation with Visual-Language Grounded Frontiers";
+        QCOMPARE(PaperMetadataText::fileStem(paper, usual),
+            QString("Padilla-Cerdio et al. - 2026 - OpenFrontier - General Navigation with Visual-Language Grounded "
+                    "Frontiers"));
+        QCOMPARE(PaperMetadataText::fileStem(paper, {"title", "year"}),
+            QString("OpenFrontier - General Navigation with Visual-Language Grounded Frontiers - 2026"));
+        QCOMPARE(PaperMetadataText::fileStem({"Mapping", "Ada Lovelace", "1843", "", "2401.01234"}, {"arxiv", "title"}),
+            QString("2401.01234 - Mapping"));
+        // The title gets what the other parts leave of 120 characters (at least 40).
+        paper.title = QString(200, 'y');
+        QVERIFY(PaperMetadataText::fileStem(paper, usual).size() <= 120);
+        QVERIFY(PaperMetadataText::fileStem(paper, usual).size() > 100);
+        // Shown in Owelk, the title is as written.
+        QCOMPARE(PaperMetadataText::paperName({"Radar: Odometry", "Ada Lovelace, Alan Turing", "1843", "", ""}, usual),
+            QString("Lovelace et al. - 1843 - Radar: Odometry"));
 
         QTemporaryDir directory;
         ResearchStore store(directory.filePath("data"));
         QString error;
         QVERIFY2(store.initialize(&error), qPrintable(error));
+        // Author, year and title by default; the setting keeps their order and "-" for parts that are off.
+        QCOMPARE(store.fileNameParts(), (QStringList{"author", "year", "title"}));
+        QCOMPARE(store.sampleFileName(store.fileNameParts()), QString("Vaswani et al. - 2017 - Attention Is All You Need.pdf"));
+        QVERIFY(store.setSetting("pdfNames.parts", "year,-author,title,-arxiv"));
+        QCOMPARE(store.fileNameParts(), (QStringList{"year", "title"}));
+        QCOMPARE(store.sampleFileName(store.fileNameParts()), QString("2017 - Attention Is All You Need.pdf"));
+        QVERIFY(store.setSetting("pdfNames.parts", "-title,-year"));
+        QCOMPARE(store.fileNameParts(), QStringList{"title"}); // Nothing on: the title.
+        QVERIFY(store.setSetting("pdfNames.parts", ""));
         QSignalSpy named(&store, &ResearchStore::downloadNamed);
         const auto download = store.downloadTarget("2305.01234v2.pdf", true)["url"].toUrl();
         writeFixture(download.toLocalFile(), "Downloaded Paper Title");
@@ -1680,7 +1716,7 @@ private slots:
         QVERIFY(QFileInfo::exists(path));
         QVERIFY(store.rememberDocument(kept));
         QCOMPARE(store.adoptPdf(kept), kept);
-        QTRY_COMPARE_WITH_TIMEOUT(store.displayName(kept), QString("Kept Paper"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(store.paperTitle(kept), QString("Kept Paper"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!store.libraryDocuments().isEmpty(), 5000);
         // The same bytes again open the same paper; a repeated download is not kept twice.
         const auto again = directory.filePath("Downloads/paper (1).pdf");
@@ -1827,7 +1863,7 @@ private slots:
     }
     void namedAfterTheirPapers()
     {
-        // Kept PDFs take "Author Year - Title.pdf" once their details are known or edited, each paper keeping
+        // Kept PDFs take "Author et al. - Year - Title.pdf" once their details are known or edited, each paper keeping
         // its ID (the old path still finds it). A paper open in a tab for a while waits for the next start.
         QTemporaryDir directory;
         const auto first = directory.filePath("2305.01234v2.pdf"), second = directory.filePath("s41586-023.pdf");
@@ -1857,7 +1893,7 @@ private slots:
             QVERIFY(store.updateDocumentDetails(kept, {{"title", "Attention: All You Need"},
                                                          {"authors", "Ashish Vaswani, Noam Shazeer"}, {"year", "2017"}}));
             QVERIFY(store.updateDocumentDetails(open, {{"title", "Open Paper"}, {"authors", "Ada Lovelace"}, {"year", "1843"}}));
-            const auto named = QUrl::fromLocalFile(store.papersFolder() + "/Vaswani 2017 - Attention - All You Need.pdf");
+            const auto named = QUrl::fromLocalFile(store.papersFolder() + "/Vaswani et al. - 2017 - Attention - All You Need.pdf");
             QTRY_COMPARE_WITH_TIMEOUT(store.resolvedSource(kept), named, 10000);
             QVERIFY(QFileInfo::exists(named.toLocalFile()));
             QVERIFY(!QFileInfo::exists(kept.toLocalFile()));
@@ -1873,7 +1909,7 @@ private slots:
         // At the next start the open paper takes its name too, and the saved tab follows it.
         ResearchStore store(directory.filePath("data"));
         QVERIFY2(store.initialize(&error), qPrintable(error));
-        const auto later = QUrl::fromLocalFile(store.papersFolder() + "/Lovelace 1843 - Open Paper.pdf");
+        const auto later = QUrl::fromLocalFile(store.papersFolder() + "/Lovelace - 1843 - Open Paper.pdf");
         QCOMPARE(store.resolvedSource(open), later);
         const auto tree = store.session()["tree"].toMap();
         QCOMPARE(tree["tabs"].toList().value(0).toMap()["source"].toString(), later.toString());
@@ -1883,8 +1919,8 @@ private slots:
         store.namePdfFiles();
         QCOMPARE(store.resolvedSource(open), later);
         QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
-        // Renamed by hand (a paper's menu, a Library selection, Settings › Data): at once, with naming off
-        // the title alone. A file outside the PDF folder is never Owelk's to rename.
+        // Renamed by hand (a paper's menu, a Library selection, Settings › Data): at once, by the same parts
+        // even with naming off. A file outside the PDF folder is never Owelk's to rename.
         QVERIFY(store.keptByOwelk(later));
         QVERIFY(!store.keptByOwelk(QUrl::fromLocalFile(first)));
         QSignalSpy relinked(&store, &ResearchStore::sourceRelinked);
@@ -1899,8 +1935,22 @@ private slots:
         QVERIFY(store.updateDocumentDetails(byHand, {{"title", "Renamed Again"}, {"authors", "Ada Lovelace"}, {"year", "1843"}}));
         QVERIFY(store.setSetting("library.namePdfs", "1"));
         QCOMPARE(store.renamePapersToTitles({byHand}), 1);
-        QCOMPARE(store.resolvedSource(open),
-            QUrl::fromLocalFile(store.papersFolder() + "/Lovelace 1843 - Renamed Again.pdf"));
+        const auto full = QUrl::fromLocalFile(store.papersFolder() + "/Lovelace - 1843 - Renamed Again.pdf");
+        QCOMPARE(store.resolvedSource(open), full);
+        QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
+        // Owelk shows the paper by the same parts (the title as written), everywhere it names it; its file
+        // follows a change of parts (this one is open in a tab, so by hand here).
+        QVERIFY(store.updateDocumentDetails(full, {{"title", "Radar: Odometry at Night"}, {"authors", "Ada Lovelace, Alan Turing"}, {"year", "1843"}}));
+        QCOMPARE(store.displayName(full), QString("Lovelace et al. - 1843 - Radar: Odometry at Night"));
+        const auto rows = store.libraryDocuments();
+        QVERIFY(std::any_of(rows.cbegin(), rows.cend(), [&](const QVariant &row) {
+            return row.toMap()["name"].toString() == "Lovelace et al. - 1843 - Radar: Odometry at Night";
+        }));
+        QVERIFY(store.setSetting("pdfNames.parts", "title,-author,-year,-arxiv"));
+        QCOMPARE(store.displayName(open), QString("Radar: Odometry at Night"));
+        QCOMPARE(store.renamePapersToTitles({open}), 1);
+        QCOMPARE(store.resolvedSource(open), QUrl::fromLocalFile(store.papersFolder() + "/Radar - Odometry at Night.pdf"));
+        QVERIFY(store.setSetting("pdfNames.parts", ""));
         QTRY_VERIFY_WITH_TIMEOUT(!store.busy(), 10000);
     }
     void addedPdfsAreCheckedForPapersAlreadyKept()

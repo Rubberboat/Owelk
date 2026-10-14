@@ -23,6 +23,37 @@ ColumnLayout {
     // Read again after copying or when papers change.
     readonly property int outside: researchStore.documentsRevision >= 0 && !researchStore.copyingPdfs ? researchStore.outsidePdfCount() : 0
     Connections { target: researchStore; function onBackupFinished(ok, path, message) { root.result = message } }
+    // A paper's name from its details: every part in its order, on or off ("author,year,title,-arxiv").
+    property int namesRevision: 0
+    readonly property var nameKeys: ["title", "author", "year", "arxiv"]
+    readonly property var nameLabels: ({title: "Title", author: "First author", year: "Year", arxiv: "arXiv ID"})
+    readonly property var nameParts: {
+        namesRevision
+        const list = (researchStore.setting("pdfNames.parts").trim() || "author,year,title,-arxiv").split(",").filter(function(p) { return p.length })
+            .map(function(p) { return {key: p.replace(/^-/, ""), on: p[0] !== "-"} })
+            .filter(function(p, i, all) { return root.nameKeys.indexOf(p.key) >= 0 && all.findIndex(function(q) { return q.key === p.key }) === i })
+        root.nameKeys.forEach(function(k) { if (!list.some(function(p) { return p.key === k })) list.push({key: k, on: false}) })
+        // Nothing on: the title, as the store does.
+        if (!list.some(function(p) { return p.on })) list.find(function(p) { return p.key === "title" }).on = true
+        return list
+    }
+    readonly property var namesOn: nameParts.filter(function(p) { return p.on }).map(function(p) { return p.key })
+    function saveNames(list) {
+        researchStore.setSetting("pdfNames.parts", list.map(function(p) { return (p.on ? "" : "-") + p.key }).join(","))
+        namesRevision++
+    }
+    function moveName(index, step) {
+        const list = nameParts.map(function(p) { return {key: p.key, on: p.on} }), to = index + step
+        if (to < 0 || to >= list.length) return
+        const item = list.splice(index, 1)[0]
+        list.splice(to, 0, item)
+        saveNames(list)
+    }
+    function switchName(index, on) {
+        const list = nameParts.map(function(p) { return {key: p.key, on: p.on} })
+        list[index].on = on
+        saveNames(list)
+    }
     SettingsGroup {
         title: "Library"
         note: "Like a note app, Owelk keeps every PDF you open, add or download in its PDF folder. Opened files are copied and the originals left alone; PDFs you add (dragged in, or with +) move there. Changing the folder moves the PDFs already in it, with their notes and annotations."
@@ -70,7 +101,7 @@ ColumnLayout {
         SettingsRow {
             visible: root.keepPdfs
             label: "Name files after their papers"
-            detail: "\u201cAuthor Year - Title.pdf\u201d in the PDF folder. A paper open in a tab for a while is renamed the next time Owelk starts, or now with Rename Now (also in a paper\u2019s menu and a Library selection). Off, files keep their names until renamed by hand, then after the title alone."
+            detail: "As in Paper names below, in the PDF folder. A paper open in a tab for a while is renamed the next time Owelk starts, or now with Rename Now (also in a paper\u2019s menu and a Library selection). Off, files keep their names until renamed by hand."
             Button {
                 objectName: "renameKeptPdfs"
                 text: "Rename Now"
@@ -93,6 +124,43 @@ ColumnLayout {
                 model: ["Move into the PDF folder", "Copy, leaving the original"]
                 currentIndex: researchStore.setting("library.dropMoves", "1") === "1" ? 0 : 1
                 onActivated: function(index) { researchStore.setSetting("library.dropMoves", index === 0 ? "1" : "0") }
+            }
+        }
+    }
+    // Which paper details make a paper's name (shown in Owelk and given to its file), in which order.
+    SettingsGroup {
+        objectName: "pdfNameGroup"
+        title: "Paper names"
+        note: "Example: " + researchStore.sampleFileName(root.namesOn).replace(/\.pdf$/, "")
+            + ". Owelk shows papers by this name (Library, tabs, search; web pages keep their titles); downloads, Rename Now and the PDF folder\u2019s own names follow it."
+        Repeater {
+            model: root.nameParts
+            delegate: SettingsRow {
+                id: partRow
+                required property var modelData
+                required property int index
+                objectName: "pdfNamePart-" + modelData.key
+                label: root.nameLabels[modelData.key]
+                opacity: modelData.on ? 1 : .55
+                IconButton {
+                    objectName: "pdfNameUp-" + partRow.modelData.key
+                    icon.name: "up"; description: "Move up"
+                    enabled: partRow.index > 0
+                    onClicked: root.moveName(partRow.index, -1)
+                }
+                IconButton {
+                    objectName: "pdfNameDown-" + partRow.modelData.key
+                    icon.name: "down"; description: "Move down"
+                    enabled: partRow.index < root.nameParts.length - 1
+                    onClicked: root.moveName(partRow.index, 1)
+                }
+                Switch {
+                    objectName: "pdfNameSwitch-" + partRow.modelData.key
+                    checked: partRow.modelData.on
+                    // One part stays on.
+                    enabled: !(partRow.modelData.on && root.namesOn.length === 1)
+                    onToggled: root.switchName(partRow.index, checked)
+                }
             }
         }
     }

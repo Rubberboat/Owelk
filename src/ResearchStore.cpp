@@ -854,6 +854,11 @@ bool ResearchStore::setSetting(const QString &key, const QString &value)
     query.addBindValue(stored);
     if (!query.exec()) return false;
     m_preferences.insert(key, stored);
+    // Papers are shown, and their kept files named, by the parts chosen for their names.
+    if (key == "pdfNames.parts") {
+        loadDocumentNames();
+        announceDocumentsChanged(); // Lists and tabs show the new names; kept files follow (namePdfFiles).
+    }
     emit settingsChanged();
     return true;
 }

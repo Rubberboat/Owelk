@@ -680,7 +680,7 @@ QVariantList ResearchStore::libraryPassages(
         if (start + 1400 < text.size()) excerpt += " …";
         perPaper[document] += 1;
         passages.append(QVariantMap{{"n", passages.size() + 1}, {"documentId", document}, {"source", source},
-            {"title", displayName(source)}, {"year", documentDetails(source).value("year")}, {"page", row["page"]},
+            {"title", paperTitle(source)}, {"year", documentDetails(source).value("year")}, {"page", row["page"]},
             {"excerpt", excerpt}});
         if (passages.size() >= limit) break;
     }

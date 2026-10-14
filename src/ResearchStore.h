@@ -85,14 +85,15 @@ public:
     // this one, each paper following its file the way Locate Original PDF does, and new PDFs go there.
     // False when the folder cannot be used or PDFs are already being copied or moved.
     Q_INVOKABLE bool choosePapersFolder(const QUrl &folder);
-    // Kept PDFs take their paper's name, "Author Year - Title.pdf" (setting library.namePdfs, on by
-    // default), each paper following its file like Locate Original PDF. Runs when details change; a
+    // Kept PDFs take their paper's name, from the parts chosen in Settings › Data ("Lovelace et al. - 1843 -
+    // Title.pdf" by default; fileNameParts) while library.namePdfs is on (the default), each paper following
+    // its file like Locate Original PDF. Runs when details change; a
     // paper open in a tab for a while keeps its file until the next start, so no reader reloads under
     // the reader (a fresh one, just dropped or downloaded, is named at once).
     Q_INVOKABLE void namePdfFiles(bool starting = false);
     // The same at once for the papers given (a paper's menu, a Library selection, Settings › Data), papers
-    // open in a tab included (they follow their file); with library.namePdfs off, the title alone. Only
-    // Owelk's own copies with a known title are renamed; answers how many were.
+    // open in a tab included (they follow their file), whether or not library.namePdfs is on. Only Owelk's
+    // own copies with a known title are renamed; answers how many were.
     Q_INVOKABLE int renamePapersToTitles(const QVariantList &sources);
     // Whether a paper's file is Owelk's own copy, in the PDF folder: the only files ever renamed.
     Q_INVOKABLE bool keptByOwelk(const QUrl &source) const;
@@ -137,8 +138,11 @@ public:
     Q_INVOKABLE QString localPath(const QUrl &url) const;
     // A path (any platform form) as a file URL.
     Q_INVOKABLE QUrl fileUrl(const QString &path) const;
-    // Paper title when known, otherwise the file name.
+    // How Owelk shows a paper: its name from the parts chosen in Settings › Data (author, year, title,
+    // arXiv ID) when its title is known, a web page's title, otherwise the file name.
     Q_INVOKABLE QString displayName(const QUrl &source) const;
+    // The paper's own title (for exports and what is sent to the AI), else as displayName.
+    Q_INVOKABLE QString paperTitle(const QUrl &source) const;
     Q_INVOKABLE QVariantMap documentDetails(const QUrl &source) const;
     Q_INVOKABLE bool updateDocumentDetails(const QUrl &source, const QVariantMap &details);
     // Forget edits and read the details from the PDF again.
@@ -370,7 +374,12 @@ public:
     // never overwrites an existing file. Returns directory, fileName and url.
     // PDFs go to papers/ while PDFs are kept in Owelk.
     Q_INVOKABLE QVariantMap downloadTarget(const QString &suggestedName, bool pdf = false) const;
-    // A PDF just downloaded into the PDF folder takes its paper's title as its name ("Title.pdf") when the
+    // The parts a paper's name is made of, in their order (setting pdfNames.parts, e.g.
+    // "author,year,title,-arxiv": "-" for off; that is the default): for its file and for how Owelk shows it.
+    QStringList fileNameParts() const;
+    // How a sample paper would be named with these parts (the settings preview).
+    Q_INVOKABLE QString sampleFileName(const QStringList &parts) const;
+    // A PDF just downloaded into the PDF folder is named from its paper (fileNameParts) when the
     // web.pdfNames setting is "title" (the default) and the PDF names its paper clearly. Answered by
     // downloadNamed(file, named) with the file to open, the same one when the name stays.
     Q_INVOKABLE void nameDownloadedPdf(const QUrl &file);
@@ -436,6 +445,8 @@ private:
     void loadDocumentNames();
     void syncNoteLinks(const QString &noteId, const QString &body);
     void rememberTitle(const QUrl &url, const QString &title);
+    // A paper's shown name from its details (fileNameParts); a web page's title as it is.
+    void rememberPaperName(const QUrl &url);
     void refreshMetadata(const QString &id, const QUrl &url, bool force, bool checkDuplicate = false);
     void reportDuplicate(const QString &id, const QUrl &url, const QString &hash);
     void announceDocumentsChanged();
@@ -481,6 +492,7 @@ private:
     // at once; waited for on closing (they report their progress to the store).
     QThreadPool m_fileWorkers;
     QHash<QString, QString> m_titles;
+    QStringList m_nameParts;
     QSet<QString> m_metadataPending;
     QSet<QString> m_duplicateChecks;
     int m_documentsRevision = 0;
