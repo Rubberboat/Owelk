@@ -127,6 +127,9 @@ private:
     QNetworkAccessManager *m_network;
     CodexBridge *m_codex;
     QHash<int, QPointer<AiProvider>> m_running;
+    // Chats made for a request whose question is not stored yet: removed if it fails before then, so no
+    // chat is left with only a title.
+    QHash<int, QString> m_fresh;
     int m_nextRequest = 0;
     QVariantMap m_codexAccount;
 };

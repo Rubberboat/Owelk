@@ -189,8 +189,42 @@ Item {
         return list
     }
     function stop() { if (streaming) ai.cancel(request) }
+    // Answers still coming for chats no longer shown (the panel moved on to another chat or the lists):
+    // they keep going and are stored when done; a chat opened again picks up its answer where it is.
+    // request → {thread, answer, thinking, seconds, askedAt, question, model, cut}. Text is added in
+    // place; the object is replaced only when a request comes or goes.
+    property var background: ({})
+    // Chats with an answer on its way, shown or not.
+    readonly property var answering: {
+        const list = Object.keys(background).map(function(k) { return background[k].thread }).filter(function(t) { return t.length > 0 })
+        if (streaming && threadId.length) list.push(threadId)
+        return list
+    }
+    function keepInBackground() {
+        if (!streaming) return
+        const next = Object.assign({}, background)
+        next[request] = {thread: threadId, answer: answer, thinking: thinkingText, seconds: thinkingSeconds, askedAt: askedAt,
+                         question: pendingQuestion, model: usedModel, cut: truncated}
+        background = next
+        streaming = false
+        request = -1
+    }
+    function resumeAnswer(id) {
+        const live = background[id]
+        dropBackground(id)
+        request = id; streaming = true
+        answer = live.answer; thinkingText = live.thinking; thinkingSeconds = live.seconds; askedAt = live.askedAt
+        usedModel = live.model; truncated = live.cut
+        pendingQuestion = live.thread.length ? "" : live.question
+    }
+    function dropBackground(id) {
+        if (!(id in background)) return
+        const next = Object.assign({}, background)
+        delete next[id]
+        background = next
+    }
     function reset() {
-        stop()
+        keepInBackground()
         answer = ""; error = ""; pendingQuestion = ""; usedModel = ""; truncated = false
         thinkingText = ""; thinkingSeconds = 0
         keepIn = ""
@@ -252,6 +286,9 @@ Item {
         if (!fromList) topicKey = saved.topic || ""
         researchStore.markOpened("ai", id)
         conversationOpen = true
+        // Its answer still coming: shown again as it arrives.
+        const live = Object.keys(background).find(function(k) { return background[k].thread === id })
+        if (live !== undefined) resumeAnswer(Number(live))
         // Continue with the model the thread used, when that provider is still set up.
         const info = ai.providers.find(function(p) { return p.id === saved.provider }) || ({})
         if (info.configured || saved.provider === "ollama") {
@@ -367,34 +404,72 @@ Item {
         if (note.length) researchStore.notify(noteId ? "Added to the note." : "Saved as a note with links to its sources.")
         return note
     }
+    // An answer's opening words, as plain text.
+    function preview(text) {
+        return text.replace(/\]\([^)]*\)/g, "]").replace(/[#*_`>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 160)
+    }
     Connections {
         target: root.ai
         function onStarted(id, thread, provider, model, cut) {
-            if (id !== root.request) return
+            if (id !== root.request) {
+                const live = root.background[id]
+                if (live) { live.thread = thread; live.model = model; live.cut = cut; root.background = Object.assign({}, root.background) }
+                return
+            }
             root.usedModel = model; root.truncated = cut
-            if (root.threadId !== thread) { root.threadId = thread; root.thread = researchStore.aiThread(thread); researchStore.markOpened("ai", thread) }
+            if (root.threadId !== thread) { root.threadId = thread; researchStore.markOpened("ai", thread) }
+            // The question is stored as it goes out: the chat shows it from now on.
+            root.thread = researchStore.aiThread(thread)
+            root.pendingQuestion = ""
         }
-        function onThinking(id, text) { if (id === root.request) root.thinkingText += text }
+        function onThinking(id, text) {
+            if (id === root.request) root.thinkingText += text
+            else if (root.background[id]) root.background[id].thinking += text
+        }
         function onDelta(id, text) {
-            if (id !== root.request) return
-            if (!root.answer.length) root.thinkingSeconds = Math.max(1, Math.round((Date.now() - root.askedAt) / 1000))
+            const live = id === root.request ? null : root.background[id]
+            if (id !== root.request && !live) return
+            const seconds = Math.max(1, Math.round((Date.now() - (live ? live.askedAt : root.askedAt)) / 1000))
+            if (live) {
+                if (!live.answer.length) live.seconds = seconds
+                live.answer += text
+                return
+            }
+            if (!root.answer.length) root.thinkingSeconds = seconds
             root.answer += text
         }
         function onFinished(id, text, details) {
-            if (id !== root.request) return
+            if (id !== root.request) {
+                // An answer for a chat no longer shown: stored by now; said where it can be read.
+                const live = root.background[id]
+                if (!live) return
+                root.dropBackground(id)
+                const saved = researchStore.aiThread(details.threadId || live.thread)
+                root.answered(saved.id || "", saved.title || "AI", root.preview(text))
+                return
+            }
             root.streaming = false; root.usedModel = details.model
             root.thread = researchStore.aiThread(root.threadId)
             root.answer = ""; root.pendingQuestion = ""; root.thinkingText = ""
-            root.answered(root.threadId, root.thread.title || "AI",
-                          text.replace(/\]\([^)]*\)/g, "]").replace(/[#*_`>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 160))
+            root.answered(root.threadId, root.thread.title || "AI", root.preview(text))
             // The material went with this turn; follow-ups reuse it through the thread.
             root.spec = root.spec.scope === "library" ? {scope: "library", collection: root.spec.collection || "", collectionName: root.spec.collectionName || ""}
                       : root.spec.source ? {source: root.spec.source, scope: "none"} : ({})
         }
         function onFailed(id, message) {
-            if (id !== root.request) return
+            if (id !== root.request) { root.dropBackground(id); return }
             root.streaming = false
-            if (message !== "Stopped.") root.error = message
+            root.answer = ""; root.thinkingText = ""
+            // Once it went out, the question stays in the chat, with why it got no answer.
+            let kept = false
+            if (root.threadId.length) {
+                root.thread = researchStore.aiThread(root.threadId)
+                root.pendingQuestion = ""
+                const last = root.messages.length ? root.messages[root.messages.length - 1] : ({})
+                kept = !!(last.context && last.context.failed)
+            }
+            // Said under the question once kept there; below too when Settings can help.
+            if (message !== "Stopped." && (!kept || message.indexOf("Settings") >= 0)) root.error = message
         }
         function onModelsLoaded(provider, list) {
             const next = Object.assign({}, root.models)

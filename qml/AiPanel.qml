@@ -633,7 +633,9 @@ Item {
                         Label { Layout.fillWidth: true; text: row.modelData.title; elide: Text.ElideRight; textFormat: Text.PlainText; color: row.chosen ? Theme.selectedText : Theme.text }
                         Label {
                             Layout.fillWidth: true
-                            text: Math.ceil(row.modelData.messages / 2) + (row.modelData.messages > 2 ? " turns" : " turn") + " · " + row.modelData.model
+                            // "Answering…" while its answer is coming, also when another chat is shown.
+                            text: root.c && root.c.answering.indexOf(row.modelData.id) >= 0 ? "Answering…"
+                                  : Math.ceil(row.modelData.messages / 2) + (row.modelData.messages > 2 ? " turns" : " turn") + " · " + row.modelData.model
                             elide: Text.ElideRight; textFormat: Text.PlainText; color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
                         }
                     }
@@ -763,12 +765,14 @@ Item {
                 Label {
                     objectName: "aiCutOff-" + message.index
                     readonly property var context: message.modelData.context || ({})
-                    visible: message.modelData.role === "assistant" && !!(context.cutOff || context.stopped)
-                    text: context.stopped ? "Stopped." : "Stopped at the length limit."
-                    textFormat: Text.PlainText; color: Theme.textTertiary; font.pixelSize: Theme.fontSmall
+                    // A question with no answer keeps why: stopped before any text, or what went wrong.
+                    visible: message.modelData.role === "assistant" && !!(context.cutOff || context.stopped || context.failed)
+                    text: context.failed ? "No answer: " + context.failed : context.stopped ? "Stopped." : "Stopped at the length limit."
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere; Layout.fillWidth: true
+                    textFormat: Text.PlainText; color: context.failed ? Theme.danger : Theme.textTertiary; font.pixelSize: Theme.fontSmall
                 }
                 RowLayout {
-                    visible: message.modelData.role === "assistant"
+                    visible: message.modelData.role === "assistant" && message.modelData.content.length > 0
                     spacing: 0
                     IconButton { icon.name: "copy"; description: "Copy answer"; glyphSize: Theme.fontBody; onClicked: researchStore.copyText(message.modelData.content) }
                     // A new note, or one of the notes about this paper (a menu when there are some).

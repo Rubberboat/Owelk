@@ -477,5 +477,56 @@ Item {
             tryVerify(function() { return keyRow(paper) === null })
             researchStore.setSetting("ai.hiddenPaperThreads", "")
         }
+        function test_9zzz_askingWithAPaperOpenKeepsTheQuestionAtOnce() {
+            researchStore.setSetting("ai.baseUrl.claude", testInput.webFixture("/").toString())
+            researchStore.ai.provider = "claude"
+            verify(researchStore.ai.setApiKey("claude", "sk-ui-test-key"))
+            researchStore.ai.giveConsent("claude")
+            reader.source = outlineSource
+            const box = findChild(panel, "aiQuestion")
+            const ask = function(question) {
+                controller.showThreads()
+                panel.chooseTopic(first)
+                box.forceActiveFocus()
+                box.text = question
+                keyClick(Qt.Key_Return)
+                tryVerify(function() { return controller.threadId.length > 0 }, 5000)
+                made.push(controller.threadId)
+                return controller.threadId
+            }
+            // Typed with the paper open: the chat holds the question at once, not only its title.
+            const id = ask("Take your time: what is the claim?")
+            let saved = researchStore.aiThread(id)
+            compare(saved.messages.length, 1)
+            compare(saved.messages[0].display, "Take your time: what is the claim?")
+            verify(controller.streaming)
+            compare(controller.messages.length, 1)
+            compare(controller.pendingQuestion, "")
+            // Back to the chats while it thinks: the answer keeps coming and is kept.
+            mouseClick(findChild(panel, "aiThreadsButton"))
+            compare(controller.conversationOpen, false)
+            verify(controller.answering.indexOf(id) >= 0)
+            tryVerify(function() { return researchStore.aiThread(id).messages.length === 2 }, 10000)
+            compare(researchStore.aiThread(id).messages[1].content, "Mock answer about **occlusion**.")
+            tryVerify(function() { return controller.answering.indexOf(id) < 0 })
+            // Opened again while answering, the answer goes on in place.
+            const other = ask("Take your time: and the method?")
+            controller.showThreads()
+            verify(controller.openThread(other, true))
+            verify(controller.streaming)
+            tryCompare(controller, "streaming", false, 10000)
+            compare(controller.messages.length, 2)
+            compare(controller.messages[1].content, "Mock answer about **occlusion**.")
+            // Stopped before any text: the question stays, with "Stopped." under it.
+            const stopped = ask("Take your time: stop me")
+            controller.stop()
+            tryCompare(controller, "streaming", false, 5000)
+            saved = researchStore.aiThread(stopped)
+            compare(saved.messages.length, 2)
+            verify(saved.messages[1].context.stopped)
+            const conv = findChild(panel, "aiConversation")
+            tryVerify(function() { const label = findChild(conv, "aiCutOff-1"); return label !== null && label.visible && label.text === "Stopped." })
+            controller.showThreads()
+        }
     }
 }

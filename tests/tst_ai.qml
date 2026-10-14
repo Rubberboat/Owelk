@@ -562,6 +562,9 @@ Item {
             const next = findChild(p, "aiTranslateNext")
             tryCompare(next, "visible", true)
             compare(next.text, "Translate Page 2")
+            // The answer just stored is still being laid out: click once it stands still.
+            const conversation = findChild(p, "aiConversation")
+            tryVerify(function() { const y = next.mapToItem(conversation, 0, 0).y; wait(30); return next.mapToItem(conversation, 0, 0).y === y })
             mouseClick(next)
             tryVerify(function() { return !ai.streaming && ai.messages.length === 4 }, 10000)
             compare(ai.messages[2].display, "Translate page 2")

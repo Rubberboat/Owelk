@@ -293,6 +293,17 @@ public slots:
                                         "{\"type\":\"text_delta\",\"text\":\"")
                                 + piece + "\"}}\n\n";
                         body += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+                        // "Take your time": the answer comes after a while, so the panel can move on first.
+                        if (request.contains("Take your time")) {
+                            const auto reply = "HTTP/1.1 200 OK\r\nContent-Type: " + type
+                                + "\r\nConnection: close\r\nContent-Length: " + QByteArray::number(body.size())
+                                + "\r\n\r\n" + body;
+                            QTimer::singleShot(1500, socket, [socket, reply] {
+                                socket->write(reply);
+                                socket->disconnectFromHost();
+                            });
+                            return;
+                        }
                     } else if (head.contains("/graph/v1/paper/")) {
                         // Semantic Scholar: one reference and two citing papers.
                         type = "application/json";

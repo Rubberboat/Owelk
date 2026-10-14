@@ -754,17 +754,42 @@ private slots:
         QCOMPARE(messages.size(), 2);
         QCOMPARE(messages[1].toMap()["content"].toString(), QString("Half an "));
         QVERIFY(messages[1].toMap()["context"].toMap()["stopped"].toBool());
-        // Stopped before any text: nothing is stored.
+        // Stopped before any text: the question stays in its chat (it was stored as it went out), marked
+        // as stopped with no answer.
         server.chunks = {};
+        QSignalSpy started(ai, &AiService::started);
         const int empty
             = ai->ask({{"provider", "claude"}, {"model", "claude-opus-5-5"}, {"action", "ask"}, {"question", "Wait"}});
         QTRY_VERIFY_WITH_TIMEOUT(server.seen.size() == 2, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(started.size(), 1, 5000);
+        const auto waiting = started.last()[1].toString();
+        QCOMPARE(store.aiThread(waiting)["messages"].toList().size(), 1); // The question, before any answer.
         ai->cancel(empty);
         QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 5000);
         QCOMPARE(failed[0][1].toString(), QString("Stopped."));
-        int stored = 0;
-        for (const auto &thread : store.aiThreads()) stored += thread.toMap()["messages"].toInt();
-        QCOMPARE(stored, 2);
+        auto kept = store.aiThread(waiting)["messages"].toList();
+        QCOMPARE(kept.size(), 2);
+        QCOMPARE(kept[0].toMap()["display"].toString(), QString("Wait"));
+        QVERIFY(kept[1].toMap()["content"].toString().isEmpty());
+        QVERIFY(kept[1].toMap()["context"].toMap()["stopped"].toBool());
+        // A follow-up there sends only the turns that were answered.
+        server.keepOpen = false;
+        server.chunks = {MockServer::sse("content_block_delta",
+                             {{"type", "content_block_delta"}, {"delta", QJsonObject{{"type", "text_delta"}, {"text", "Done."}}}}),
+            MockServer::sse("message_stop", {{"type", "message_stop"}})};
+        ai->ask({{"provider", "claude"}, {"model", "claude-opus-5-5"}, {"action", "ask"}, {"question", "Again"},
+            {"threadId", waiting}});
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 2, 10000);
+        QCOMPARE(server.seen.last().body["messages"].toArray().size(), 1);
+        kept = store.aiThread(waiting)["messages"].toList();
+        QCOMPARE(kept.size(), 4);
+        QCOMPARE(kept[3].toMap()["content"].toString(), QString("Done."));
+        // Failing before the question goes out (the PDF cannot be read) leaves no chat with only a title.
+        const auto chats = store.aiThreads().size();
+        ai->ask({{"provider", "claude"}, {"model", "claude-opus-5-5"}, {"action", "ask"}, {"question", "Unread"},
+            {"source", QUrl::fromLocalFile(directory.filePath("missing.pdf"))}, {"scope", "paper"}});
+        QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 2, 5000);
+        QCOMPARE(store.aiThreads().size(), chats);
         ai->clearApiKey("claude");
     }
     void serviceRequiresConsentKeyAndSavesAnswers()
