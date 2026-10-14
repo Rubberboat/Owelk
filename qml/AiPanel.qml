@@ -30,6 +30,12 @@ Item {
         selectedThreads = []
         researchStore.trashAiThreads(ids)
     }
+    // One chat goes to the Trash at once; several (a selection) only after asking.
+    function askTrashThreads(ids) {
+        if (ids.length < 2) { trashThreads(ids); return }
+        trashChatsDialog.ids = ids.slice()
+        trashChatsDialog.open()
+    }
     // Threads hold the chats: All Chats, one per paper (made as its chats are), General, and Threads of the
     // reader's own, which may hold chats about several papers. Wide, the Threads stand in a column beside
     // the chats (and the conversation); narrow, one list at a time.
@@ -122,6 +128,12 @@ Item {
     function trashTopic(row) {
         trashThreads(topicChats(row.key))
         if (row.kind === "custom") deleteTopic(row.key)
+    }
+    // Deleting a Thread asks first: with its chats, or (one's own) leaving them to their papers.
+    function askDeleteTopic(row, keepChats) {
+        deleteTopicDialog.row = row
+        deleteTopicDialog.keepChats = keepChats
+        deleteTopicDialog.open()
     }
     function openTopicMenu(row, item, x, y) {
         if (!row || !row.key) return
@@ -527,9 +539,9 @@ Item {
                 const ids = model.map(function(t) { return t.id })
                 root.selectedThreads = root.selectedThreads.filter(function(id) { return ids.indexOf(id) >= 0 })
             }
-            Keys.onDeletePressed: if (root.selectedThreads.length) root.trashThreads(root.selectedThreads)
+            Keys.onDeletePressed: if (root.selectedThreads.length) root.askTrashThreads(root.selectedThreads)
             Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Backspace && root.selectedThreads.length) { root.trashThreads(root.selectedThreads); event.accepted = true }
+                if (event.key === Qt.Key_Backspace && root.selectedThreads.length) { root.askTrashThreads(root.selectedThreads); event.accepted = true }
             }
             delegate: ItemDelegate {
                 id: row
@@ -1147,9 +1159,9 @@ Item {
         }
         MenuItem {
             objectName: "trashThreadOption"
-            text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " to Trash" : "Move to Trash"
+            text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " to Trash…" : "Move to Trash"
             palette.windowText: Theme.danger
-            onTriggered: root.trashThreads(threadMenu.ids)
+            onTriggered: root.askTrashThreads(threadMenu.ids)
         }
     }
     Dialog {
@@ -1195,33 +1207,50 @@ Item {
             }
         }
         MenuSeparator {}
+        // Deleting a Thread is red, apart from the rest, and asks first (deleteTopicDialog).
         MenuItem {
             objectName: "aiDeleteTopic"
             visible: topicMenu.own; height: visible ? implicitHeight : 0
-            text: "Delete Thread, Keep Chats"
-            onTriggered: root.deleteTopic(topicMenu.row.key)
+            text: "Delete Thread, Keep Chats…"
+            palette.windowText: Theme.danger
+            onTriggered: root.askDeleteTopic(topicMenu.row, true)
         }
         MenuItem {
             objectName: "aiTrashTopic"
             enabled: topicMenu.row.chats > 0
             text: "Delete Thread and Chats…"
-            // Red, apart from the rest; asks first (deleteTopicDialog).
             palette.windowText: Theme.danger
-            onTriggered: { deleteTopicDialog.row = topicMenu.row; deleteTopicDialog.open() }
+            onTriggered: root.askDeleteTopic(topicMenu.row, false)
         }
     }
-    // Asked once before a Thread and its chats are deleted.
+    // Asked once before a Thread goes: with its chats (to the Trash), or leaving them to their papers.
     ConfirmDialog {
         id: deleteTopicDialog
         objectName: "aiDeleteTopicDialog"
         property var row: ({})
+        property bool keepChats: false
         readonly property int chats: row.chats || 0
-        title: "Delete this Thread and its chats?"
-        message: "\u201c" + (row.title || "") + "\u201d and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
-                 + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
-                 + (chats === 1 ? "it" : "they") + " can be restored there."
-        actionText: "Delete Thread and Chats"
-        onConfirmed: root.trashTopic(row)
+        readonly property string name: "\u201c" + (row.title || "") + "\u201d"
+        title: keepChats ? "Delete this Thread?" : "Delete this Thread and its chats?"
+        message: keepChats
+                 ? "The Thread " + name + " will be deleted. Are you sure?\n\n" + (chats === 1 ? "Its chat is kept and goes" : "Its " + chats + " chats are kept and go")
+                   + " back to their papers' Threads (or General)."
+                 : name + " and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
+                   + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
+                   + (chats === 1 ? "it" : "they") + " can be restored there."
+        actionText: keepChats ? "Delete Thread" : "Delete Thread and Chats"
+        onConfirmed: keepChats ? root.deleteTopic(row.key) : root.trashTopic(row)
+    }
+    // Asked once before several chats (a selection) go to the Trash.
+    ConfirmDialog {
+        id: trashChatsDialog
+        objectName: "aiTrashChatsDialog"
+        property var ids: []
+        title: "Move " + ids.length + " chats to the Trash?"
+        message: "These " + ids.length + " chats, with all their questions and answers, will be deleted. Are you sure?"
+                 + "\n\nThey go to the Trash in the Library: until it is emptied, they can be restored there."
+        actionText: "Move to Trash"
+        onConfirmed: root.trashThreads(ids)
     }
     Dialog {
         id: topicDialog

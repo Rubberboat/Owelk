@@ -352,5 +352,72 @@ Item {
             tryVerify(function() { return view.count === 32 && atEnd(view) })
             controller.showThreads()
         }
+        function test_9z_deletingSeveralChatsOrAThreadAsksFirst() {
+            reader.source = outlineSource
+            panel.saveTopic("", "Pile", [])
+            const pile = controller.topicKey, ids = []
+            for (const title of ["P1", "P2", "P3"]) {
+                ids.push(researchStore.createAiThread({title: title, provider: "claude", model: "m", source: outlineSource, topic: pile}))
+                made.push(ids[ids.length - 1])
+            }
+            panel.chooseTopic(pile)
+            const list = chats(), menu = findChild(panel, "aiThreadMenu"), ask = findChild(panel, "aiTrashChatsDialog")
+            const trashed = function(id) { return researchStore.aiThread(id).trashed === true }
+            tryVerify(function() { return list.count === 3 && list.itemAtIndex(2) !== null })
+            // One chat goes to the Trash at once.
+            const single = list.itemAtIndex(0).modelData.id
+            mouseClick(list.itemAtIndex(0), 10, 10, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            findChild(panel, "trashThreadOption").triggered()
+            menu.close()
+            verify(!ask.opened)
+            tryVerify(function() { return trashed(single) })
+            // Several: the Delete key and the menu both ask; Cancel keeps them.
+            tryVerify(function() { return list.count === 2 && list.itemAtIndex(1) !== null })
+            const two = [list.itemAtIndex(0).modelData.id, list.itemAtIndex(1).modelData.id]
+            panel.selectedThreads = two.slice()
+            list.forceActiveFocus()
+            keyClick(Qt.Key_Delete)
+            tryCompare(ask, "opened", true)
+            compare(ask.title, "Move 2 chats to the Trash?")
+            verify(ask.message.indexOf("Are you sure?") >= 0)
+            ask.reject()
+            tryCompare(ask, "opened", false)
+            verify(!trashed(two[0]) && !trashed(two[1]))
+            panel.selectedThreads = two.slice()
+            mouseClick(list.itemAtIndex(0), 10, 10, Qt.RightButton)
+            tryCompare(menu, "opened", true)
+            const option = findChild(panel, "trashThreadOption")
+            compare(option.text, "Move 2 to Trash…")
+            option.triggered()
+            menu.close()
+            tryCompare(ask, "opened", true)
+            ask.accept()
+            tryVerify(function() { return trashed(two[0]) && trashed(two[1]) })
+            // A Thread of one's own deleted while keeping its chats asks too (in red).
+            const kept = chat("Kept", outlineSource)
+            researchStore.moveAiThreads([kept], pile)
+            const topicMenu = findChild(panel, "aiTopicMenu"), confirm = findChild(panel, "aiDeleteTopicDialog")
+            const deleteKeeping = function() {
+                mouseClick(topicRow("Pile"), 10, 10, Qt.RightButton)
+                tryCompare(topicMenu, "opened", true)
+                const item = menuItem(topicMenu, "aiDeleteTopic")
+                verify(item.visible)
+                verify(Qt.colorEqual(item.palette.windowText, Theme.danger))
+                item.triggered()
+                topicMenu.close()
+                tryCompare(confirm, "opened", true)
+            }
+            deleteKeeping()
+            compare(confirm.title, "Delete this Thread?")
+            confirm.reject()
+            tryCompare(confirm, "opened", false)
+            verify(topicRow("Pile") !== null)
+            deleteKeeping()
+            confirm.accept()
+            tryVerify(function() { return topicRow("Pile") === null })
+            compare(researchStore.aiThread(kept).topic, first)
+            verify(!trashed(kept))
+        }
     }
 }
