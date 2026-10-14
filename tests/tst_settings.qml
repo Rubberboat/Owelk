@@ -25,6 +25,32 @@ Item {
             Theme.theme = "neutral"; Theme.accentName = "blue"; Theme.textSize = 13; Theme.invertPages = false; Theme.appIcon = "paper"
             researchStore.setSetting("appearance.custom", "")
         }
+        function test_titleBarAndOwnColors() {
+            settings.openPage("appearance"); tryCompare(settings, "opened", true)
+            tryVerify(function() { return page() !== null })
+            // The system title bar follows the theme unless turned off (macOS and Windows draw one).
+            compare(Theme.titleBar, true)
+            verify(visualChild(settings.contentItem, "titleBarSwitch") !== null)
+            Theme.titleBar = false
+            compare(researchStore.setting("appearance.titleBar"), "0")
+            Theme.titleBar = true
+            compare(researchStore.setting("appearance.titleBar"), "1")
+            Theme.styleWindow(settings) // Not a window: ignored.
+            // Customize starts a custom theme from the one in use and shows its colors right below.
+            Theme.theme = "nord"
+            const customize = visualChild(settings.contentItem, "customizeColors")
+            verify(customize.enabled)
+            // It is in the first group: show the top of the page.
+            let flick = customize.parent
+            while (flick && flick.contentItem === undefined) flick = flick.parent
+            if (flick) flick.contentY = 0
+            waitForPolish(settings.contentItem); wait(50)
+            mouseClick(customize)
+            compare(Theme.theme, "custom")
+            compare(Theme.seeds("custom").window, Theme.seeds("nord").window)
+            verify(!customize.enabled)
+            tryVerify(function() { const seed = visualChild(settings.contentItem, "seed-window"); return seed !== null && seed.visible })
+        }
         function test_categoriesLoadOneAtATime() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)
             for (const id of ["appearance", "web", "search", "ai", "shortcuts", "data"]) {

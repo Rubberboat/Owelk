@@ -281,6 +281,8 @@ ApplicationWindow {
     function chooseFile() { if (!restoreFailed && !(currentReader && currentReader.annotationDirty)) fileDialog.open() }
 
     Component.onCompleted: {
+        // The system title bar follows the theme (Settings › Appearance).
+        Theme.styleWindow(window)
         const state = researchStore.session
         if (state.width) width = Math.max(minimumWidth, Math.min(Screen.width, state.width))
         if (state.height) height = Math.max(minimumHeight, Math.min(Screen.height, state.height))

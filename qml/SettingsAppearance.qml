@@ -10,7 +10,7 @@ ColumnLayout {
     spacing: 22
     // The custom theme's seeds, edited one color at a time.
     property var custom: Theme.seeds("custom")
-    readonly property var seedNames: [{key: "window", name: "Window and toolbars"}, {key: "sidebar", name: "Sidebars"},
+    readonly property var seedNames: [{key: "window", name: "Window, title bar and toolbars"}, {key: "sidebar", name: "Sidebars"},
         {key: "content", name: "Documents and lists"}, {key: "raised", name: "Menus and popovers"},
         {key: "text", name: "Text"}, {key: "separator", name: "Lines"}, {key: "backdrop", name: "Around PDF pages"}]
     property string editing: ""
@@ -75,6 +75,54 @@ ColumnLayout {
                     model: Theme.themes.concat([{id: "custom", name: "Custom"}])
                     delegate: ThemeTile { required property var modelData; themeId: modelData.id; name: modelData.name }
                 }
+            }
+        }
+        SettingsRow {
+            label: "Your own colors"
+            detail: "Window and title bar, sidebars, documents, menus, text, lines and around PDF pages"
+            Button {
+                objectName: "customizeColors"
+                text: Theme.theme === "custom" ? "Editing Below" : "Customize\u2026"
+                enabled: Theme.theme !== "custom"
+                onClicked: root.startCustom()
+            }
+        }
+        // The system's bar with the window buttons, above the tabs (macOS and Windows draw it).
+        SettingsRow {
+            visible: Qt.platform.os === "osx" || Qt.platform.os === "windows"
+            label: "Title bar in theme colors"
+            detail: Qt.platform.os === "osx" ? "The bar with the window buttons takes the window color, light or dark to match"
+                                             : "The title bar takes the window color (Windows 11; Windows 10 switches light or dark)"
+            Switch { objectName: "titleBarSwitch"; checked: Theme.titleBar; onToggled: Theme.titleBar = checked }
+        }
+    }
+    SettingsGroup {
+        visible: Theme.theme === "custom"
+        title: "Custom theme"
+        note: "Hover, selection and secondary text are worked out from these colors, so the theme stays consistent."
+        Repeater {
+            model: root.seedNames
+            delegate: SettingsRow {
+                id: seedRow
+                required property var modelData
+                label: modelData.name
+                Rectangle {
+                    objectName: "seed-" + seedRow.modelData.key
+                    width: 44; height: Theme.controlHeightSmall; radius: Theme.radiusSmall
+                    color: root.custom[seedRow.modelData.key] || "transparent"
+                    border.color: Theme.border
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: { root.editing = seedRow.modelData.key; seedDialog.selectedColor = root.custom[seedRow.modelData.key]; seedDialog.open() } }
+                }
+            }
+        }
+        SettingsRow {
+            label: "Dark"
+            detail: "Use light text and dark controls"
+            Switch {
+                objectName: "customDarkSwitch"
+                checked: !!root.custom.dark
+                onToggled: { const next = Object.assign({}, root.custom); next.dark = checked; root.custom = next; Theme.setCustomSeeds(next) }
             }
         }
     }
@@ -188,36 +236,6 @@ ColumnLayout {
         SettingsRow {
             label: "Dark pages"
             Switch { objectName: "invertPagesSwitch"; checked: Theme.invertPages; onToggled: Theme.invertPages = checked }
-        }
-    }
-    SettingsGroup {
-        visible: Theme.theme === "custom"
-        title: "Custom theme"
-        note: "Hover, selection and secondary text are worked out from these colors, so the theme stays consistent."
-        Repeater {
-            model: root.seedNames
-            delegate: SettingsRow {
-                id: seedRow
-                required property var modelData
-                label: modelData.name
-                Rectangle {
-                    objectName: "seed-" + seedRow.modelData.key
-                    width: 44; height: Theme.controlHeightSmall; radius: Theme.radiusSmall
-                    color: root.custom[seedRow.modelData.key] || "transparent"
-                    border.color: Theme.border
-                    HoverHandler { cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: { root.editing = seedRow.modelData.key; seedDialog.selectedColor = root.custom[seedRow.modelData.key]; seedDialog.open() } }
-                }
-            }
-        }
-        SettingsRow {
-            label: "Dark"
-            detail: "Use light text and dark controls"
-            Switch {
-                objectName: "customDarkSwitch"
-                checked: !!root.custom.dark
-                onToggled: { const next = Object.assign({}, root.custom); next.dark = checked; root.custom = next; Theme.setCustomSeeds(next) }
-            }
         }
     }
     Native.ColorDialog {

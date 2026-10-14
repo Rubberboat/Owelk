@@ -2,6 +2,8 @@
 
 #include <QColor>
 #include <QObject>
+#include <QPointer>
+#include <QWindow>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -20,6 +22,8 @@ class Theme : public QObject {
     Q_PROPERTY(bool invertPages READ invertPages WRITE setInvertPages NOTIFY changed)
     // Tabs listed beside the window instead of a bar above each split.
     Q_PROPERTY(bool verticalTabs READ verticalTabs WRITE setVerticalTabs NOTIFY changed)
+    // The system title bar in the window color, with buttons to match (macOS, Windows; on by default).
+    Q_PROPERTY(bool titleBar READ titleBar WRITE setTitleBar NOTIFY changed)
     // The app's icon in the Dock and taskbar (and, on macOS, in Finder): paper, white or navy.
     Q_PROPERTY(QString appIcon READ appIcon WRITE setAppIcon NOTIFY changed)
     Q_PROPERTY(QVariantList appIcons READ appIcons CONSTANT)
@@ -117,6 +121,10 @@ public:
     // The image for an icon choice (a resource path).
     static QString appIconPath(const QString &id);
     void setVerticalTabs(bool on);
+    bool titleBar() const { return m_titleBar; }
+    void setTitleBar(bool on);
+    // The main window, whose title bar follows the theme from now on (WindowChrome).
+    Q_INVOKABLE void styleWindow(QObject *window);
     void setInvertPages(bool on);
     bool dark() const { return m_dark; }
     bool canInvertPages() const
@@ -164,6 +172,9 @@ private:
     Seeds custom() const;
     void apply();
     void save(const QString &key, const QString &value);
+    void styleTitleBar();
+    QPointer<QWindow> m_styled;
+    bool m_titleBar = true;
 
     ResearchStore *m_store = nullptr;
     QString m_theme = "neutral", m_accentName = "blue";

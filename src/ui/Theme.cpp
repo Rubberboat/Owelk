@@ -1,12 +1,14 @@
 #include "Theme.h"
 #include "ResearchStore.h"
 #include "AppIcon.h"
+#include "WindowChrome.h"
 #include <QCoreApplication>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStyleHints>
 
 namespace {
 struct Named {
@@ -64,6 +66,7 @@ Theme::Theme(ResearchStore *store, QObject *parent) : QObject(parent), m_store(s
         m_textSize = qBound(11, m_store->setting("appearance.textSize", "13").toInt(), 17);
         m_invertPages = m_store->setting("appearance.invertPages") == "1";
         m_verticalTabs = m_store->setting("appearance.verticalTabs") == "1";
+        m_titleBar = m_store->setting("appearance.titleBar", "1") == "1";
         const auto icon = m_store->setting("appearance.appIcon", "paper");
         if (icon == "white" || icon == "navy") m_appIcon = icon;
     }
@@ -174,6 +177,7 @@ void Theme::apply()
     m_scrollHandle = alpha(s.text, .26);
     m_scrollHandleHover = alpha(s.text, .40);
     m_scrollHandlePressed = alpha(s.text, .52);
+    styleTitleBar();
     emit changed();
 }
 
@@ -214,6 +218,35 @@ void Theme::setInvertPages(bool on)
     m_invertPages = on;
     save("appearance.invertPages", on ? "1" : "0");
     emit changed();
+}
+
+void Theme::setTitleBar(bool on)
+{
+    if (on == m_titleBar) return;
+    m_titleBar = on;
+    save("appearance.titleBar", on ? "1" : "0");
+    styleTitleBar();
+    emit changed();
+}
+
+void Theme::styleWindow(QObject *window)
+{
+    auto *target = qobject_cast<QWindow *>(window);
+    if (!target || target == m_styled) return;
+    m_styled = target;
+    // Shown, full screen and back, or made again by the system: the title bar is set once more.
+    connect(target, &QWindow::visibleChanged, this, &Theme::styleTitleBar);
+    connect(target, &QWindow::windowStateChanged, this, &Theme::styleTitleBar);
+    // Windows resets the title bar when its own light or dark mode changes.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &Theme::styleTitleBar);
+#endif
+    styleTitleBar();
+}
+
+void Theme::styleTitleBar()
+{
+    if (m_styled) WindowChrome::apply(m_styled, m_titleBar, m_window, m_text, m_dark);
 }
 
 void Theme::setVerticalTabs(bool on)
