@@ -4,7 +4,7 @@ import QtQuick.Templates as T
 import Owelk.Ui
 
 // A menu row: rounded hover inset in the menu, check mark and submenu chevron as icons.
-// Destructive rows set palette.windowText (and text) to Theme.danger.
+// Destructive rows set palette.windowText (and text) to Theme.danger; a submenu with danger: true reads red.
 T.MenuItem {
     id: control
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
@@ -29,7 +29,8 @@ T.MenuItem {
         icon: control.icon
         text: control.text
         font: control.font
-        color: control.enabled ? control.palette.windowText : Theme.textDisabled
+        // A submenu marked danger (deleting) reads red on the row that opens it.
+        color: !control.enabled ? Theme.textDisabled : control.subMenu && control.subMenu.danger ? Theme.danger : control.palette.windowText
         // Cut off (too narrow): the whole text on hover.
         HoverHandler { id: cutHover; enabled: control.text.length > 0 && control.implicitContentWidth > control.availableWidth + 1 }
         T.ToolTip.visible: cutHover.enabled && cutHover.hovered
@@ -51,7 +52,7 @@ T.MenuItem {
         visible: control.subMenu
         name: control.subMenu ? (control.mirrored ? "left" : "right") : ""
         size: Theme.fontBody
-        color: Theme.textTertiary
+        color: control.subMenu && control.subMenu.danger && control.enabled ? Theme.danger : Theme.textTertiary
     }
     background: Rectangle {
         implicitWidth: 180

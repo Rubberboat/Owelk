@@ -122,6 +122,17 @@ Item {
         c.startIn(key)
         focusQuestion()
     }
+    // Threads opened in the list to show their chats right under them.
+    property var expandedTopics: []
+    function toggleTopic(key) {
+        expandedTopics = expandedTopics.indexOf(key) >= 0 ? expandedTopics.filter(function(k) { return k !== key }) : expandedTopics.concat([key])
+    }
+    // A chat chosen under its Thread in the list: that Thread is shown behind it.
+    function openChatIn(key, id) {
+        selectedThreads = []
+        c.chooseTopic(key)
+        if (c.openThread(id, true)) topicsOpen = false
+    }
     function chooseTopic(key) {
         c.showThreads()
         selectedThreads = []
@@ -160,6 +171,16 @@ Item {
         else hidePapers([from.key])
         if (c.topicKey === from.key) c.chooseTopic(into.key)
         researchStore.notify("Merged \u201c" + from.title + "\u201d into \u201c" + into.title + "\u201d.")
+    }
+    // A Thread without its chats: one's own goes and its chats go back to their papers' Threads (or General);
+    // a paper's goes and its chats move to General, where they stay.
+    function deleteTopicKeepingChats(row) {
+        if (row.kind === "custom") { deleteTopic(row.key); return }
+        if (row.kind !== "paper") return
+        const ids = topicChats(row.key)
+        if (c.topicKey === row.key) c.chooseTopic("general")
+        if (ids.length) researchStore.moveAiThreads(ids, "general")
+        hidePapers([row.key])
     }
     // A Thread with its chats: they go to the Trash in the Library, where they can be restored.
     // A paper's Thread goes even with no chats (the paper in front's before its first).
@@ -466,62 +487,126 @@ Item {
                 clip: true
                 model: root.topics
                 ScrollBar.vertical: ScrollBar {}
-                delegate: ItemDelegate {
-                    id: topicRow
+                // A Thread, and (opened with the arrow) its chats right under it: what is in it, at a glance.
+                delegate: Column {
+                    id: topicEntry
                     required property var modelData
                     required property int index
-                    readonly property bool here: modelData.key.length > 0 && modelData.key === root.readerTopic
+                    readonly property bool here: topicRow.here
+                    readonly property bool highlighted: topicRow.highlighted
+                    readonly property bool expandable: modelData.key.length > 0 && modelData.chats > 0
+                    readonly property bool expanded: expandable && root.expandedTopics.indexOf(modelData.key) >= 0
+                    readonly property var chats: expanded ? (root.topicRevision, researchStore.aiThreads().filter(function(t) { return t.topic === topicEntry.modelData.key })) : []
                     objectName: "aiTopic-" + index
                     width: ListView.view.width
-                    height: Theme.rowHeightTall
-                    // The Thread shown, and the one a dragged chat would go into.
-                    highlighted: root.currentTopic.key === modelData.key || chatDrop.containsDrag
-                    onClicked: root.chooseTopic(modelData.key)
-                    HoverHandler { id: topicHover }
-                    contentItem: RowLayout {
-                        spacing: 2
-                        ColumnLayout {
-                            Layout.fillWidth: true; Layout.minimumWidth: 0
-                            spacing: 1
-                            Label {
-                                Layout.fillWidth: true
-                                text: topicRow.modelData.title
-                                elide: Text.ElideRight; textFormat: Text.PlainText
-                                color: topicRow.highlighted ? Theme.selectedText : Theme.text
+                    ItemDelegate {
+                        id: topicRow
+                        readonly property var modelData: topicEntry.modelData
+                        readonly property bool here: modelData.key.length > 0 && modelData.key === root.readerTopic
+                        objectName: "aiTopicRow-" + topicEntry.index
+                        width: parent.width
+                        height: Theme.rowHeightTall
+                        leftPadding: 2
+                        // The Thread shown, and the one a dragged chat would go into.
+                        highlighted: root.currentTopic.key === modelData.key || chatDrop.containsDrag
+                        onClicked: root.chooseTopic(modelData.key)
+                        HoverHandler { id: topicHover }
+                        contentItem: RowLayout {
+                            spacing: 2
+                            // Opens the Thread in place, its chats listed under it.
+                            IconButton {
+                                objectName: "aiTopicExpand"
+                                Layout.preferredWidth: 18
+                                implicitWidth: 18; implicitHeight: 22; glyphSize: Theme.fontSmall
+                                opacity: topicEntry.expandable ? 1 : 0
+                                enabled: topicEntry.expandable
+                                icon.name: topicEntry.expanded ? "down" : "right"
+                                description: topicEntry.expanded ? "Hide its chats" : "Show its chats"
+                                onClicked: root.toggleTopic(topicEntry.modelData.key)
                             }
-                            Label {
-                                Layout.fillWidth: true
-                                text: (topicRow.here ? "This paper · " : "") + topicRow.modelData.chats + (topicRow.modelData.chats === 1 ? " chat" : " chats")
-                                elide: Text.ElideRight; textFormat: Text.PlainText
-                                color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
+                            ColumnLayout {
+                                Layout.fillWidth: true; Layout.minimumWidth: 0
+                                spacing: 1
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: topicRow.modelData.title
+                                    elide: Text.ElideRight; textFormat: Text.PlainText
+                                    color: topicRow.highlighted ? Theme.selectedText : Theme.text
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: (topicRow.here ? "This paper · " : "") + topicRow.modelData.chats + (topicRow.modelData.chats === 1 ? " chat" : " chats")
+                                    elide: Text.ElideRight; textFormat: Text.PlainText
+                                    color: Theme.textTertiary; font.pixelSize: Theme.fontCaption
+                                }
+                            }
+                            // The Thread's menu (also on right-click): new chat, rename, merge, delete.
+                            IconButton {
+                                id: topicMore
+                                objectName: "aiTopicMore"
+                                visible: topicRow.modelData.key.length > 0 && (topicHover.hovered || topicRow.highlighted)
+                                implicitWidth: 24; implicitHeight: 24; glyphSize: Theme.fontBody
+                                icon.name: "more"; description: "Thread actions"
+                                onClicked: root.openTopicMenu(topicRow.modelData, topicMore, 0, topicMore.height)
                             }
                         }
-                        // The Thread's menu (also on right-click): new chat, rename, merge, delete.
-                        IconButton {
-                            id: topicMore
-                            objectName: "aiTopicMore"
-                            visible: topicRow.modelData.key.length > 0 && (topicHover.hovered || topicRow.highlighted)
-                            implicitWidth: 24; implicitHeight: 24; glyphSize: Theme.fontBody
-                            icon.name: "more"; description: "Thread actions"
-                            onClicked: root.openTopicMenu(topicRow.modelData, topicMore, 0, topicMore.height)
+                        // Chats dropped here move into this Thread and stay there.
+                        DropArea {
+                            id: chatDrop
+                            anchors.fill: parent
+                            keys: ["owelk-ai-chats"]
+                            enabled: topicRow.modelData.key.length > 0
+                            onDropped: function(drop) {
+                                const ids = root.draggedChats.slice(), key = topicRow.modelData.key
+                                drop.accept()
+                                Qt.callLater(function() { root.moveChats(ids, key) })
+                            }
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            enabled: topicRow.modelData.key.length > 0
+                            onTapped: function(point) { root.openTopicMenu(topicRow.modelData, topicRow, point.position.x, point.position.y) }
                         }
                     }
-                    // Chats dropped here move into this Thread and stay there.
-                    DropArea {
-                        id: chatDrop
-                        anchors.fill: parent
-                        keys: ["owelk-ai-chats"]
-                        enabled: topicRow.modelData.key.length > 0
-                        onDropped: function(drop) {
-                            const ids = root.draggedChats.slice(), key = topicRow.modelData.key
-                            drop.accept()
-                            Qt.callLater(function() { root.moveChats(ids, key) })
+                    // Its chats, newest first: a click opens one (in its Thread), a right-click its menu.
+                    Repeater {
+                        model: topicEntry.chats
+                        delegate: ItemDelegate {
+                            id: chatEntry
+                            required property var modelData
+                            required property int index
+                            readonly property bool open: !root.showingThreads && !!root.c && root.c.threadId === modelData.id
+                            objectName: "aiTopicChat-" + index
+                            width: topicEntry.width
+                            height: Theme.rowHeight
+                            // Set in under its Thread's title, a faint line joining it to the Thread.
+                            leftPadding: 36
+                            highlighted: open
+                            Rectangle { x: 26; width: 1; height: parent.height; color: Theme.separator }
+                            onClicked: root.openChatIn(topicEntry.modelData.key, modelData.id)
+                            ToolTip.visible: hovered && chatTitle.truncated; ToolTip.delay: 500
+                            ToolTip.text: modelData.title
+                            contentItem: RowLayout {
+                                spacing: 6
+                                Label {
+                                    id: chatTitle
+                                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                                    text: chatEntry.modelData.title
+                                    elide: Text.ElideRight; textFormat: Text.PlainText
+                                    font.pixelSize: Theme.fontSmall
+                                    color: chatEntry.open ? Theme.selectedText : Theme.textSecondary
+                                }
+                                Label {
+                                    visible: !!root.c && root.c.answering.indexOf(chatEntry.modelData.id) >= 0
+                                    text: "\u2026"
+                                    font.pixelSize: Theme.fontSmall; color: Theme.textTertiary
+                                }
+                            }
+                            TapHandler {
+                                acceptedButtons: Qt.RightButton
+                                onTapped: function(point) { root.openChatMenu([chatEntry.modelData.id], chatEntry.modelData, chatEntry, point.position.x, point.position.y) }
+                            }
                         }
-                    }
-                    TapHandler {
-                        acceptedButtons: Qt.RightButton
-                        enabled: topicRow.modelData.key.length > 0
-                        onTapped: function(point) { root.openTopicMenu(topicRow.modelData, topicRow, point.position.x, point.position.y) }
                     }
                 }
             }
@@ -1432,20 +1517,34 @@ Item {
             }
         }
         MenuSeparator {}
-        // Deleting a Thread is red, apart from the rest, and asks first (deleteTopicDialog).
-        MenuItem {
-            objectName: "aiDeleteTopic"
-            visible: topicMenu.own; height: visible ? implicitHeight : 0
-            text: "Delete Thread, Keep Chats…"
-            palette.windowText: Theme.danger
-            onTriggered: root.askDeleteTopic(topicMenu.row, true)
-        }
-        MenuItem {
-            objectName: "aiTrashTopic"
-            enabled: topicMenu.row.chats > 0 || topicMenu.row.kind === "paper"
-            text: "Delete Thread and Chats…"
-            palette.windowText: Theme.danger
-            onTriggered: root.askDeleteTopic(topicMenu.row, false)
+        // Deleting a Thread is red, apart from the rest: one Delete, which opens to its two ways, each asking
+        // first (deleteTopicDialog).
+        Menu {
+            id: deleteMenu
+            objectName: "aiDeleteMenu"
+            title: "Delete"
+            // Read by the menu row that opens it (style/MenuItem.qml): red.
+            readonly property bool danger: true
+            // (Not from its rows' enabled: they follow the menu's, which would make a loop.)
+            enabled: topicMenu.row.chats > 0 || topicMenu.row.kind === "paper" || topicMenu.own
+            MenuItem {
+                id: deleteTrash
+                objectName: "aiTrashTopic"
+                enabled: topicMenu.row.chats > 0 || topicMenu.row.kind === "paper"
+                text: "Delete Thread and Chats…"
+                palette.windowText: Theme.danger
+                onTriggered: root.askDeleteTopic(topicMenu.row, false)
+            }
+            // One's own: its chats go back to their papers' Threads (or General). A paper's: they move to
+            // General. General itself has nowhere else to keep them.
+            MenuItem {
+                id: deleteKeep
+                objectName: "aiDeleteTopic"
+                enabled: topicMenu.own || (topicMenu.row.kind === "paper" && topicMenu.row.chats > 0)
+                text: "Delete Thread, Keep Chats…"
+                palette.windowText: Theme.danger
+                onTriggered: root.askDeleteTopic(topicMenu.row, true)
+            }
         }
     }
     // Asked once before a Thread goes: with its chats (to the Trash), or leaving them to their papers.
@@ -1459,13 +1558,13 @@ Item {
         title: keepChats || chats === 0 ? "Delete this Thread?" : "Delete this Thread and its chats?"
         message: keepChats
                  ? "The Thread " + name + " will be deleted. Are you sure?\n\n" + (chats === 1 ? "Its chat is kept and goes" : "Its " + chats + " chats are kept and go")
-                   + " back to their papers' Threads (or General)."
+                   + (row.kind === "paper" ? " to General." : " back to their papers' Threads (or General).")
                  : chats === 0 ? "The Thread " + name + " will be deleted. Are you sure?\n\nIt has no chats; asking about the paper again makes it anew."
                  : name + " and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
                    + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
                    + (chats === 1 ? "it" : "they") + " can be restored there."
         actionText: keepChats || chats === 0 ? "Delete Thread" : "Delete Thread and Chats"
-        onConfirmed: keepChats ? root.deleteTopic(row.key) : root.trashTopic(row)
+        onConfirmed: keepChats ? root.deleteTopicKeepingChats(row) : root.trashTopic(row)
     }
     // Asked once before several chats (a selection) go to the Trash.
     ConfirmDialog {

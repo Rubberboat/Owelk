@@ -52,6 +52,12 @@ Item {
             for (let i = 0; i < children.length; ++i) { const found = shown(children[i], name); if (found) return found }
             return null
         }
+        // The Thread menu's Delete: one red row opening to its two ways.
+        function deleteItem(name) { return menuItem(findChild(panel, "aiDeleteMenu"), name) }
+        function subMenuRow(menu, sub) {
+            for (let i = 0; i < menu.count; ++i) if (menu.itemAt(i) && menu.itemAt(i).subMenu === sub) return menu.itemAt(i)
+            return null
+        }
         function menuItem(menu, name) {
             for (let i = 0; i < menu.count; ++i) if (menu.itemAt(i) && menu.itemAt(i).objectName === name) return menu.itemAt(i)
             return null
@@ -217,8 +223,14 @@ Item {
             tryCompare(menu, "opened", true)
             compare(menu.row.key, "general")
             verify(!menuItem(menu, "aiRenameTopic").visible)
-            verify(!menuItem(menu, "aiDeleteTopic").visible)
-            verify(menuItem(menu, "aiTrashTopic").enabled)
+            // One Delete row (red) in the menu; its two ways open from it. General cannot keep its chats.
+            verify(menuItem(menu, "aiTrashTopic") === null && menuItem(menu, "aiDeleteTopic") === null)
+            const deleteRow = subMenuRow(menu, findChild(panel, "aiDeleteMenu"))
+            verify(deleteRow !== null)
+            compare(deleteRow.text, "Delete")
+            verify(Qt.colorEqual(deleteRow.contentItem.color, Theme.danger))
+            verify(!deleteItem("aiDeleteTopic").enabled)
+            verify(deleteItem("aiTrashTopic").enabled)
             menu.close()
             tryCompare(menu, "opened", false)
             // Merged into a Thread of one's own, its chats move there; that one merged into a paper's,
@@ -268,7 +280,7 @@ Item {
                 mouseClick(findChild(panel, "aiThreadTitle"), 10, 5, Qt.RightButton)
                 tryCompare(menu, "opened", true)
                 compare(menu.row.key, "general")
-                const item = menuItem(menu, "aiTrashTopic")
+                const item = deleteItem("aiTrashTopic")
                 verify(Qt.colorEqual(item.palette.windowText, Theme.danger))
                 verify(!Qt.colorEqual(menuItem(menu, "aiTopicNewChat").palette.windowText, Theme.danger))
                 item.triggered()
@@ -410,8 +422,8 @@ Item {
             const deleteKeeping = function() {
                 mouseClick(topicRow("Pile"), 10, 10, Qt.RightButton)
                 tryCompare(topicMenu, "opened", true)
-                const item = menuItem(topicMenu, "aiDeleteTopic")
-                verify(item.visible)
+                const item = deleteItem("aiDeleteTopic")
+                verify(item.enabled)
                 verify(Qt.colorEqual(item.palette.windowText, Theme.danger))
                 item.triggered()
                 topicMenu.close()
@@ -459,7 +471,7 @@ Item {
             mouseClick(keyRow(paper), 10, 10, Qt.RightButton)
             const menu = findChild(panel, "aiTopicMenu"), confirm = findChild(panel, "aiDeleteTopicDialog")
             tryCompare(menu, "opened", true)
-            menuItem(menu, "aiTrashTopic").triggered()
+            deleteItem("aiTrashTopic").triggered()
             menu.close()
             tryCompare(confirm, "opened", true)
             confirm.accept()
@@ -476,8 +488,9 @@ Item {
             tryVerify(function() { return keyRow(paper) !== null && keyRow(paper).modelData.chats === 0 })
             mouseClick(keyRow(paper), 10, 10, Qt.RightButton)
             tryCompare(menu, "opened", true)
-            const item = menuItem(menu, "aiTrashTopic")
+            const item = deleteItem("aiTrashTopic")
             verify(item.enabled)
+            verify(!deleteItem("aiDeleteTopic").enabled) // No chats to keep.
             item.triggered()
             menu.close()
             tryCompare(confirm, "opened", true)
@@ -598,6 +611,66 @@ Item {
             compare(chatItem.text, "Go to Paper")
             chatMenu.close()
             docs.tabs = []
+        }
+        function test_9zzzz5_aThreadOpensInTheListToShowItsChats() {
+            reader.source = outlineSource
+            controller.showThreads()
+            panel.chooseTopic("")
+            tryVerify(function() { return keyRow(first) !== null && keyRow(first).modelData.chats >= 2 })
+            const entry = keyRow(first)
+            const arrow = shown(entry, "aiTopicExpand")
+            verify(arrow !== null && arrow.enabled)
+            // All Chats holds everything already: no arrow of its own.
+            verify(!shown(keyRow(""), "aiTopicExpand").enabled)
+            verify(!entry.expanded)
+            mouseClick(arrow)
+            tryVerify(function() { return entry.expanded && entry.chats.length === entry.modelData.chats })
+            compare(controller.topicKey, "", "opening it in place does not choose it")
+            const titles = entry.chats.map(function(t) { return t.title })
+            verify(titles.indexOf("A1") >= 0 && titles.indexOf("A2") >= 0, titles)
+            // A chat under it opens in its Thread.
+            const a1 = entry.chats.find(function(t) { return t.title === "A1" })
+            let row = null
+            tryVerify(function() {
+                for (let i = 0; i < entry.chats.length; ++i) { const r = shown(entry, "aiTopicChat-" + i); if (r && r.modelData.id === a1.id) row = r }
+                return row !== null
+            })
+            mouseClick(row)
+            tryCompare(controller, "threadId", a1.id)
+            compare(controller.topicKey, first)
+            verify(controller.conversationOpen)
+            tryVerify(function() { return row.highlighted })
+            controller.showThreads()
+            // Closed again with the arrow.
+            wait(500) // Not a double click.
+            mouseClick(shown(keyRow(first), "aiTopicExpand"))
+            tryVerify(function() { return !keyRow(first).expanded })
+            panel.chooseTopic("")
+        }
+        function test_9zzzz6_aPaperThreadDeletedKeepingItsChatsLeavesThemInGeneral() {
+            verify(researchStore.rememberDocument(longSource))
+            const key = researchStore.aiTopicFor(longSource)
+            const one = chat("Long one", longSource), two = chat("Long two", longSource)
+            reader.source = outlineSource
+            panel.chooseTopic(key)
+            tryVerify(function() { return keyRow(key) !== null && keyRow(key).modelData.chats === 2 })
+            mouseClick(keyRow(key), 10, 10, Qt.RightButton)
+            const menu = findChild(panel, "aiTopicMenu"), confirm = findChild(panel, "aiDeleteTopicDialog")
+            tryCompare(menu, "opened", true)
+            verify(deleteItem("aiTrashTopic").enabled)
+            const keep = deleteItem("aiDeleteTopic")
+            verify(keep.enabled)
+            keep.triggered()
+            menu.close()
+            tryCompare(confirm, "opened", true)
+            verify(confirm.message.indexOf("to General") >= 0, confirm.message)
+            confirm.accept()
+            tryVerify(function() { return keyRow(key) === null })
+            compare(researchStore.aiThread(one).topic, "general")
+            compare(researchStore.aiThread(two).topic, "general")
+            verify(!researchStore.aiThread(one).trashed)
+            compare(controller.topicKey, "general")
+            researchStore.setSetting("ai.hiddenPaperThreads", "")
         }
         function test_9zzzzz_papersAttachedBelowAThreadGoWithItsChat() {
             reader.source = outlineSource
