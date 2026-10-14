@@ -180,6 +180,59 @@ ApplicationWindow {
         else if (currentReader) currentReader.find()
         else { const view = documents.groupView(documents.activeGroup); if (view) view.focusHome() }
     }
+    // Where one has been, as a browser keeps it: Home, or a tab (Library, a paper, a note, a web page).
+    // Back and forward step through these places once the tab in front has none of its own to go through.
+    property var places: []
+    property int placeIndex: -1
+    property bool replaying: false
+    function placeKey() { return homeVisible || !documents.currentTab.length ? "home" : "tab:" + documents.currentTab }
+    function recordPlace() {
+        if (!initialized || replaying || restoreFailed) return
+        const key = placeKey()
+        if (places[placeIndex] === key) return
+        places = places.slice(0, placeIndex + 1).concat([key]).slice(-60)
+        placeIndex = places.length - 1
+    }
+    onHomeVisibleChanged: Qt.callLater(recordPlace)
+    Connections { target: documents; function onCurrentTabChanged() { Qt.callLater(window.recordPlace) } }
+    function placeExists(key) { return key === "home" || Tree.leaves(documents.tree).some(function(g) { return g.tabs.some(function(t) { return "tab:" + t.id === key }) }) }
+    function placeStep(step) {
+        let at = placeIndex + step
+        while (at >= 0 && at < places.length && (!placeExists(places[at]) || places[at] === placeKey())) at += step
+        return at >= 0 && at < places.length ? at : -1
+    }
+    readonly property bool canGoBackPlace: (places, placeIndex, documents.tree, documents.currentTab, homeVisible, placeStep(-1) >= 0)
+    readonly property bool canGoForwardPlace: (places, placeIndex, documents.tree, documents.currentTab, homeVisible, placeStep(1) >= 0)
+    function goToPlace(step) {
+        const at = placeStep(step)
+        if (at < 0) return false
+        replaying = true
+        placeIndex = at
+        const key = places[at]
+        if (key === "home") showHome()
+        else { homeVisible = false; documents.activateTab(key.slice(4)) }
+        Qt.callLater(function() { window.replaying = false })
+        return true
+    }
+    // Back and forward in what is in front first: a web tab's pages, or the reader's jumps (links, citations).
+    readonly property var frontWeb: {
+        const view = (documents.tree, documents.activeGroup, documents.revision, documents.groupView(documents.activeGroup))
+        return !homeVisible && view && view.isWeb ? view.webPane : null
+    }
+    readonly property bool tabCanGoBack: frontWeb ? frontWeb.view.canGoBack : !homeVisible && !!currentReader && currentReader.canGoBack
+    readonly property bool tabCanGoForward: frontWeb ? frontWeb.view.canGoForward : !homeVisible && !!currentReader && currentReader.canGoForward
+    readonly property bool canGoBack: tabCanGoBack || canGoBackPlace
+    readonly property bool canGoForward: tabCanGoForward || canGoForwardPlace
+    function goBack() {
+        if (frontWeb && frontWeb.view.canGoBack) frontWeb.view.goBack()
+        else if (!frontWeb && !homeVisible && currentReader && currentReader.canGoBack) currentReader.goBack()
+        else goToPlace(-1)
+    }
+    function goForward() {
+        if (frontWeb && frontWeb.view.canGoForward) frontWeb.view.goForward()
+        else if (!frontWeb && !homeVisible && currentReader && currentReader.canGoForward) currentReader.goForward()
+        else goToPlace(1)
+    }
     function openDocument(source, position) { if (!restoreFailed) documents.openDocument(researchStore.resolvedSource(source), position) }
     // Files dropped on the window where no panel takes them (from Finder, the Downloads folder or a
     // browser's download list): PDFs, and the PDFs in a dropped folder, move into the PDF folder and
@@ -343,6 +396,7 @@ ApplicationWindow {
             }
         }
         initialized = true
+        Qt.callLater(recordPlace)
         // Files from the command line, Finder or a second launch made before the window was ready.
         const external = initialFiles.concat(typeof appInstance !== "undefined" ? appInstance.takePending() : [])
         if (!restoreFailed) for (let i = 0; i < external.length; ++i) documents.openDocument(external[i])
@@ -488,8 +542,9 @@ ApplicationWindow {
             Action { text: "Find"; shortcut: StandardKey.Find; onTriggered: window.findInView() }
             Action { text: "Zoom in"; shortcut: StandardKey.ZoomIn; enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.zoom(1.2) }
             Action { text: "Zoom out"; shortcut: StandardKey.ZoomOut; enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.zoom(1 / 1.2) }
-            Action { objectName: "jumpBackAction"; text: "Back to Previous Spot"; shortcut: window.keys("jumpBack"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.goBack() }
-            Action { objectName: "jumpForwardAction"; text: "Forward to Next Spot"; shortcut: window.keys("jumpForward"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.goForward() }
+            // The same as the status bar's arrows: within the tab first (pages, jumps), then between places.
+            Action { objectName: "jumpBackAction"; text: "Back"; shortcut: window.keys("jumpBack"); enabled: window.canGoBack; onTriggered: window.goBack() }
+            Action { objectName: "jumpForwardAction"; text: "Forward"; shortcut: window.keys("jumpForward"); enabled: window.canGoForward; onTriggered: window.goForward() }
             Action { objectName: "fitWidthAction"; text: "Fit Width"; shortcut: window.keys("fitWidth"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitWidth() }
             Action { objectName: "fitPageAction"; text: "Fit Page"; shortcut: window.keys("fitPage"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.fitPage() }
             Action { objectName: "markRegionAction"; text: "Mark Region"; shortcut: window.keys("markRegion"); enabled: !window.homeVisible; onTriggered: if (window.currentReader) window.currentReader.setTool("area") }
@@ -831,6 +886,18 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.leftMargin: 4; anchors.rightMargin: 4
             spacing: 2
+            // Back and forward, as in a browser: a web tab's pages and the reader's jumps, then Home and tabs.
+            IconButton {
+                objectName: "statusBack"; icon.name: "back"
+                description: "Back" + (window.keys("jumpBack").length ? " · " + Platform.keys(window.keys("jumpBack")) : "")
+                enabled: window.canGoBack; onClicked: window.goBack()
+            }
+            IconButton {
+                objectName: "statusForward"; icon.name: "forward"
+                description: "Forward" + (window.keys("jumpForward").length ? " · " + Platform.keys(window.keys("jumpForward")) : "")
+                enabled: window.canGoForward; onClicked: window.goForward()
+            }
+            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 14; Layout.leftMargin: 3; Layout.rightMargin: 3; color: Theme.separator }
             Repeater {
                 model: window.dockPanels.filter(function(p) { return window.panelSide(p) === "left" })
                 delegate: StatusIcon {

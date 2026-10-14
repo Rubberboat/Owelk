@@ -158,6 +158,36 @@ Item {
             testInput.keyClick(workspace.contentItem, Qt.Key_Right, Qt.AltModifier)
             tryCompare(c, "currentPage", 5)
         }
+        function test_backAndForwardGoThroughPlaces() {
+            workspace.documents.restore({})
+            workspace.showHome()
+            tryVerify(function() { return workspace.places[workspace.placeIndex] === "home" })
+            // Home → Library → a paper; back to the Library, back Home, forward to the Library again.
+            workspace.documents.openLibrary({})
+            tryVerify(function() { return !workspace.homeVisible && workspace.places[workspace.placeIndex].indexOf("tab:") === 0 })
+            const library = workspace.documents.currentTab
+            workspace.openDocument(fixtureSource); canvas()
+            tryVerify(function() { return workspace.places[workspace.placeIndex] === "tab:" + workspace.documents.currentTab })
+            verify(workspace.documents.currentTab !== library)
+            verify(workspace.canGoBack)
+            const back = findChild(workspace, "statusBack"), forward = findChild(workspace, "statusForward")
+            mouseClick(back)
+            tryCompare(workspace.documents, "currentTab", library)
+            mouseClick(back)
+            tryCompare(workspace, "homeVisible", true)
+            verify(workspace.canGoForward)
+            mouseClick(forward)
+            tryCompare(workspace, "homeVisible", false)
+            compare(workspace.documents.currentTab, library)
+            // A new place cuts off what was ahead.
+            workspace.showHome()
+            tryVerify(function() { return workspace.places[workspace.placeIndex] === "home" })
+            verify(!workspace.canGoForward)
+            // Alt+Left takes the same steps.
+            testInput.keyClick(workspace.contentItem, Qt.Key_Left, Qt.AltModifier)
+            tryCompare(workspace, "homeVisible", false)
+            compare(workspace.documents.currentTab, library)
+        }
         function test_closeShortcutEndsWithTheWindow() {
             const d = workspace.documents
             workspace.openDocument(fixtureSource); canvas()

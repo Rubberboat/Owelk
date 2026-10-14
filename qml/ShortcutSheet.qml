@@ -33,7 +33,7 @@ Popup {
             action("search"), action("commands"),
             fixed("Keyboard Shortcuts", ["?", "Ctrl+/"]),
             fixed("Open PDF", ["Ctrl+O"]), fixed("Settings", ["Ctrl+,"]),
-            action("home"), action("library"), action("openWeb")]},
+            action("home"), action("library"), action("jumpBack"), action("jumpForward"), action("openWeb")]},
         {title: "Tabs", rows: [
             action("newTab"), action("closeTab"), action("reopenTab"), action("nextTab"), action("previousTab"),
             fixed("Next / Previous Tab", ["Ctrl+Shift+]", "Ctrl+Shift+["]),
@@ -43,7 +43,6 @@ Popup {
             action("tabsPanel"), action("filesPanel"), action("documentPanel"), action("annotations"), action("aiPanel")]},
         {title: "Reading", rows: [
             action("previousPage"), action("nextPage"),
-            action("jumpBack"), action("jumpForward"),
             fixed("Find in This PDF", ["Ctrl+F"]),
             fixed("Zoom In / Out", ["Ctrl+Plus", "Ctrl+-"]),
             action("fitWidth"), action("fitPage"),
