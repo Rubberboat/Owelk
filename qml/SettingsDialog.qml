@@ -74,9 +74,12 @@ Dialog {
                 icon.name: "close"; description: "Close · Esc"
                 onClicked: root.close()
             }
+            // Inside the dialog's outline, so scrolled content passes under it rather than over it.
             ScrollView {
                 id: scroller
+                objectName: "settingsScroller"
                 anchors.fill: parent
+                anchors.topMargin: 1; anchors.rightMargin: 1; anchors.bottomMargin: 1
                 contentWidth: availableWidth
                 clip: true
                 Item {

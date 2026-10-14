@@ -120,6 +120,10 @@ Item {
             verify(visualChild(settings.contentItem, "backUpNow") !== null)
             verify(visualChild(settings.contentItem, "syncFolder") !== null)
             verify(visualChild(settings.contentItem, "renameKeptPdfs") !== null)
+            // The pages scroll inside the dialog's outline (1 px in), not over it.
+            const scroller = visualChild(settings.contentItem, "settingsScroller")
+            compare(scroller.anchors.topMargin, 1); compare(scroller.anchors.rightMargin, 1); compare(scroller.anchors.bottomMargin, 1)
+            verify(scroller.height <= scroller.parent.height - 2)
         }
         function test_paperNamePartsTurnOnAndMove() {
             researchStore.setSetting("pdfNames.parts", "")
