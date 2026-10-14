@@ -531,10 +531,14 @@ int ResearchStore::inspectPdfs(const QVariantList &sources)
     struct Found {
         QString path, folder, relativeDir, hash, title, doi, arxiv;
     };
+    // Shown with its progress in the status bar: looking (files found so far), then checking (n of all).
+    const auto task = QStringLiteral("inspect:%1").arg(request);
+    startTask(task, "Looking for PDFs…");
     auto *watcher = new QFutureWatcher<QList<Found>>(this);
-    connect(watcher, &QFutureWatcher<QList<Found>>::finished, this, [this, watcher, request] {
+    connect(watcher, &QFutureWatcher<QList<Found>>::finished, this, [this, watcher, request, task] {
         const auto found = watcher->result();
         watcher->deleteLater();
+        finishTask(task);
         // The Library's papers by file and by paper (only those whose file is there to open).
         QHash<QString, QString> byHash, byDoi, byArxiv, byTitle;
         QSqlQuery query(m_database);
@@ -579,7 +583,7 @@ int ResearchStore::inspectPdfs(const QVariantList &sources)
         }
         emit pdfsInspected(request, items);
     });
-    watcher->setFuture(QtConcurrent::run([inputs] {
+    watcher->setFuture(QtConcurrent::run(&m_fileWorkers, [this, inputs, task] {
         QList<Found> found;
         for (const auto &input : inputs) {
             const QFileInfo info(input);
@@ -594,13 +598,17 @@ int ResearchStore::inspectPdfs(const QVariantList &sources)
                     if (file.isHidden() || base.relativeFilePath(path).contains("/.")) continue;
                     const auto dir = base.relativeFilePath(file.absolutePath());
                     found.append({file.absoluteFilePath(), base.absolutePath(), dir == "." ? QString() : dir});
+                    if (found.size() % 25 == 0)
+                        reportTask(task, 0, 0, QString("Looking for PDFs… %1 found").arg(found.size()));
                 }
             } else if (info.isFile() && !info.suffix().compare("pdf", Qt::CaseInsensitive) && found.size() < 10000) {
                 found.append({info.absoluteFilePath()});
             }
         }
         // What each is: its bytes, and the paper its first page names.
+        int checked = 0;
         for (auto &f : found) {
+            if (found.size() > 1) reportTask(task, checked++, found.size(), "Checking PDFs");
             f.hash = FileFingerprint::sha256(f.path);
             const auto paper = extractPaperMetadata(f.path);
             f.title = paper.title;

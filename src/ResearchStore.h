@@ -46,6 +46,8 @@ class ResearchStore final : public QObject {
     Q_PROPERTY(bool relinking READ relinking NOTIFY relinkingChanged)
     // Copying the Library's outside PDFs into papers/ (ResearchStorePapers.cpp).
     Q_PROPERTY(bool copyingPdfs READ copyingPdfs NOTIFY copyingPdfsChanged)
+    // Long work shown in the status bar with a progress bar: [{id, label, done, total}] (total 0: no measure).
+    Q_PROPERTY(QVariantList tasks READ tasks NOTIFY tasksChanged)
     Q_PROPERTY(QStringList annotationColors READ annotationColors CONSTANT)
     // Bumped when paper titles or details change; bind to it next to displayName() calls.
     Q_PROPERTY(int documentsRevision READ documentsRevision NOTIFY documentsChanged)
@@ -352,6 +354,11 @@ public:
     Q_INVOKABLE void copyText(const QString &text);
     // Show a status message from QML through the same channel as store messages.
     Q_INVOKABLE void notify(const QString &text) { emit message(text); }
+    // Long work for the status bar (also from QML: web downloads). The same id updates one entry.
+    QVariantList tasks() const;
+    Q_INVOKABLE void startTask(const QString &id, const QString &label, double total = 0);
+    Q_INVOKABLE void progressTask(const QString &id, double done, double total, const QString &label = QString());
+    Q_INVOKABLE void finishTask(const QString &id);
     Q_INVOKABLE int listFolder(const QUrl &folder);
     Q_INVOKABLE QVariantMap readingPosition(const QUrl &source) const;
     // Plain preferences in the settings table (download folder, search engine, AI language, …).
@@ -410,6 +417,7 @@ signals:
     void homeChanged();
     void relinkingChanged();
     void copyingPdfsChanged();
+    void tasksChanged();
     // Papers moved to the Trash: their open tabs close.
     void papersDeleted(const QVariantList &sources);
     void relinkRequested(const QUrl &source);
@@ -442,6 +450,9 @@ private:
     mutable bool m_recentLoaded = false;
     bool m_relinking = false;
     bool m_copyingPdfs = false;
+    QList<QVariantMap> m_tasks;
+    // From a worker: the progress of a task, passed to the UI thread.
+    void reportTask(const QString &id, double done, double total, const QString &label = QString());
     // Same-bytes files met earlier in one batch reuse that copy; `move` moves the file in instead.
     QUrl adoptPdf(const QUrl &source, QHash<QString, QUrl> *batch, bool move = false, bool separate = false);
     QVariantList addPdfs(
@@ -464,6 +475,9 @@ private:
     QThreadPool m_workers;
     QThreadPool m_verifiers;
     QThreadPool m_metadataWorkers;
+    // Copying and moving PDFs, and looking at dropped ones: apart from the details queue, so they start
+    // at once; waited for on closing (they report their progress to the store).
+    QThreadPool m_fileWorkers;
     QHash<QString, QString> m_titles;
     QSet<QString> m_metadataPending;
     QSet<QString> m_duplicateChecks;

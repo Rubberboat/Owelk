@@ -98,6 +98,24 @@ Item {
             tryVerify(function() { return Tree.leaves(workspace.documents.tree).some(function(g) { return g.tabs.some(function(t) { return researchStore.sameSource(t.source, paper) }) }) })
             compare(workspace.homeVisible, false)
         }
+        function test_longWorkShowsInTheStatusBar() {
+            const bar = findChild(workspace, "statusActivity")
+            verify(!bar.visible)
+            // Measured work fills its bar; more at once shows +N; done, it goes.
+            researchStore.startTask("test:one", "Copying PDFs into the Library", 4)
+            tryCompare(bar, "visible", true)
+            compare(findChild(bar, "statusActivityLabel").text, "Copying PDFs into the Library")
+            researchStore.progressTask("test:one", 2, 4)
+            const fill = findChild(bar, "statusActivityFill")
+            tryVerify(function() { return fill.visible && Math.abs(fill.width - findChild(bar, "statusActivityBar").width / 2) < 1 })
+            researchStore.startTask("test:two", "Downloading paper.pdf")
+            tryCompare(findChild(bar, "statusActivityLabel"), "text", "Copying PDFs into the Library  +1")
+            researchStore.finishTask("test:one")
+            tryCompare(findChild(bar, "statusActivityLabel"), "text", "Downloading paper.pdf")
+            verify(!fill.visible) // No measure: a sliding bar.
+            researchStore.finishTask("test:two")
+            tryCompare(bar, "visible", false)
+        }
         function test_clickElsewhereTakesTheCursorOut() {
             workspace.documents.restore({})
             // Keyboard focus needs an active window.

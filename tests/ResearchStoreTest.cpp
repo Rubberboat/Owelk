@@ -1927,8 +1927,14 @@ private slots:
         writeFixture(at("new paper.pdf"), "Something Entirely Different Here", 5);
         writeFixture(at(".hidden.pdf"), "Hidden Paper Title Here", 2);
         QSignalSpy inspected(&store, &ResearchStore::pdfsInspected);
+        QSignalSpy tasks(&store, &ResearchStore::tasksChanged);
         const int request = store.inspectPdfs({QUrl::fromLocalFile(directory.filePath("Downloads")), kept});
+        // While it runs it is in the status bar's progress, counting the PDFs checked; gone once done.
+        QCOMPARE(store.tasks().size(), 1);
+        QVERIFY(store.tasks()[0].toMap()["id"].toString().startsWith("inspect:"));
         QTRY_COMPARE_WITH_TIMEOUT(inspected.size(), 1, 20000);
+        QVERIFY(store.tasks().isEmpty());
+        QVERIFY(tasks.size() >= 3); // Started, checked some, finished.
         QCOMPARE(inspected[0][0].toInt(), request);
         QHash<QString, QVariantMap> byName;
         for (const auto &value : inspected[0][1].toList()) byName.insert(value.toMap()["name"].toString(), value.toMap());

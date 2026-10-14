@@ -98,8 +98,13 @@ Rectangle {
             download.downloadFileName = target.fileName
             const replace = !view.canGoBack && download.url.toString() === root.openedUrl
             const fetched = root.fetchPdf
+            // Also in the status bar's progress, whichever tab is in front.
+            const task = "download:" + download.id
+            researchStore.startTask(task, "Downloading " + target.fileName, download.totalBytes > 0 ? download.totalBytes : 0)
+            download.receivedBytesChanged.connect(function() { researchStore.progressTask(task, download.receivedBytes, download.totalBytes > 0 ? download.totalBytes : 0) })
             root.fetchPdf = false
             download.isFinishedChanged.connect(function() {
+                researchStore.finishTask(task)
                 if (root.download === download) root.download = null
                 if (download.state === WebEngineDownloadRequest.DownloadCompleted) {
                     // A PDF shown in this tab opens beside it; the tab stays on the page.

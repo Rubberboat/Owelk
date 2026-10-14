@@ -394,6 +394,7 @@ bool ResearchStore::choosePapersFolder(const QUrl &folder)
         emit highlightsChanged();
         m_copyingPdfs = false;
         emit copyingPdfsChanged();
+        finishTask("movePdfs");
         emit message(moved == done.size()
                 ? QString("Moved %1 PDFs to %2.").arg(moved).arg(QDir::toNativeSeparators(target))
                 : QString("Moved %1 of %2 PDFs to %3; the rest stay in %4.")
@@ -401,8 +402,13 @@ bool ResearchStore::choosePapersFolder(const QUrl &folder)
                       .arg(done.size())
                       .arg(QDir::toNativeSeparators(target), QDir::toNativeSeparators(old)));
     });
-    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [moves, target]() mutable {
+    const auto label = QString("Moving PDFs to %1").arg(QFileInfo(target).fileName());
+    startTask("movePdfs", label, moves.size());
+    // Its own worker, so it starts at once; n of all in the status bar.
+    watcher->setFuture(QtConcurrent::run(&m_fileWorkers, [this, moves, target, label]() mutable {
+        int done = 0;
         for (auto &move : moves) {
+            reportTask("movePdfs", done++, moves.size(), label);
             const auto file = uniqueFile(target, QFileInfo(move.from).fileName());
             if (move.hash.isEmpty()) move.hash = FileFingerprint::sha256(move.from);
             if (move.hash.isEmpty()) continue;
@@ -488,6 +494,7 @@ void ResearchStore::copyPdfsIntoLibrary()
         emit highlightsChanged();
         m_copyingPdfs = false;
         emit copyingPdfsChanged();
+        finishTask("copyPdfs");
         emit message(copied == done.size()
                 ? QString("Copied %1 PDFs into the Library. The originals were left where they were.").arg(copied)
                 : QString("Copied %1 of %2 PDFs into the Library; the rest stay where they are.")
@@ -495,8 +502,13 @@ void ResearchStore::copyPdfsIntoLibrary()
                       .arg(done.size()));
     });
     const auto folder = papersFolder();
-    watcher->setFuture(QtConcurrent::run(&m_metadataWorkers, [moves, folder]() mutable {
+    const QString label = "Copying PDFs into the Library";
+    startTask("copyPdfs", label, moves.size());
+    // Its own worker, so it starts at once (the details reader's queue may be long); n of all in the status bar.
+    watcher->setFuture(QtConcurrent::run(&m_fileWorkers, [this, moves, folder, label]() mutable {
+        int done = 0;
         for (auto &move : moves) {
+            reportTask("copyPdfs", done++, moves.size(), label);
             const auto path = move.from.toLocalFile();
             const auto target = uniqueFile(folder, QFileInfo(path).fileName());
             const auto hash = FileFingerprint::sha256(path);

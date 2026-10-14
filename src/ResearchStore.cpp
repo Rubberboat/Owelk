@@ -92,6 +92,7 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     m_verifiers.setMaxThreadCount(2);
     m_metadataWorkers.setMaxThreadCount(1);
     m_metadataWorkers.setThreadPriority(QThread::LowPriority);
+    m_fileWorkers.setMaxThreadCount(2);
     connect(m_index, &PaperIndex::message, this, &ResearchStore::message);
     // Connected before any view, so the list is read again when they ask.
     for (const auto signal : {&ResearchStore::recentDocumentsChanged, &ResearchStore::documentsChanged,
@@ -136,6 +137,7 @@ ResearchStore::~ResearchStore()
     m_workers.waitForDone();
     m_verifiers.waitForDone();
     m_metadataWorkers.waitForDone();
+    m_fileWorkers.waitForDone();
     m_database.close();
     m_database = QSqlDatabase();
     QSqlDatabase::removeDatabase(m_connection);
@@ -904,4 +906,48 @@ int ResearchStore::listFolder(const QUrl &folder)
         return result;
     }));
     return requestId;
+}
+
+QVariantList ResearchStore::tasks() const
+{
+    QVariantList list;
+    for (const auto &task : m_tasks) list.append(task);
+    return list;
+}
+
+void ResearchStore::startTask(const QString &id, const QString &label, double total)
+{
+    const QVariantMap entry{{"id", id}, {"label", label}, {"done", 0.0}, {"total", total}};
+    for (auto &task : m_tasks)
+        if (task.value("id") == id) {
+            task = entry;
+            emit tasksChanged();
+            return;
+        }
+    m_tasks.append(entry);
+    emit tasksChanged();
+}
+
+void ResearchStore::progressTask(const QString &id, double done, double total, const QString &label)
+{
+    for (auto &task : m_tasks)
+        if (task.value("id") == id) {
+            task.insert("done", done);
+            task.insert("total", total);
+            if (!label.isEmpty()) task.insert("label", label);
+            emit tasksChanged();
+            return;
+        }
+}
+
+void ResearchStore::finishTask(const QString &id)
+{
+    const auto before = m_tasks.size();
+    m_tasks.removeIf([&id](const QVariantMap &task) { return task.value("id") == id; });
+    if (m_tasks.size() != before) emit tasksChanged();
+}
+
+void ResearchStore::reportTask(const QString &id, double done, double total, const QString &label)
+{
+    QMetaObject::invokeMethod(this, [=, this] { progressTask(id, done, total, label); }, Qt::QueuedConnection);
 }
