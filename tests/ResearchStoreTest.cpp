@@ -13,6 +13,7 @@
 #include "PaperMetadata.h"
 #include "MetadataLookup.h"
 #include "TorNetwork.h"
+#include "ForYou.h"
 #include <QNetworkAccessManager>
 #include <QNetworkProxy>
 #include <QTcpServer>
@@ -30,6 +31,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include "PdfAccess.h"
+#include <QTimeZone>
 #include <QUuid>
 #include <QtTest>
 
@@ -745,6 +747,225 @@ private slots:
         QCOMPARE(store.recentDocuments().size(), 1);
         QCOMPARE(store.recentDocuments()[0].toMap()["url"].toUrl(), first);
         QVERIFY(QFileInfo::exists(copy)); // Files are never touched.
+    }
+    void forYouFindsNewPapersAndAddsThem()
+    {
+        // The arXiv query for a topic: any of the words, in any of the categories, in the period.
+        const auto from = QDateTime(QDate(2026, 1, 1), QTime(6, 0), QTimeZone::utc());
+        QCOMPARE(ForYouParse::arxivQuery("lidar odometry, SLAM", "cs.RO cs.CV", from, from.addDays(7)),
+            QString("(all:\"lidar odometry\" OR all:SLAM) AND (cat:cs.RO OR cat:cs.CV) AND "
+                    "submittedDate:[202601010600 TO 202601080600]"));
+        QVERIFY(ForYouParse::arxivQuery("", "", from, from).isEmpty());
+        // Stand-ins for arXiv and Semantic Scholar, and the PDF they point to.
+        QTemporaryDir directory;
+        const auto fixturePdf = directory.filePath("served.pdf");
+        writeFixture(fixturePdf, "Served Paper");
+        QFile served(fixturePdf);
+        QVERIFY(served.open(QIODevice::ReadOnly));
+        const auto pdfBytes = served.readAll();
+        const auto today = QDate::currentDate().toString(Qt::ISODate);
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        const auto base = QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
+        QStringList requests;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            auto *buffer = new QByteArray;
+            connect(socket, &QObject::destroyed, socket, [buffer] { delete buffer; });
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                buffer->append(socket->readAll());
+                const auto end = buffer->indexOf("\r\n\r\n");
+                if (end < 0) return;
+                const auto length = QRegularExpression("Content-Length: (\\d+)", QRegularExpression::CaseInsensitiveOption)
+                                        .match(QString::fromLatin1(buffer->left(end))).captured(1).toInt();
+                if (buffer->size() < end + 4 + length) return;
+                const auto head = QString::fromUtf8(buffer->left(end));
+                requests.append(QString::fromUtf8(*buffer));
+                QByteArray body, type = "application/json";
+                if (head.contains("/api/query")) {
+                    type = "application/atom+xml";
+                    body = QStringLiteral(
+                        "<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\">"
+                        "<entry><id>http://arxiv.org/abs/2601.00001v2</id><published>%1T10:00:00Z</published>"
+                        "<title>Fresh  LiDAR"
+                        " Odometry</title><summary>New method.</summary><author><name>Ada Lovelace</name></author><author><name>Alan Turing</name></author>"
+                        "<link title=\"pdf\" href=\"%2/pdf/2601.00001v2\" rel=\"related\" type=\"application/pdf\"/><arxiv:doi>10.9/fresh</arxiv:doi></entry>"
+                        "<entry><id>http://arxiv.org/abs/2601.00002v1</id><published>%1T09:00:00Z</published><title>Already Kept</title>"
+                        "<author><name>Kept Author</name></author></entry></feed>")
+                               .arg(today, base)
+                               .toUtf8();
+                } else if (head.contains("/recommendations/v1/papers/")) {
+                    body = QStringLiteral(
+                        "{\"recommendedPapers\":[{\"paperId\":\"s1\",\"title\":\"Like Your Collection\",\"authors\":[{\"name\":\"Grace Hopper\"}],\"year\":2026,\"publicationDate\":\"%1\",\"externalIds\":{\"DOI\":\"10.5/like\"},\"openAccessPdf\":{\"url\":\"%2/pdf/like\"}},"
+                        "                        {\"paperId\":\"s2\",\"title\":\"Old Classic\",\"year\":2010,\"publicationDate\":\"2010-05-01\",\"externalIds\":{\"DOI\":\"10.5/old\"}},"
+                        "                        {\"paperId\":\"s3\",\"title\":\"Fresh LiDAR Odometry\",\"publicationDate\":\"%1\",\"externalIds\":{\"ArXiv\":\"2601.00001\"}}]}")
+                               .arg(today, base)
+                               .toUtf8();
+                } else if (head.contains("/pdf/")) {
+                    type = "application/pdf";
+                    body = pdfBytes;
+                }
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: " + type + "\r\nConnection: close\r\nContent-Length: "
+                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        });
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        QVERIFY(forYou);
+        QVERIFY(!forYou->configured());
+        store.setSetting("forYou.arxivBaseUrl", base + "/api");
+        store.setSetting("forYou.recommendBaseUrl", base + "/recommendations/v1");
+        store.setSetting("forYou.delayMs", "10");
+        store.setSetting("pdfNames.parts", "author,year,title,-arxiv");
+        // A paper already kept, and a followed collection with one paper Semantic Scholar knows.
+        const auto kept = QUrl::fromLocalFile(directory.filePath("kept.pdf"));
+        writeFixture(kept.toLocalFile(), "Already Kept");
+        QVERIFY(store.rememberDocument(kept));
+        QVERIFY(store.updateDocumentDetails(kept, {{"title", "Already Kept"}, {"arxiv", "2601.00002v1"}}));
+        const auto topic = store.createCollection("Odometry");
+        QVERIFY(store.setDocumentCollection(kept, topic, true));
+        QCOMPARE(forYou->usablePapers(topic), 1);
+        QVERIFY(forYou->saveTopics({QVariantMap{{"words", "lidar odometry, SLAM"}, {"categories", "cs.RO"}}}));
+        forYou->follow(topic, true);
+        QVERIFY(forYou->configured());
+        QVERIFY(forYou->following(topic));
+        forYou->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
+        QVERIFY2(forYou->problem().isEmpty(), qPrintable(forYou->problem()));
+        QVERIFY(requests.join('\n').contains("search_query=%28all%3A%22lidar+odometry%22+OR+all%3ASLAM%29+AND+cat%3Acs.RO"));
+        QVERIFY(requests.join('\n').contains("\"positivePaperIds\":[\"ArXiv:2601.00002\"]"));
+        // New papers only: not the kept one, not the old one, and the same paper once.
+        auto items = forYou->items();
+        QCOMPARE(items.size(), 2);
+        QStringList ids;
+        for (const auto &value : items) ids << value.toMap()["id"].toString();
+        QVERIFY(ids.contains("arxiv:2601.00001"));
+        QVERIFY(ids.contains("doi:10.5/like"));
+        const auto fresh = forYou->items()[ids.indexOf("arxiv:2601.00001")].toMap();
+        QCOMPARE(fresh["title"].toString(), QString("Fresh LiDAR Odometry"));
+        QCOMPARE(fresh["authors"].toString(), QString("Ada Lovelace, Alan Turing"));
+        QCOMPARE(fresh["sourceName"].toString(), QString("lidar odometry, SLAM"));
+        QVERIFY(forYou->lastChecked().isValid());
+        // Dismissed papers stay away, even when found again.
+        forYou->dismiss({"doi:10.5/like"});
+        QCOMPARE(forYou->items().size(), 1);
+        forYou->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
+        QCOMPARE(forYou->items().size(), 1);
+        // Add: the PDF comes into the Library, named and described from arXiv.
+        forYou->add({"arxiv:2601.00001"});
+        QTRY_VERIFY_WITH_TIMEOUT(forYou->adding().isEmpty(), 10000);
+        QCOMPARE(forYou->items().size(), 0);
+        QVERIFY(store.hasPaper("2601.00001v2", ""));
+        const auto added = store.paperWithFile(QUrl::fromLocalFile(store.papersFolder() + "/Lovelace et al. - "
+                                                       + QString::number(QDate::currentDate().year())
+                                                       + " - Fresh LiDAR Odometry.pdf"),
+            {});
+        QVERIFY(!added.isEmpty());
+        QCOMPARE(store.documentDetails(added)["arxiv"].toString(), QString("2601.00001"));
+        QCOMPARE(store.documentDetails(added)["doi"].toString(), QString("10.9/fresh"));
+        // Kept across restarts.
+        {
+            ResearchStore again(directory.filePath("data"));
+            QVERIFY2(again.initialize(&error), qPrintable(error));
+            auto *later = qobject_cast<ForYou *>(again.forYou());
+            QVERIFY(later->lastChecked().isValid());
+            QCOMPARE(later->items().size(), 0);
+        }
+    }
+    void forYouSyncsBetweenComputers()
+    {
+        // Topics, followed collections, the papers found with the AI's reasons and what became of them, and
+        // when it last looked, live in the library (schema 18), so another computer gets them: nothing is
+        // looked for or sent to the AI twice, and what is dismissed on one goes on the other.
+        QTemporaryDir directory;
+        const auto drive = directory.filePath("Drive");
+        QVERIFY(QDir().mkpath(drive));
+        QString error;
+        ResearchStore mac(directory.filePath("mac"));
+        QVERIFY2(mac.initialize(&error), qPrintable(error));
+        {
+            WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", true);
+            QSqlQuery version(db.db);
+            QVERIFY(version.exec("PRAGMA user_version") && version.next());
+            QCOMPARE(version.value(0).toInt(), 18);
+        }
+        auto *forYou = qobject_cast<ForYou *>(mac.forYou());
+        const auto odometry = mac.createCollection("Odometry");
+        QVERIFY(forYou->saveTopics({QVariantMap{{"words", "SLAM"}, {"categories", "cs.RO"}}}));
+        forYou->follow(odometry, true);
+        {
+            // A paper found earlier, already explained by the AI.
+            WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", false);
+            QSqlQuery found(db.db);
+            QVERIFY(found.exec("INSERT INTO foryou_items(id,state,paper,found_at,score,why) VALUES('arxiv:2601.00001',"
+                               "'new','{\"title\":\"Kept Paper\",\"date\":\"2026-01-02\"}','2026-10-01T00:00:00Z',88,"
+                               "'On SLAM.')"));
+            QVERIFY(found.exec("INSERT INTO foryou_meta(key,value) VALUES('checkedAt','2026-10-01T00:00:00Z')"));
+        }
+        forYou->reload();
+        mac.setSetting("forYou.keepDays", "0");
+        QCOMPARE(forYou->items().size(), 1);
+        QCOMPARE(forYou->items()[0].toMap()["why"].toString(), QString("On SLAM."));
+        QCOMPARE(forYou->items()[0].toMap()["score"].toInt(), 88);
+        // Kept for the days chosen: a paper found long ago leaves the list (it is not deleted).
+        mac.setSetting("forYou.keepDays", "7");
+        QCOMPARE(forYou->items().size(), 0);
+        mac.setSetting("forYou.keepDays", "0");
+        QCOMPARE(mac.librarySync()->setFolder(QUrl::fromLocalFile(drive)), QString());
+        QVERIFY(mac.librarySync()->syncBlocking().error.isEmpty());
+        ResearchStore laptop(directory.filePath("laptop"));
+        QVERIFY2(laptop.initialize(&error), qPrintable(error));
+        laptop.setSetting("forYou.keepDays", "0");
+        QCOMPARE(laptop.librarySync()->setFolder(QUrl::fromLocalFile(drive)), QString());
+        QVERIFY(laptop.librarySync()->syncBlocking().error.isEmpty());
+        auto *other = qobject_cast<ForYou *>(laptop.forYou());
+        QCOMPARE(other->topics().size(), 1);
+        QCOMPARE(other->topics()[0].toMap()["words"].toString(), QString("SLAM"));
+        QVERIFY(other->following(odometry));
+        QCOMPARE(other->items().size(), 1);
+        QCOMPARE(other->items()[0].toMap()["why"].toString(), QString("On SLAM."));
+        QCOMPARE(other->lastChecked(), forYou->lastChecked());
+        other->dismiss({"arxiv:2601.00001"});
+        QVERIFY(laptop.librarySync()->syncBlocking().error.isEmpty());
+        QVERIFY(mac.librarySync()->syncBlocking().error.isEmpty());
+        QCOMPARE(forYou->items().size(), 0);
+    }
+    void forYouTopicsTravelAfterAnUpgradeWhileSyncing()
+    {
+        // Syncing already when For You's tables arrived: rows written before they were tracked travel once.
+        QTemporaryDir directory;
+        const auto data = directory.filePath("mac"), drive = directory.filePath("Drive");
+        QVERIFY(QDir().mkpath(drive));
+        QString error;
+        {
+            ResearchStore fresh(data);
+            QVERIFY2(fresh.initialize(&error), qPrintable(error));
+            QCOMPARE(fresh.librarySync()->setFolder(QUrl::fromLocalFile(drive)), QString());
+            QVERIFY(fresh.librarySync()->syncBlocking().error.isEmpty());
+        }
+        {
+            // As a version before For You left it: no triggers on its tables, and a topic written meanwhile.
+            WorkerConnection db(data + "/owelk.sqlite3", false);
+            QSqlQuery query(db.db);
+            for (const auto &table : {"foryou_topics", "foryou_follows", "foryou_items", "foryou_meta"})
+                for (const auto &kind : {"insert", "update", "delete"})
+                    QVERIFY(query.exec(QString("DROP TRIGGER IF EXISTS sync_%1_%2").arg(table, kind)));
+            QVERIFY(query.exec("INSERT INTO foryou_topics(id,words,categories,enabled,position) VALUES('t9','lidar','',1,0)"));
+        }
+        ResearchStore mac(data);
+        QVERIFY2(mac.initialize(&error), qPrintable(error));
+        QVERIFY(mac.librarySync()->syncBlocking().error.isEmpty());
+        ResearchStore laptop(directory.filePath("laptop"));
+        QVERIFY2(laptop.initialize(&error), qPrintable(error));
+        QCOMPARE(laptop.librarySync()->setFolder(QUrl::fromLocalFile(drive)), QString());
+        QVERIFY(laptop.librarySync()->syncBlocking().error.isEmpty());
+        const auto topics = qobject_cast<ForYou *>(laptop.forYou())->topics();
+        QCOMPARE(topics.size(), 1);
+        QCOMPARE(topics[0].toMap()["words"].toString(), QString("lidar"));
     }
     void citationsComeFromSemanticScholarAndMatchTheLibrary()
     {

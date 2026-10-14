@@ -8,13 +8,13 @@
 | --- | --- | --- |
 | 1–3. 개요·원칙 | 로컬 저장, 원본 PDF 불변, 출처 검증(SHA-256·파일 스탬프 캐시), 외부 전송은 웹 탭·명시적 조회·동의한 AI·의미 검색 엔진 요청만 | 실제 대형 PDF 성능 실측 |
 | 4. 객체 모델 | 공통 Document ID(PDF·웹, 탭에도 저장), 공통 DocumentAnchor(위치·문장 인용, 하나의 이동 경로) | 앵커 저장 형식 통합(현재는 읽을 때 구성) |
-| 5–6. 실행·Home | 세션 복원, 비정상 종료 감지·안내·편집 초안 복구, Home 검색·웹 검색·이어 읽기 카드·Collections·최근 논문·노트·AI 대화(마지막으로 연 순서) | — |
+| 5–6. 실행·Home | 세션 복원, 비정상 종료 감지·안내·편집 초안 복구, Home 검색·웹 검색·이어 읽기 카드·For You·Collections·최근 논문·노트·AI 대화(마지막으로 연 순서) | — |
 | 7–10. 문서·웹·탭 | PDF·암호 PDF·분할·탭 단축키, 웹 탭(진행 막대·프레임 PDF 안내), 이름 있는 탭 그룹(접기·Collection 저장), AI 탭 정리(승인 후 적용) | Reader Mode, 웹 탭 상태 유지, OS 창 분리 |
 | 11. 정리 | 라이브러리(Papers·Notes·Trash, Collection·Tag·읽기 상태·중복·색인 제외), 논문·노트·AI 대화를 함께 담는 휴지통, 관련 논문·노트 | Smart Collection |
 | 12–16. 검색·커맨드 | FTS5 본문(+OCR), 단어 순서 무관·점수 순위, 범위 칩·검색어 조건, 선택적 의미 검색(Ollama·OpenAI), 명령 팔레트 | — |
 | 17–21. 주석·연결 | 5색 주석·코멘트, 영역 표시(캡션 함께), 노트 링크·역링크, 주석 포함 PDF 내보내기(표준 주석). 이전 Captures는 주석·노트로 통합(스키마 15) | Figure 자동 인식 |
 | 22–27. 노트·AI | Markdown 노트, AI 4종(Claude API, OpenAI API, ChatGPT 계정, Ollama), 모델·추론 강도·Fast, 이미지·PDF/웹 영역 첨부(저장 안 함), Thread(논문별 자동 + 여러 논문을 묶는 나만의 Thread)와 그 안의 Chat, 채팅에 여러 논문(3편까지 전문, 그 이상은 구절 검색)·Collection·라이브러리 전체 첨부, 선호 언어, 논문 비교표, 쪽별 번역·논문 요약, 탭·Collection AI 정리 | 라이브러리 전체에 묻기(v0.6) |
-| 28–32. 데이터·기술 | C++20 + Qt Quick/PDF/WebEngine, 공유 폴더를 통한 컴퓨터 간 동기화(Google Drive·Dropbox·Syncthing, 항목별 나중 변경 우선), SQLite(라이브러리 스키마 17, 색인 4, 업그레이드 전 백업), 백업·복원, Markdown·BibTeX 내보내기, 단축키 변경, macOS·Linux·Windows 키 저장소, 로컬 설치 스크립트, 자동 테스트 7묶음 | Linux/Windows 실기기, 배포 패키지 |
+| 28–32. 데이터·기술 | C++20 + Qt Quick/PDF/WebEngine, 공유 폴더를 통한 컴퓨터 간 동기화(Google Drive·Dropbox·Syncthing, 항목별 나중 변경 우선), SQLite(라이브러리 스키마 18, 색인 4, 업그레이드 전 백업), 백업·복원, Markdown·BibTeX 내보내기, 단축키 변경, macOS·Linux·Windows 키 저장소, 로컬 설치 스크립트, 자동 테스트 7묶음 | Linux/Windows 실기기, 배포 패키지 |
 
 ## 우선순위
 
@@ -22,6 +22,7 @@
 
 ## 이번 단계 (2026-10-12): 손에 익게
 
+- For You(원본 x-or-b에서 가져옴): 팔로우한 주제(단어 + arXiv 분야)는 arXiv에서, 팔로우한 Collection은 Semantic Scholar 추천(그 Collection에서 arXiv ID·DOI가 있는 논문 최대 50편)으로 새 논문을 찾음. 이미 Library에 있거나 Dismiss·Add한 논문, 기간(1·7·30일, 기본 7일)보다 오래된 논문은 빼고, 출처마다 5·10·20편(기본 10), 대기 목록 300편까지. arXiv 요청 사이 3초. Check Now, 또는 하루 한 번 자동(앱을 연 뒤 잠시 후, 동기화 중이면 기다리고 다른 컴퓨터가 오늘 이미 확인했으면 건너뜀). Explain with AI: 새 논문 최대 40편의 제목·저자·연도·abstract(1,200자)와 팔로우 정보를 AI에 보내 0~100점과 25단어 이내 이유(AI 언어 설정)를 받아 점수 순으로(켜는 스위치가 보내기 동의). Home: Continue Reading 아래 새 논문 5편(팔로우가 없으면 설정으로 가는 한 줄, 새 논문이 없으면 숨김). Library › For You 탭(`Papers · For You · Notes · Trash`): 가운데 920px 열, 기간 칩(All·Today·This week·This month), Select(Add·Dismiss), 출처별 보기, 줄마다 제목 → AI 이유 → "Lovelace et al. · 3 days ago · 출처", 마우스를 올리면 Add·Dismiss, 클릭하면 abstract 전체와 Add to Library·Open Page·Dismiss. Settings → For You에 주제·Collection·자동 확인·AI·기간·목록 유지 기간(7·15·30·60일·항상, 기본 30일)·출처당 편수·Check Now. Collection 우클릭 "Follow in For You". Add: PDF를 받아(arXiv PDF 또는 공개 PDF, 진짜 PDF인지 확인) Paper names 구성으로 이름 짓고 Collection 추천이면 그 Collection에, 제목·저자·연도·DOI·arXiv ID를 채움; PDF가 없거나 실패하면 논문 페이지를 웹 탭으로. abstract는 For You 목록에 있는 동안만 보임. 주제·팔로우·찾은 논문·AI 이유·Dismiss/Add 기록은 동기화(스키마 18: foryou_topics·foryou_follows·foryou_items·foryou_meta; 이 저장소의 18은 우리 17 위의 For You 표만, 원본의 18과는 다른 단계). 기간·자동 확인·유지 기간·편수는 컴퓨터마다. 밖으로 나가는 것: arXiv에 주제 단어·분야, Semantic Scholar에 팔로우한 Collection 논문의 arXiv ID·DOI, AI(켰을 때)에 새 논문의 제목·abstract와 팔로우 정보.
 - AI: Chat이 Thread에 모임(논문마다 자동 Thread, 여러 논문을 묶는 나만의 Thread; 스키마 17).
 - AI Thread 정리: 모든 Thread(General·논문·나만의)에 `…` 버튼(행에 마우스를 올리거나 선택했을 때, 위쪽 제목 줄 오른쪽)과 우클릭 메뉴: New Chat, Rename…(나만의), Merge Into ▸(다른 Thread로 Chat을 옮겨 합침), Delete Thread and Chats…(Chat은 Library의 Trash로, 되살릴 수 있음), Delete Thread, Keep Chats…(나만의). 지우는 항목은 빨간색이고, Thread를 지울 때와 Chat 여러 개를 한 번에 지울 때(메뉴·Delete 키)는 먼저 확인(Chat 하나는 바로 Trash로). Chat 행에도 `…`. 논문 Thread(와 논문에 대한 Chat)의 `…`/우클릭 맨 위: 그 논문이 다른 탭에 열려 있으면 `Go to Paper`(그 탭으로, 분할 화면의 다른 쪽이어도), 닫혀 있으면 `Open Paper`, 파일이 없어졌으면 `Locate PDF…`(앞에 보고 있는 논문이면 안 보임). 논문 Thread는 Chat이 있는 동안만 있음: 마지막 Chat을 지우거나 옮기거나 합치면, 또는 Thread를 지우면 앞에 열린 논문이어도 사라지고(빈 Thread도 지울 수 있음), 그 논문에 새로 물으면 다시 생김. 질문은 보내는 순간 Chat에 저장(제목만 있는 Chat이 남지 않음). 답을 기다리는 중에 목록으로 돌아가거나 다른 Chat을 열어도 답은 계속 와서 저장되고(목록에 "Answering…", 끝나면 알림), 다시 열면 이어서 보임. 답을 못 받은 질문은 그대로 남고 아래에 이유(또는 Stopped.)를 표시, 이어 묻기에는 답이 있는 대화만 보냄. Chat은 General·논문 Thread로도 옮길 수 있고 옮긴 곳에 남음. Thread 목록에서 질문하면 그 Thread에 새 Chat(논문 Thread는 그 논문, General은 논문 없이, All Chats는 앞에 열린 논문의 Thread, 없으면 General). 좁은 패널의 Threads 목록 아래에도 질문 칸. Chat을 열면 맨 아래(가장 최근 질문)부터 보이고, 답이 와도 보던 자리를 지킴.
 - 단축키 한눈에 보기: `?`, `⌘/`, 상태 표시줄 `?`, Help 메뉴, `/shortcuts`(`/list`).

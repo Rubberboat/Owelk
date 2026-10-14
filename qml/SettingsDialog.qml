@@ -22,6 +22,7 @@ Dialog {
         {id: "appearance", name: "Appearance", icon: "appearance"},
         {id: "web", name: "Web", icon: "globe"},
         {id: "search", name: "Search", icon: "search"},
+        {id: "foryou", name: "For You", icon: "related"},
         {id: "ai", name: "AI", icon: "ai"},
         {id: "shortcuts", name: "Shortcuts", icon: "keyboard"},
         {id: "data", name: "Data", icon: "data"}
@@ -91,7 +92,7 @@ Dialog {
                         x: 24; y: 20
                         width: parent.width - 48
                         active: root.visible
-                        sourceComponent: ({appearance: appearancePage, web: webPage, search: searchPage, ai: aiPage, shortcuts: shortcutsPage, data: dataPage})[root.page]
+                        sourceComponent: ({appearance: appearancePage, web: webPage, search: searchPage, foryou: forYouPage, ai: aiPage, shortcuts: shortcutsPage, data: dataPage})[root.page]
                     }
                 }
             }
@@ -100,6 +101,7 @@ Dialog {
     Component { id: appearancePage; SettingsAppearance {} }
     Component { id: webPage; SettingsWeb {} }
     Component { id: searchPage; SettingsSearch {} }
+    Component { id: forYouPage; SettingsForYou {} }
     Component { id: aiPage; SettingsAi {} }
     Component { id: shortcutsPage; SettingsShortcuts {} }
     Component { id: dataPage; SettingsData {} }

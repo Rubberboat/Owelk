@@ -110,7 +110,7 @@ Item {
         }
         function test_categoriesLoadOneAtATime() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)
-            for (const id of ["appearance", "web", "search", "ai", "shortcuts", "data"]) {
+            for (const id of ["appearance", "web", "search", "foryou", "ai", "shortcuts", "data"]) {
                 mouseClick(visualChild(settings.contentItem, "settingsPage-" + id))
                 compare(settings.page, id)
                 tryVerify(function() { return page() !== null })
@@ -149,6 +149,50 @@ Item {
             compare(researchStore.sampleFileName(p.namesOn), "2017 - Attention Is All You Need.pdf")
             verify(findChild(settings, "pdfNameGroup").note.indexOf("Example: 2017 - Attention") >= 0)
             researchStore.setSetting("pdfNames.parts", "")
+        }
+        function test_forYouTopicsAndCollections() {
+            const forYou = researchStore.forYou
+            forYou.saveTopics([])
+            const collection = researchStore.createCollection("Follow Me")
+            settings.openPage("foryou"); tryCompare(settings, "opened", true)
+            let words = null
+            tryVerify(function() { words = visualChild(settings.contentItem, "forYouTopicWords"); return words !== null })
+            // A topic: words and categories, then on and off, then removed.
+            words.text = "visual SLAM, loop closure"
+            visualChild(settings.contentItem, "forYouTopicCategories").text = "cs.RO"
+            visualChild(settings.contentItem, "forYouAddTopic").clicked()
+            compare(forYou.topics().length, 1)
+            compare(forYou.topics()[0].words, "visual SLAM, loop closure")
+            compare(words.text, "")
+            verify(forYou.configured)
+            let toggle = null
+            tryVerify(function() { toggle = visualChild(settings.contentItem, "forYouTopicSwitch-0"); return toggle !== null })
+            toggle.toggle(); toggle.toggled()
+            compare(forYou.topics()[0].on, false)
+            verify(!forYou.configured)
+            visualChild(settings.contentItem, "forYouRemoveTopic-0").clicked()
+            compare(forYou.topics().length, 0)
+            // A collection with no arXiv ID or DOI cannot be followed yet.
+            let follow = null
+            tryVerify(function() { follow = visualChild(settings.contentItem, "forYouFollow-Follow Me"); return follow !== null })
+            verify(!follow.enabled)
+            researchStore.deleteCollection(collection)
+            // Explain with AI waits for an AI to be set up; turning it on is the OK to send papers to it.
+            researchStore.ai.provider = "claude"
+            researchStore.ai.clearApiKey("claude")
+            researchStore.setSetting("ai.consent.claude", "")
+            let explain = null
+            tryVerify(function() { explain = visualChild(settings.contentItem, "forYouAi"); return explain !== null })
+            tryVerify(function() { return !explain.enabled })
+            verify(researchStore.ai.setApiKey("claude", "sk-settings-test"))
+            tryVerify(function() { return explain.enabled && !explain.checked })
+            explain.toggle(); explain.toggled()
+            verify(researchStore.ai.consented("claude"))
+            compare(researchStore.setting("forYou.ai"), "1")
+            tryVerify(function() { return explain.checked })
+            verify(forYou.aiReady())
+            researchStore.ai.clearApiKey("claude")
+            researchStore.setSetting("ai.consent.claude", "")
         }
         function test_themeAccentAndTextSizeApplyAtOnce() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)

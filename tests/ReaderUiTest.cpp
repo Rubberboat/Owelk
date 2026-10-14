@@ -272,7 +272,8 @@ public slots:
                         const bool grouping = request.contains("Group these tabs");
                         const bool sorting = request.contains("Group these papers");
                         const bool comparing = request.contains("Aspects: ");
-                        const QList<QByteArray> pieces = grouping
+                        const bool ranking = request.contains("decide which new papers to read");
+                        QList<QByteArray> pieces = grouping
                             ? QList<QByteArray>{"{\\\"groups\\\": [{\\\"name\\\": \\\"Fixture papers\\\", ",
                                   "\\\"tabs\\\": [\\\"t1\\\", \\\"t2\\\"]}]}"}
                             : sorting
@@ -281,8 +282,12 @@ public slots:
                             : comparing
                             ? QList<QByteArray>{"| Paper | Method |\\n|---|---|\\n", "| One 2020 | occlusion |"}
                             : QList<QByteArray>{"Mock ", "answer about **occlusion**."};
+                        // For You: each new paper scored, with a reason.
+                        if (ranking)
+                            pieces = {"{\\\"papers\\\": [{\\\"id\\\": \\\"p1\\\", \\\"score\\\": 92, ",
+                                "\\\"why\\\": \\\"Directly on the odometry you follow.\\\"}]}"};
                         // Answers to questions come with a reasoning summary, as Claude's summarized thinking.
-                        if (!grouping && !sorting && !comparing)
+                        if (!grouping && !sorting && !comparing && !ranking)
                             body += "event: content_block_start\ndata: {\"type\":\"content_block_start\","
                                     "\"content_block\":{\"type\":\"thinking\"}}\n\n"
                                     "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":"
@@ -310,6 +315,26 @@ public slots:
                         body = head.contains("/references")
                             ? R"({"data":[{"citedPaper":{"paperId":"r1","title":"Cited Work","year":2018,"externalIds":{"ArXiv":"1801.00001"},"citationCount":3}}]})"
                             : R"({"data":[{"citingPaper":{"paperId":"c1","title":"Later Work","year":2024,"citationCount":9}},{"citingPaper":{"paperId":"c2","title":"Another Work","year":2025}}]})";
+                    } else if (head.contains("/api/query")) {
+                        // arXiv for For You: one new paper today, its PDF the fixture.
+                        type = "application/atom+xml";
+                        const auto today = QDate::currentDate().toString(Qt::ISODate);
+                        body = ("<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><entry>"
+                                "<id>http://arxiv.org/abs/2609.01234v1</id><published>"
+                            + today
+                            + "T08:00:00Z</published><title>Fresh Odometry From arXiv</title><summary>A new "
+                              "odometry method.</summary><author><name>Ada Lovelace</name></author><link title=\"pdf\" "
+                              "href=\"http://127.0.0.1:"
+                            + QString::number(m_web.serverPort()) + "/paper.pdf\"/></entry></feed>")
+                                   .toUtf8();
+                    } else if (head.contains("/recommendations/v1/papers/")) {
+                        // Semantic Scholar for For You: one paper like a followed collection's.
+                        type = "application/json";
+                        body = QStringLiteral("{\"recommendedPapers\":[{\"paperId\":\"r9\",\"title\":\"Like Your "
+                                              "Collection\",\"authors\":[{\"name\":\"Grace Hopper\"}],"
+                                              "\"publicationDate\":\"%1\",\"externalIds\":{\"DOI\":\"10.7/like\"}}]}")
+                                   .arg(QDate::currentDate().toString(Qt::ISODate))
+                                   .toUtf8();
                     } else if (head.contains("/slow.pdf")) {
                         // A large PDF sent in pieces with its size up front, for download progress.
                         QFile pdf(m_directory.filePath("fixture.pdf"));

@@ -10,6 +10,7 @@
 #include "SelectionGeometry.h"
 #include "LibrarySync.h"
 #include "TorNetwork.h"
+#include "ForYou.h"
 
 #include <QClipboard>
 #include <QDateTime>
@@ -83,7 +84,7 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     : QObject(parent), m_directory(directory), m_connection(QUuid::createUuid().toString()),
       m_index(new PaperIndex(directory, this)), m_references(new ReferenceFinder(m_index->readerBusyFlag(), this)),
       m_lookup(new MetadataLookup(this)), m_ai(new AiService(this, this)), m_sync(new LibrarySync(directory, this)),
-      m_tor(new TorNetwork(this, this))
+      m_tor(new TorNetwork(this, this)), m_forYou(new ForYou(this, this))
 {
     m_papers = defaultPapersFolder(directory);
     m_sync->setPapersFolder(m_papers);
@@ -108,6 +109,11 @@ QObject *ResearchStore::semantic() const
 QObject *ResearchStore::sync() const
 {
     return m_sync;
+}
+
+QObject *ResearchStore::forYou() const
+{
+    return m_forYou;
 }
 
 QObject *ResearchStore::tor() const
@@ -408,6 +414,17 @@ bool ResearchStore::initialize(QString *error)
                 return false;
             },
             true},
+        // For You in the library (so it syncs): topics, followed collections, the papers found with the AI's
+        // reasons and what became of them, and when it last looked. (Owelk's own step 18, on its step 17's
+        // Threads; x-or-b's 18 sits on another 17 and also brings over a first For You kept in settings.)
+        {18,
+            {"CREATE TABLE IF NOT EXISTS foryou_topics (id TEXT PRIMARY KEY, words TEXT NOT NULL DEFAULT '', "
+             "categories TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, position INTEGER NOT NULL "
+             "DEFAULT 0)",
+                "CREATE TABLE IF NOT EXISTS foryou_follows (collection_id TEXT PRIMARY KEY)",
+                "CREATE TABLE IF NOT EXISTS foryou_items (id TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'new', "
+                "paper TEXT NOT NULL DEFAULT '{}', found_at TEXT NOT NULL, score INTEGER, why TEXT)",
+                "CREATE TABLE IF NOT EXISTS foryou_meta (key TEXT PRIMARY KEY, value TEXT)"}},
     };
     if (!migrateSchema(m_database, steps, error, m_directory + "/backups")) return false;
     loadDocumentNames();
@@ -436,6 +453,7 @@ bool ResearchStore::initialize(QString *error)
     scheduleAutomaticBackup();
     m_sync->start();
     m_tor->apply();
+    m_forYou->start();
     // Papers past their days in the Trash go a little after start, not while the window opens.
     QTimer::singleShot(20000, this, &ResearchStore::purgeExpired);
     // Durable redirects also replay any search-cache update interrupted by process exit.
@@ -592,6 +610,7 @@ void ResearchStore::syncReceived(const QSet<QString> &tables, const QStringList 
         emit linksChanged();
     }
     if (touched({"ai_topics", "ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
+    if (touched({"foryou_topics", "foryou_follows", "foryou_items", "foryou_meta"})) m_forYou->reload();
 }
 
 QSet<QString> ResearchStore::openSources() const

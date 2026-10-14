@@ -284,6 +284,114 @@ Item {
             verify(visibleChild(view, "libraryAddPdfs") !== null)
             researchStore.restoreFromTrash([{kind: "paper", id: second.id}])
         }
+        function test_forYouOnHomeAndInTheLibrary() {
+            const forYou = researchStore.forYou
+            researchStore.setSetting("forYou.arxivBaseUrl", testInput.webFixture("/api").toString())
+            researchStore.setSetting("forYou.recommendBaseUrl", testInput.webFixture("/recommendations/v1").toString())
+            researchStore.setSetting("forYou.delayMs", "10")
+            forYou.saveTopics([])
+            // Nothing followed: Home shows one line that leads to the settings.
+            workspace.homeVisible = true
+            const home = findChild(workspace, "homeView")
+            waitForPolish(home); wait(50)
+            verify(!forYou.configured)
+            verify(visualChild(home, "homeForYouHint").visible)
+            mouseClick(visualChild(home, "homeForYouHint"))
+            const settings = findChild(workspace, "settingsDialog")
+            tryCompare(settings, "opened", true)
+            compare(settings.page, "foryou")
+            settings.close(); tryCompare(settings, "visible", false)
+            // A topic: Check finds a paper. The AI, set up after the check, then says why it fits.
+            researchStore.setSetting("ai.baseUrl.claude", testInput.webFixture("/").toString())
+            researchStore.ai.provider = "claude"
+            researchStore.ai.clearApiKey("claude")
+            researchStore.setSetting("forYou.ai", "1")
+            verify(!forYou.aiReady())
+            verify(forYou.saveTopics([{words: "odometry", categories: "cs.RO"}]))
+            verify(forYou.configured)
+            forYou.refresh()
+            tryVerify(function() { return !forYou.checking }, 10000)
+            compare(forYou.problem, "")
+            compare(forYou.items.length, 1)
+            verify(!forYou.items[0].why)
+            researchStore.ai.giveConsent("claude")
+            verify(researchStore.ai.setApiKey("claude", "sk-ui-test-key"))
+            tryVerify(function() { return !forYou.explaining && !!forYou.items[0].why }, 10000)
+            compare(forYou.items[0].why, "Directly on the odometry you follow.")
+            compare(forYou.items[0].score, 92)
+            compare(forYou.aiProblem, "")
+            tryVerify(function() { return visualChild(home, "homeForYou-0") !== null && !visualChild(home, "homeForYouHint").visible })
+            verify(visualChild(home, "homeForYouHeading").detail.indexOf("1") === 0)
+            compare(visualChild(home, "homeForYouWhy-0").text, "Directly on the odometry you follow.")
+            // A paper on Home opens in Library › For You, already open.
+            mouseClick(visualChild(home, "homeForYou-0"), 60, 12)
+            let view = library()
+            tryCompare(view, "forYouOpen", forYou.items[0].id)
+            workspace.homeVisible = true
+            // The heading goes to Library › For You.
+            const heading = visualChild(home, "homeForYouHeading").children[0]
+            waitForPolish(home); wait(50)
+            mouseClick(heading, 12, heading.height / 2)
+            view = library()
+            tryCompare(view, "view", "foryou")
+            tryVerify(function() { return visualChild(view, "libraryForYou-0") !== null })
+            verify(Tree.validate(workspace.documents.snapshot().tree, {}, 0), "a For You tab is a valid saved tab")
+            // Period chips: All, Today, This week, This month; rows show short details, the abstract when opened.
+            compare(visibleChild(view, "libraryForYouRange-all").checked, true)
+            verify(visibleChild(view, "libraryForYouRange-today").enabled)
+            mouseClick(visibleChild(view, "libraryForYouRange-today"))
+            compare(view.forYouRange, "today")
+            compare(view.forYouRows.length, 1)
+            const meta = visualChild(view, "libraryForYouMeta-0").text
+            verify(meta.indexOf("Lovelace") === 0 && meta.indexOf("Today") > 0, meta)
+            verify(!visualChild(view, "libraryForYouAbstract-0").visible)
+            mouseClick(visibleChild(view, "libraryForYouRange-all"))
+            compare(view.forYouRange, "all")
+            // A click opens the paper in place (its whole abstract, Add, its page); Open Page goes to the web.
+            waitForPolish(view); wait(50)
+            const libraryTab = activeTab().id
+            mouseClick(visualChild(view, "libraryForYou-0"), 60, 12)
+            compare(view.forYouOpen, forYou.items[0].id)
+            compare(activeTab().kind, "library", "no web tab yet")
+            tryVerify(function() { return visualChild(view, "libraryForYouAbstract-0").visible })
+            let openPage = null
+            tryVerify(function() { openPage = visibleChild(view, "libraryForYouOpenPage"); return openPage !== null })
+            wait(500) // Not a double click.
+            mouseClick(visualChild(view, "libraryForYou-0"), 60, 12)
+            compare(view.forYouOpen, "", "a second click closes it")
+            wait(500)
+            mouseClick(visualChild(view, "libraryForYou-0"), 60, 12)
+            tryVerify(function() { openPage = visibleChild(view, "libraryForYouOpenPage"); return openPage !== null })
+            openPage.clicked()
+            tryVerify(function() { return activeTab().kind === "web" && activeTab().source.indexOf("arxiv.org/abs/2609.01234") >= 0 })
+            const page = activeTab().id
+            workspace.documents.activateTab(libraryTab)
+            workspace.documents.closeTab(page)
+            view = library()
+            tryCompare(view, "view", "foryou")
+            // Select and Add: the PDF comes into the Library with its arXiv details.
+            waitForPolish(view); wait(50)
+            mouseClick(visibleChild(view, "libraryForYouSelect"))
+            mouseClick(visualChild(view, "libraryForYou-0"), 60, 12)
+            compare(view.selection.length, 1)
+            waitForPolish(visibleChild(view, "libraryForYouSelected").parent); wait(20)
+            mouseClick(visibleChild(view, "libraryForYouAddSelection"))
+            tryVerify(function() { return forYou.adding.length === 0 && forYou.items.length === 0 }, 10000)
+            const added = researchStore.libraryDocuments({text: "Fresh Odometry From arXiv"})
+            compare(added.length, 1)
+            compare(researchStore.documentDetails(added[0].url).arxiv, "2609.01234")
+            // Nothing new now: Home hides the box; the Library says when it last looked.
+            tryVerify(function() { return !visualChild(home, "homeForYou").visible })
+            tryVerify(function() { return view.forYouRows.length === 0 })
+            // A paper added is not suggested again.
+            forYou.refresh()
+            tryVerify(function() { return !forYou.checking }, 10000)
+            compare(forYou.items.length, 0, "the added paper is in the Library now")
+            researchStore.deletePapers([added[0].url])
+            researchStore.ai.clearApiKey("claude")
+            forYou.saveTopics([])
+            verify(!forYou.configured)
+        }
         function test_dragPaperOntoCollection() {
             const one = testInput.copyFixture("drag one.pdf")
             verify(researchStore.addDocuments([one], "") === 1)

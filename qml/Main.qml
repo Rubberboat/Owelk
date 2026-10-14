@@ -96,6 +96,13 @@ ApplicationWindow {
         aiController.newThread()
     }
     function openAiThread(id) { if (aiController.openThread(id)) showAi() }
+    // A For You paper's page (no PDF to fetch, or one that did not come), in a web tab of its own.
+    function openForYouPage(address) {
+        if (window.restoreFailed || !address || !address.toString().length) return
+        homeVisible = false
+        documents.openWeb(address, true)
+    }
+    Connections { target: researchStore.forYou; function onWebRequested(address) { window.openForYouPage(address) } }
     // The Document panel's Annotations view (the reader toolbar button opens and closes it).
     function toggleAnnotations() {
         if (documentVisible && navigationMode === 1) { documentVisible = false; return }
@@ -827,6 +834,7 @@ ApplicationWindow {
             onLibraryFilterRequested: function(filter) { if (!window.restoreFailed) documents.openLibrary(filter) }
             onWebRequested: function(url) { if (!window.restoreFailed) documents.openWeb(url, true) }
             onNewNoteRequested: if (!window.restoreFailed) documents.newNote()
+            onSettingsRequested: function(page) { settingsDialog.openPage(page) }
         }
         DocumentWorkspace {
             id: documents
@@ -838,6 +846,7 @@ ApplicationWindow {
             onChanged: window.scheduleSave()
             onEmpty: window.showHome()
             onAiRequested: function(spec) { window.askAi(spec) }
+            onSettingsRequested: function(page) { settingsDialog.openPage(page) }
             onAnnotationsToggled: window.toggleAnnotations()
             onAiResponseRequested: function(id) { window.openAiThread(id) }
             onOpened: window.homeVisible = false

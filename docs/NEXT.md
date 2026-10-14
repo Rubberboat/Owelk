@@ -41,6 +41,13 @@
 
 - 라이브러리 묻기에 의미 검색 결과도 근거로 쓰기, Zotero·BibTeX 가져오기(보류 중).
 
+## 4-0. For You 다음 단계
+
+- arXiv와 Semantic Scholar의 실제 결과가 쓸 만한지 실사용 확인.
+- AI 점수·이유의 품질과 비용 확인.
+- 주제로 찾은 논문을 Add할 때 넣을 Collection 고르기(지금은 Unsorted).
+- 속도 제한을 완화할 Semantic Scholar API 키 입력.
+
 ## 4-1. 동기화 다음 단계
 
 - 변경 기록 정리(오래된 `devices/*.jsonl`을 한 파일로 합치기), 공유 폴더의 쓰이지 않는 PDF·이미지 정리.

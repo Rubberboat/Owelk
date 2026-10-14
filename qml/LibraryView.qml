@@ -29,8 +29,10 @@ Rectangle {
     // Select mode (the check button beside Add): a click picks a paper instead of opening it.
     property bool selecting: false
     function setSelecting(on) { selecting = on; if (!on) { selection = []; selectionAnchor = -1 } }
-    readonly property bool allSelected: rows.length > 0 && selection.length === rows.length
-    function selectAll(on) { selection = on ? rows.map(function(r) { return r.url.toString() }) : []; selectionAnchor = -1 }
+    // What can be chosen in the list shown: papers (URLs) or For You's papers (ids).
+    readonly property var selectable: showingForYou ? forYouRows.map(function(p) { return p.id }) : rows.map(function(r) { return r.url.toString() })
+    readonly property bool allSelected: selectable.length > 0 && selection.length === selectable.length
+    function selectAll(on) { selection = on ? selectable.slice() : []; selectionAnchor = -1 }
     function isSelected(url) { return selection.indexOf(url.toString()) >= 0 }
     function rowClicked(index) {
         const row = rows[index], url = row.url.toString(), mods = researchStore.keyboardModifiers()
@@ -49,11 +51,72 @@ Rectangle {
     function papersFor(row) { return isSelected(row.url) ? selection : [row.url.toString()] }
     property var tagRows: []
     property var noteRows: []
-    // Which list: papers (no view in the filter), notes or the Trash.
-    readonly property string view: filter.view === "notes" || filter.view === "trash" ? filter.view : "papers"
+    // Which list: papers (no view in the filter), For You, notes or the Trash.
+    readonly property string view: ["notes", "trash", "foryou"].indexOf(filter.view) >= 0 ? filter.view : "papers"
+    readonly property bool showingPapers: view === "papers"
     readonly property bool showingNotes: view === "notes"
     readonly property bool showingTrash: view === "trash"
-    function setView(next) { if (next !== "papers") setSelecting(false); setFilter(next === "papers" ? {} : {view: next}) }
+    readonly property bool showingForYou: view === "foryou"
+    // For You: new papers found for what is followed, narrowed to one source when chosen.
+    readonly property var forYou: researchStore.forYou
+    property string forYouSource: ""
+    // For You reads in a column of at most 920 px, in the middle.
+    readonly property real forYouInset: Math.max(0, (listColumn.width - 920) / 2)
+    // A period chip: all, today, the last 7 or 30 days (by the paper's date, else when it was found).
+    property string forYouRange: "all"
+    function forYouDay(p) { return new Date((p.date && p.date.length ? p.date : (p.foundAt || "").slice(0, 10)) + "T00:00:00") }
+    function inForYouRange(p, range) {
+        if (range === "all") return true
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const age = Math.round((today - forYouDay(p)) / 86400000)
+        return range === "today" ? age <= 0 : range === "week" ? age < 7 : age < 30
+    }
+    readonly property var forYouFromSource: forYou.items.filter(function(p) { return !forYouSource.length || p.source === forYouSource })
+    readonly property var forYouRows: forYouFromSource.filter(function(p) { return root.inForYouRange(p, root.forYouRange) })
+    // "Lovelace et al." and "Today", "3 days ago": the details at a glance.
+    function shortAuthors(authors) {
+        const names = (authors || "").split(/\s*,\s*/).filter(function(n) { return n.length })
+        if (!names.length) return ""
+        const family = names[0].split(/\s+/).pop()
+        return names.length > 1 ? family + " et al." : family
+    }
+    function relativeDay(p) {
+        const day = forYouDay(p)
+        if (isNaN(day.getTime())) return ""
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const age = Math.round((today - day) / 86400000)
+        return age <= 0 ? "Today" : age === 1 ? "Yesterday" : age < 7 ? age + " days ago" : day.toLocaleDateString(Qt.locale(), Locale.ShortFormat)
+    }
+    function forYouClicked(index) {
+        const id = forYouRows[index].id, mods = researchStore.keyboardModifiers()
+        if (mods & Qt.ShiftModifier && selectionAnchor >= 0) {
+            const a = Math.min(selectionAnchor, index), b = Math.max(selectionAnchor, index)
+            selection = forYouRows.slice(a, b + 1).map(function(p) { return p.id })
+        } else if (selecting || mods & Qt.ControlModifier) {
+            selection = selection.indexOf(id) >= 0 ? selection.filter(function(p) { return p !== id }) : selection.concat([id])
+            selectionAnchor = index
+        } else {
+            // Open in place: the whole abstract at once (a web page takes a while), with Add and its page.
+            selection = []; selectionAnchor = index
+            forYouOpen = forYouOpen === id ? "" : id
+        }
+    }
+    // The paper opened in place (from a click here or on Home).
+    property string forYouOpen: ""
+    function openForYou(id) {
+        forYouOpen = id
+        Qt.callLater(function() {
+            const at = root.forYouRows.findIndex(function(p) { return p.id === id })
+            if (at >= 0) forYouList.positionViewAtIndex(at, ListView.Contain)
+        })
+    }
+    function addForYou(ids) { const list = ids.slice(); setSelecting(false); forYou.add(list) }
+    function dismissForYou(ids) { const list = ids.slice(); setSelecting(false); forYou.dismiss(list) }
+    // A Settings page (For You's gear), and a paper's page to read in a web tab.
+    signal settingsRequested(string page)
+    signal webRequested(url address)
+    Connections { target: root.forYou; function onChanged() { const present = root.selectable; root.selection = root.selection.filter(function(u) { return present.indexOf(u) >= 0 }) } }
+    function setView(next) { if (next !== view) setSelecting(false); setFilter(next === "papers" ? {} : {view: next}) }
     Shortcut { sequence: "Escape"; enabled: root.selecting && root.visible; onActivated: root.setSelecting(false) }
     // Delete or Backspace moves the chosen papers to the Trash (a text field being edited keeps its keys).
     Shortcut {
@@ -62,7 +125,12 @@ Rectangle {
                  && !(root.Window.activeFocusItem && root.Window.activeFocusItem.cursorPosition !== undefined)
         onActivated: root.deleteSelection()
     }
-    function deleteSelection() { const list = selection; setSelecting(false); Qt.callLater(function() { researchStore.deletePapers(list) }) }
+    function deleteSelection() {
+        if (showingForYou) { dismissForYou(selection); return }
+        const list = selection
+        setSelecting(false)
+        Qt.callLater(function() { researchStore.deletePapers(list) })
+    }
     // What follows the pointer while papers are dragged onto a collection, the AI panel or a panel's shelf.
     Rectangle {
         id: dragGhost
@@ -135,7 +203,10 @@ Rectangle {
     function setFilter(next) { filter = next; selection = []; selectionAnchor = -1; filterEdited(next); refresh() }
     function selected(key, value) { return key === "all" ? Object.keys(filter).length === 0 : filter[key] === value }
     onQueryChanged: refreshTimer.restart()
-    onFilterChanged: if (filter.collection) researchStore.markOpened("collection", filter.collection)
+    onFilterChanged: {
+        if (filter.collection) researchStore.markOpened("collection", filter.collection)
+        if (filter.open) openForYou(filter.open)
+    }
     onSortChanged: refresh()
     Component.onCompleted: refresh()
     Timer { id: refreshTimer; interval: 120; onTriggered: root.refresh() }
@@ -182,6 +253,14 @@ Rectangle {
         property var row: ({})
         MenuItem { text: "New Sub-collection…"; onTriggered: collectionDialog.begin("", "", collectionMenu.row.id) }
         MenuItem { text: "Rename…"; onTriggered: collectionDialog.begin(collectionMenu.row.id, collectionMenu.row.name) }
+        // Papers like this collection's, in For You.
+        MenuItem {
+            objectName: "collectionFollow"
+            checkable: true
+            checked: collectionMenu.visible && root.forYou.following(collectionMenu.row.id || "")
+            text: "Follow in For You"
+            onTriggered: root.forYou.follow(collectionMenu.row.id, !root.forYou.following(collectionMenu.row.id))
+        }
         MenuItem {
             text: "Delete Collection"
             palette.windowText: Theme.danger
@@ -302,9 +381,10 @@ Rectangle {
             TabBar {
                 objectName: "libraryViews"
                 anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(parent.width - 16, 320)
-                currentIndex: ["papers", "notes", "trash"].indexOf(root.view)
+                width: Math.min(parent.width - 16, 420)
+                currentIndex: ["papers", "foryou", "notes", "trash"].indexOf(root.view)
                 TabButton { objectName: "libraryPapersTab"; text: "Papers"; onClicked: root.setView("papers") }
+                TabButton { objectName: "libraryForYouTab"; text: root.forYou.items.length ? "For You " + root.forYou.items.length : "For You"; onClicked: root.setView("foryou") }
                 TabButton { objectName: "libraryNotesTab"; text: "Notes"; onClicked: root.setView("notes") }
                 TabButton { objectName: "libraryTrashTab"; text: root.trashCount ? "Trash " + root.trashCount : "Trash"; onClicked: root.setView("trash") }
             }
@@ -315,7 +395,7 @@ Rectangle {
             spacing: 0
             // Sidebar for papers: built-in views, collections, tags.
             Rectangle {
-                visible: !root.showingNotes && !root.showingTrash
+                visible: root.showingPapers
                 Layout.preferredWidth: 210; Layout.fillHeight: true
                 color: Theme.sidebar
                 ListView {
@@ -386,11 +466,295 @@ Rectangle {
                     }
                 }
             }
-            Rectangle { visible: !root.showingNotes && !root.showingTrash; Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.separator }
+            Rectangle { visible: root.showingPapers; Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.separator }
             ColumnLayout {
+                id: listColumn
                 Layout.fillWidth: true; Layout.fillHeight: true
                 Layout.margins: 12
                 spacing: 8
+                // For You: new papers for the topics and collections followed; add them, dismiss them, or
+                // read their page. Select works as for papers (Add, Dismiss).
+                RowLayout {
+                    Layout.fillWidth: true; Layout.leftMargin: root.forYouInset; Layout.rightMargin: root.forYouInset
+                    visible: root.showingForYou
+                    spacing: 8
+                    Label { text: "For You"; font.pixelSize: Theme.fontHeadline; font.weight: Font.DemiBold; color: Theme.text }
+                    Label {
+                        objectName: "libraryForYouCount"
+                        Layout.alignment: Qt.AlignBaseline
+                        visible: root.forYou.items.length > 0
+                        text: root.forYouRows.length + (root.forYouRows.length === 1 ? " paper" : " papers")
+                        font.pixelSize: Theme.fontSmall; color: Theme.textTertiary
+                    }
+                    Item { Layout.fillWidth: true }
+                    Label {
+                        visible: root.forYou.explaining
+                        text: "AI is reading…"
+                        font.pixelSize: Theme.fontSmall; color: Theme.textTertiary
+                    }
+                    // The AI's view of each paper: most relevant first, one sentence on why.
+                    IconButton {
+                        objectName: "libraryForYouExplain"
+                        icon.name: "ai"; description: "Explain with AI"
+                        enabled: !root.forYou.explaining && root.forYou.items.some(function(p) { return !p.why })
+                        onClicked: root.forYou.explain()
+                    }
+                    IconButton {
+                        objectName: "libraryForYouRefresh"
+                        icon.name: "reload"; description: "Check now"
+                        enabled: root.forYou.configured && !root.forYou.checking
+                        onClicked: root.forYou.refresh()
+                    }
+                    IconButton { objectName: "libraryForYouSettings"; icon.name: "settings"; description: "For You settings"; onClicked: root.settingsRequested("foryou") }
+                }
+                Label {
+                    objectName: "libraryForYouAiProblem"
+                    visible: root.showingForYou && root.forYou.aiProblem.length > 0 && !root.forYou.explaining
+                    Layout.fillWidth: true; Layout.leftMargin: root.forYouInset; Layout.rightMargin: root.forYouInset
+                    text: root.forYou.aiProblem
+                    wrapMode: Text.Wrap; font.pixelSize: Theme.fontSmall; color: Theme.textTertiary
+                }
+                RowLayout {
+                    Layout.fillWidth: true; Layout.leftMargin: root.forYouInset; Layout.rightMargin: root.forYouInset
+                    visible: root.showingForYou && root.forYou.items.length > 0
+                    spacing: 4
+                    Repeater {
+                        model: root.selecting ? [] : [{key: "all", name: "All"}, {key: "today", name: "Today"},
+                                                      {key: "week", name: "This week"}, {key: "month", name: "This month"}]
+                        delegate: Chip {
+                            required property var modelData
+                            readonly property int count: root.forYouFromSource.filter(function(p) { return root.inForYouRange(p, modelData.key) }).length
+                            objectName: "libraryForYouRange-" + modelData.key
+                            text: modelData.name
+                            checkable: true
+                            checked: root.forYouRange === modelData.key
+                            // A period with nothing in it is quiet (still the one shown when chosen).
+                            enabled: count > 0 || checked
+                            ToolTip.text: count + (count === 1 ? " paper" : " papers")
+                            onClicked: root.forYouRange = modelData.key
+                        }
+                    }
+                    Label {
+                        objectName: "libraryForYouSelected"
+                        visible: root.selecting
+                        text: root.selection.length ? root.selection.length + " selected" : "Choose papers"
+                        font.pixelSize: Theme.fontSmall; color: root.selection.length ? Theme.text : Theme.textTertiary
+                    }
+                    Item { Layout.fillWidth: true }
+                    IconButton {
+                        objectName: "libraryForYouSelect"
+                        visible: !root.selecting
+                        icon.name: "check"; description: "Select papers"
+                        onClicked: root.setSelecting(true)
+                    }
+                    ComboBox {
+                        objectName: "libraryForYouSource"
+                        visible: !root.selecting && sources.length > 1
+                        Layout.preferredWidth: 200
+                        readonly property var sources: (root.forYou.items, root.forYou.sources())
+                        model: ["Everything"].concat(sources.map(function(s) { return s.name + " · " + s.count }))
+                        currentIndex: Math.max(0, sources.findIndex(function(s) { return s.key === root.forYouSource }) + 1)
+                        onActivated: function(index) { root.forYouSource = index > 0 ? sources[index - 1].key : "" }
+                    }
+                    Button {
+                        objectName: "libraryForYouSelectAll"
+                        visible: root.selecting
+                        flat: true; font.pixelSize: Theme.fontSmall; horizontalPadding: 8
+                        implicitHeight: Theme.controlHeightSmall
+                        text: root.allSelected ? "Deselect All" : "Select All"
+                        onClicked: root.selectAll(!root.allSelected)
+                    }
+                    Button {
+                        objectName: "libraryForYouAddSelection"
+                        visible: root.selecting
+                        enabled: root.selection.length > 0
+                        flat: true; font.pixelSize: Theme.fontSmall; horizontalPadding: 8
+                        implicitHeight: Theme.controlHeightSmall
+                        text: "Add"
+                        onClicked: root.addForYou(root.selection)
+                    }
+                    Button {
+                        objectName: "libraryForYouDismissSelection"
+                        visible: root.selecting
+                        enabled: root.selection.length > 0
+                        flat: true; font.pixelSize: Theme.fontSmall; horizontalPadding: 8
+                        implicitHeight: Theme.controlHeightSmall
+                        text: "Dismiss"
+                        onClicked: root.dismissForYou(root.selection)
+                    }
+                    Button {
+                        objectName: "libraryForYouDone"
+                        visible: root.selecting
+                        flat: true; font.pixelSize: Theme.fontSmall; horizontalPadding: 8
+                        implicitHeight: Theme.controlHeightSmall
+                        text: "Done"
+                        onClicked: root.setSelecting(false)
+                    }
+                }
+                ListView {
+                    id: forYouList
+                    // A column of reading width, in the middle.
+                    Layout.fillWidth: true; Layout.leftMargin: root.forYouInset; Layout.rightMargin: root.forYouInset
+                    objectName: "libraryForYou"
+                    visible: root.showingForYou
+                    Layout.fillHeight: true
+                    clip: true
+                    model: root.showingForYou ? root.forYouRows : []
+                    ScrollBar.vertical: ScrollBar {}
+                    delegate: ItemDelegate {
+                        id: found
+                        required property var modelData
+                        required property int index
+                        readonly property bool chosen: root.selection.indexOf(modelData.id) >= 0
+                        readonly property bool adding: root.forYou.adding.indexOf(modelData.id) >= 0
+                        readonly property bool open: root.forYouOpen === modelData.id && !root.selecting
+                        objectName: "libraryForYou-" + index
+                        width: forYouList.width
+                        height: forYouColumn.implicitHeight + 26
+                        topPadding: 13; bottomPadding: 13
+                        // Its own line, under the Add and Dismiss icons too (the list's ends at the text).
+                        Rectangle {
+                            visible: found.index < forYouList.count - 1 && !found.highlighted
+                            anchors.bottom: parent.bottom; anchors.bottomMargin: -1
+                            x: found.leftPadding; width: parent.width - found.leftPadding - 8
+                            height: 1
+                            color: Theme.separator
+                        }
+                        highlighted: chosen
+                        rightPadding: found.open ? 12 : forYouActions.width + 12
+                        onClicked: root.forYouClicked(index)
+                        contentItem: RowLayout {
+                            spacing: 10
+                            Rectangle {
+                                visible: root.selecting
+                                Layout.preferredWidth: 16; Layout.preferredHeight: 16; radius: 8
+                                color: found.chosen ? Theme.accent : "transparent"
+                                border.width: found.chosen ? 0 : 1.5; border.color: Theme.border
+                                Icon { anchors.centerIn: parent; visible: found.chosen; name: "check"; size: 11; color: Theme.onAccent }
+                            }
+                            // The title, why it fits (the AI's sentence), then who, when and from where, small;
+                            // the abstract when opened.
+                            ColumnLayout {
+                                id: forYouColumn
+                                Layout.fillWidth: true
+                                spacing: 5
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: found.modelData.title
+                                    wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; textFormat: Text.PlainText
+                                    font.pixelSize: Theme.fontBody; font.weight: Font.Medium; color: Theme.text
+                                    lineHeight: 1.1
+                                }
+                                RowLayout {
+                                    visible: !!found.modelData.why
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    Icon { name: "ai"; size: Theme.fontCaption; color: Theme.textTertiary; Layout.alignment: Qt.AlignTop; Layout.topMargin: 3 }
+                                    Label {
+                                        objectName: "libraryForYouWhy-" + found.index
+                                        Layout.fillWidth: true
+                                        text: found.modelData.why || ""
+                                        wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                        font.pixelSize: Theme.fontSmall; color: Theme.textSecondary
+                                        lineHeight: 1.15
+                                    }
+                                }
+                                Label {
+                                    objectName: "libraryForYouMeta-" + found.index
+                                    Layout.fillWidth: true
+                                    text: [root.shortAuthors(found.modelData.authors), root.relativeDay(found.modelData), found.modelData.sourceName].filter(function(t) { return t && t.length }).join("  ·  ")
+                                    elide: Text.ElideRight; textFormat: Text.PlainText; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary
+                                }
+                                Label {
+                                    objectName: "libraryForYouAbstract-" + found.index
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 4
+                                    visible: found.open && (found.modelData.abstract || "").length > 0
+                                    text: found.modelData.abstract || ""
+                                    wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                    font.pixelSize: Theme.fontSmall; color: Theme.text
+                                    lineHeight: 1.2
+                                }
+                                // Opened: what to do with it.
+                                RowLayout {
+                                    visible: found.open
+                                    Layout.topMargin: 6
+                                    spacing: 6
+                                    Label { visible: found.adding; text: "Adding…"; font.pixelSize: Theme.fontSmall; color: Theme.textTertiary }
+                                    Button {
+                                        objectName: "libraryForYouOpenAdd"
+                                        visible: !found.adding
+                                        highlighted: true
+                                        implicitHeight: Theme.controlHeightSmall; font.pixelSize: Theme.fontSmall
+                                        text: "Add to Library"
+                                        onClicked: root.forYou.add([found.modelData.id])
+                                    }
+                                    Button {
+                                        objectName: "libraryForYouOpenPage"
+                                        flat: true; implicitHeight: Theme.controlHeightSmall; font.pixelSize: Theme.fontSmall
+                                        text: "Open Page"
+                                        onClicked: root.webRequested(found.modelData.url)
+                                    }
+                                    Button {
+                                        objectName: "libraryForYouOpenDismiss"
+                                        visible: !found.adding
+                                        flat: true; implicitHeight: Theme.controlHeightSmall; font.pixelSize: Theme.fontSmall
+                                        text: "Dismiss"
+                                        onClicked: root.forYou.dismiss([found.modelData.id])
+                                    }
+                                }
+                            }
+                        }
+                        // Add and Dismiss on hover (and while the PDF comes), like Home; the room stays, so nothing moves.
+                        Row {
+                            id: forYouActions
+                            visible: !root.selecting && !found.open
+                            opacity: found.hovered || addIcon.hovered || dismissIcon.hovered || found.adding ? 1 : 0
+                            anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            Label { visible: found.adding; anchors.verticalCenter: parent.verticalCenter; text: "Adding…"; font.pixelSize: Theme.fontSmall; color: Theme.textTertiary }
+                            IconButton {
+                                id: addIcon
+                                objectName: "libraryForYouAdd-" + found.index
+                                visible: !found.adding
+                                icon.name: "download"; description: "Add to the Library"
+                                onClicked: root.forYou.add([found.modelData.id])
+                            }
+                            IconButton {
+                                id: dismissIcon
+                                objectName: "libraryForYouDismiss-" + found.index
+                                visible: !found.adding
+                                icon.name: "close"; description: "Dismiss"
+                                onClicked: root.forYou.dismiss([found.modelData.id])
+                            }
+                        }
+                    }
+                    // Nothing followed: the way to the settings; nothing new: when it last looked.
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width - 40, 420)
+                        visible: forYouList.count === 0
+                        spacing: 10
+                        Label {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                            text: !root.forYou.configured ? "Follow a collection or a topic to see new papers here"
+                                : root.forYou.checking ? "Looking for new papers…"
+                                : root.forYou.problem.length ? root.forYou.problem
+                                : root.forYou.lastChecked.getTime && !isNaN(root.forYou.lastChecked.getTime())
+                                    ? "Nothing new. Checked " + root.forYou.lastChecked.toLocaleString(Qt.locale(), Locale.ShortFormat)
+                                    : "Not checked yet."
+                            color: root.forYou.problem.length && root.forYou.configured ? Theme.danger : Theme.textTertiary
+                        }
+                        Button {
+                            objectName: "libraryForYouSetup"
+                            visible: !root.forYou.configured
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "Choose Topics…"
+                            onClicked: root.settingsRequested("foryou")
+                        }
+                    }
+                }
                 // The Trash: papers, notes and AI conversations; restore, delete for good, or empty it.
                 RowLayout {
                     Layout.fillWidth: true
@@ -508,7 +872,7 @@ Rectangle {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    visible: !root.showingNotes && !root.showingTrash
+                    visible: root.showingPapers
                     TextField {
                         objectName: "libraryQuery"
                         Layout.fillWidth: true
@@ -525,7 +889,7 @@ Rectangle {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    visible: !root.showingNotes && !root.showingTrash
+                    visible: root.showingPapers
                     Label {
                         objectName: "libraryCount"; Layout.fillWidth: true
                         text: root.selecting ? (root.selection.length ? root.selection.length + " selected" : "Choose papers")
@@ -619,7 +983,7 @@ Rectangle {
                 ListView {
                     id: papers
                     objectName: "libraryList"
-                    visible: !root.showingNotes && !root.showingTrash
+                    visible: root.showingPapers
                     Layout.fillWidth: true; Layout.fillHeight: true
                     clip: true
                     model: root.rows

@@ -46,6 +46,8 @@ Rectangle {
     signal webRequested(string url)
     signal documentChosen(url source, var position)
     signal resultChosen(var result)
+    // A Settings page to open (For You's gear and hint).
+    signal settingsRequested(string page)
     // One field for the Library and the web: the web row (searchModel.webRow) comes first when the text
     // reads as an address or names an engine ("arxiv: …"), last otherwise, so Enter opens the best match.
     readonly property var rows: {
@@ -122,9 +124,14 @@ Rectangle {
         property alias text: heading.text
         property alias adding: add.visible
         property alias addDescription: add.description
+        // A quiet count after the heading, and a gear for the box's settings.
+        property alias detail: detailLabel.text
+        property alias configurable: gear.visible
+        property alias configureDescription: gear.description
         property bool goes: false
         signal added()
         signal opened()
+        signal configureRequested()
         Layout.fillWidth: true
         Layout.preferredHeight: 32
         Item {
@@ -142,7 +149,9 @@ Rectangle {
                 TapHandler { enabled: boxHeading.goes; onTapped: boxHeading.opened() }
             }
         }
+        Label { id: detailLabel; visible: text.length > 0; font.pixelSize: Theme.fontSmall; color: Theme.textTertiary }
         IconButton { id: add; visible: false; icon.name: "add"; onClicked: boxHeading.added() }
+        IconButton { id: gear; objectName: boxHeading.objectName + "Settings"; visible: false; icon.name: "settings"; onClicked: boxHeading.configureRequested() }
     }
     Flickable {
         anchors.fill: parent
@@ -288,6 +297,111 @@ Rectangle {
                         highlighted: true
                         text: root.continuation.source ? "Continue" : "Open PDF…"
                         onClicked: continueCard.clicked()
+                    }
+                }
+            }
+            // For You: the newest papers found for the topics and collections followed (all of them in
+            // Library › For You). Nothing followed yet: one line that leads to the settings; nothing new: hidden.
+            ColumnLayout {
+                id: forYouBox
+                objectName: "homeForYou"
+                readonly property var forYou: researchStore.forYou
+                readonly property var shown: forYou.items.slice(0, 5)
+                visible: forYou.configured ? shown.length > 0 : true
+                Layout.fillWidth: true
+                spacing: 6
+                BoxHeading {
+                    objectName: "homeForYouHeading"
+                    text: "For You"; goes: true
+                    detail: forYouBox.forYou.items.length ? forYouBox.forYou.items.length + " new" : ""
+                    configurable: true; configureDescription: "For You settings"
+                    onOpened: root.libraryFilterRequested({view: "foryou"})
+                    onConfigureRequested: root.settingsRequested("foryou")
+                }
+                ItemDelegate {
+                    objectName: "homeForYouHint"
+                    visible: !forYouBox.forYou.configured
+                    Layout.fillWidth: true
+                    padding: 14
+                    onClicked: root.settingsRequested("foryou")
+                    background: Rectangle {
+                        radius: Theme.radiusLarge
+                        color: parent.hovered ? Theme.hover : Theme.content
+                        border.color: Theme.separator
+                    }
+                    contentItem: RowLayout {
+                        spacing: 10
+                        Icon { name: "related"; size: Theme.fontBody + 2; color: Theme.textTertiary }
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Follow a collection or a topic to see new papers here"
+                            elide: Text.ElideRight; color: Theme.textSecondary
+                        }
+                        Icon { name: "right"; size: Theme.fontBody; color: Theme.textTertiary }
+                    }
+                }
+                Rectangle {
+                    visible: forYouBox.shown.length > 0
+                    Layout.fillWidth: true
+                    implicitHeight: forYouRows.implicitHeight + 8
+                    radius: Theme.radiusLarge
+                    color: Theme.content
+                    border.color: Theme.separator
+                    Column {
+                        id: forYouRows
+                        x: 4; y: 4; width: parent.width - 8
+                        spacing: 1
+                        Repeater {
+                            model: forYouBox.shown
+                            delegate: ItemDelegate {
+                                id: suggestion
+                                required property var modelData
+                                required property int index
+                                readonly property bool adding: forYouBox.forYou.adding.indexOf(modelData.id) >= 0
+                                objectName: "homeForYou-" + index
+                                width: forYouRows.width
+                                height: Theme.rowHeightTall + 10
+                                separator: index < forYouBox.shown.length - 1
+                                rightPadding: actions.width + 12
+                                // Opens in Library › For You, the whole abstract shown (a web page takes a while).
+                                onClicked: root.libraryFilterRequested({view: "foryou", open: modelData.id})
+                                readonly property string details: [modelData.authors, modelData.date, modelData.sourceName].filter(function(t) { return t && t.length }).join("  ·  ")
+                                ToolTip.visible: hovered; ToolTip.delay: 700
+                                ToolTip.text: details + ((modelData.abstract || "").length ? "\n\n" + modelData.abstract.slice(0, 600) : "")
+                                contentItem: ColumnLayout {
+                                    spacing: 3
+                                    Label { Layout.fillWidth: true; text: suggestion.modelData.title; elide: Text.ElideRight; textFormat: Text.PlainText; font.weight: Font.Medium; color: Theme.text }
+                                    // Why to read it (the AI's sentence), else who and when.
+                                    Label {
+                                        objectName: "homeForYouWhy-" + suggestion.index
+                                        Layout.fillWidth: true
+                                        text: suggestion.modelData.why || suggestion.details
+                                        elide: Text.ElideRight; textFormat: Text.PlainText; font.pixelSize: Theme.fontCaption
+                                        color: suggestion.modelData.why ? Theme.textSecondary : Theme.textTertiary
+                                    }
+                                }
+                                // Add and Dismiss on hover (Adding… while the PDF comes).
+                                Row {
+                                    id: actions
+                                    anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 2
+                                    opacity: suggestion.hovered || suggestion.adding ? 1 : 0
+                                    Label { visible: suggestion.adding; anchors.verticalCenter: parent.verticalCenter; text: "Adding…"; font.pixelSize: Theme.fontSmall; color: Theme.textTertiary }
+                                    IconButton {
+                                        objectName: "homeForYouAdd-" + suggestion.index
+                                        visible: !suggestion.adding
+                                        icon.name: "download"; description: "Add to the Library"
+                                        onClicked: forYouBox.forYou.add([suggestion.modelData.id])
+                                    }
+                                    IconButton {
+                                        objectName: "homeForYouDismiss-" + suggestion.index
+                                        visible: !suggestion.adding
+                                        icon.name: "close"; description: "Dismiss"
+                                        onClicked: forYouBox.forYou.dismiss([suggestion.modelData.id])
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

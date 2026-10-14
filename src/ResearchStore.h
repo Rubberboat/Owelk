@@ -13,6 +13,7 @@
 #include <QVariantMap>
 
 class LibrarySync;
+class ForYou;
 class TorNetwork;
 class PaperIndex;
 class ReferenceFinder;
@@ -38,6 +39,8 @@ class ResearchStore final : public QObject {
     Q_PROPERTY(QObject *semantic READ semantic CONSTANT)
     // Keeping this library the same on other computers through a shared folder (LibrarySync.h).
     Q_PROPERTY(QObject *sync READ sync CONSTANT)
+    // New papers in the fields the reader follows (ForYou.h).
+    Q_PROPERTY(QObject *forYou READ forYou CONSTANT)
     // Settings › Web › Browse through Tor: web tabs only, off unless turned on (TorNetwork.h).
     Q_PROPERTY(QObject *tor READ tor CONSTANT)
     Q_PROPERTY(bool backingUp READ backingUp NOTIFY backingUpChanged)
@@ -72,6 +75,13 @@ public:
     QObject *ai() const { return m_ai; }
     QObject *semantic() const;
     QObject *sync() const;
+    QObject *forYou() const;
+    // Whether a paper with this arXiv ID (any version) or DOI is in the Library.
+    bool hasPaper(const QString &arxiv, const QString &doi) const;
+    // A collection's papers as Semantic Scholar knows them ("ArXiv:2401.12345", "DOI:10.…"), newest first.
+    QStringList collectionPaperKeys(const QString &collectionId, int limit) const;
+    // The paper a just-added file became: the file itself, or the paper with the same bytes.
+    QUrl paperWithFile(const QUrl &file, const QString &sha256) const;
     LibrarySync *librarySync() const { return m_sync; }
     QObject *tor() const;
     bool relinking() const { return m_relinking; }
@@ -436,6 +446,7 @@ signals:
     void relinkFinished(bool success, const QString &detail);
 
 private:
+    friend class ForYou; // Its tables live in the library.
     void saveTextSelection(const QUrl &source, int page, const QPointF &from, const QPointF &to,
         const QString &expectedText, const QString &color, const QString &kind = "highlight",
         const QString &body = QString());
@@ -551,5 +562,6 @@ private:
     class SemanticIndex *m_semantic = nullptr;
     LibrarySync *m_sync;
     TorNetwork *m_tor;
+    ForYou *m_forYou = nullptr;
     void syncReceived(const QSet<QString> &tables, const QStringList &sources);
 };
