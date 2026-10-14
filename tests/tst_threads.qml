@@ -599,5 +599,34 @@ Item {
             chatMenu.close()
             docs.tabs = []
         }
+        function test_9zzzzz_papersAttachedBelowAThreadGoWithItsChat() {
+            reader.source = outlineSource
+            controller.showThreads()
+            panel.chooseTopic(second)
+            tryCompare(controller, "conversationOpen", false)
+            // Chosen below the Thread's list: shown as a chip, sent after that Thread's paper.
+            controller.attachPapers([outlineSource])
+            compare(controller.spec.papers, [outlineSource.toString()])
+            compare(controller.spec.source, undefined)
+            tryVerify(function() { return shown(panel, "aiChip-extra-0") !== null })
+            const box = findChild(panel, "aiQuestion")
+            box.forceActiveFocus()
+            box.text = "How do they compare?"
+            keyClick(Qt.Key_Return)
+            compare(controller.conversationOpen, true)
+            tryCompare(controller, "streaming", false, 10000)
+            made.push(controller.threadId)
+            const asked = researchStore.aiThread(controller.threadId)
+            compare(asked.topic, second)
+            verify(researchStore.sameSource(asked.source, linkSource))
+            const question = asked.messages[0]
+            verify(question.context.attachments.indexOf("papers") >= 0)
+            compare(question.context.papers, [researchStore.displayName(outlineSource)])
+            verify(question.content.indexOf("=== P2: ") >= 0)
+            // The other paper finds the chat among its links; the next question goes without it.
+            verify(researchStore.backlinks("document", researchStore.documentLinkId(outlineSource)).some(function(b) { return b.id === controller.threadId }))
+            compare(controller.spec.papers, undefined)
+            controller.showThreads()
+        }
     }
 }
