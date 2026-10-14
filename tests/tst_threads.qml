@@ -419,5 +419,103 @@ Item {
             compare(researchStore.aiThread(kept).topic, first)
             verify(!trashed(kept))
         }
+        function rowFor(list, id) {
+            for (let i = 0; i < list.count; ++i) {
+                list.positionViewAtIndex(i, ListView.Contain)
+                const row = list.itemAtIndex(i)
+                if (row && row.modelData.id === id) return row
+            }
+            return null
+        }
+        function test_9zz_allChatsHasAMenuAndSeveralCanBeChosen() {
+            reader.source = outlineSource
+            panel.chooseTopic("")
+            // All Chats has a "…" too: every chat to the Trash is red and asks first.
+            const more = findChild(panel, "aiMoreButton")
+            verify(more.visible)
+            mouseClick(more)
+            const allMenu = findChild(panel, "aiAllChatsMenu")
+            tryCompare(allMenu, "opened", true)
+            const deleteAll = menuItem(allMenu, "aiDeleteAllChats")
+            verify(Qt.colorEqual(deleteAll.palette.windowText, Theme.danger))
+            deleteAll.triggered()
+            allMenu.close()
+            const confirm = findChild(panel, "aiDeleteTopicDialog")
+            tryCompare(confirm, "opened", true)
+            compare(confirm.title, "Delete all chats?")
+            confirm.reject()
+            tryCompare(confirm, "opened", false)
+            verify(researchStore.aiThreads().length > 0)
+            // Several Threads, chosen after the Threads column's "…": a click marks them; deleting them
+            // asks; merged, they all go into one.
+            panel.saveTopic("", "Alpha", [])
+            const alpha = controller.topicKey
+            panel.saveTopic("", "Beta", [])
+            const beta = controller.topicKey
+            const a = chat("In alpha", outlineSource), b = chat("In beta", linkSource)
+            researchStore.moveAiThreads([a], alpha)
+            researchStore.moveAiThreads([b], beta)
+            panel.chooseTopic("")
+            mouseClick(findChild(panel, "aiTopicsMore"))
+            const header = findChild(panel, "aiTopicsHeaderMenu")
+            tryCompare(header, "opened", true)
+            menuItem(header, "aiSelectThreadsOption").triggered()
+            header.close()
+            verify(panel.selectingTopics)
+            tryVerify(function() { return topicRow("Alpha") !== null && topicRow("Beta") !== null })
+            mouseClick(topicRow("Alpha"))
+            mouseClick(topicRow("Beta"))
+            compare(panel.selectedTopics.length, 2)
+            verify(shown(topicRow("Alpha"), "aiTopicMark").checked)
+            compare(findChild(panel, "aiTopicsTitle").text, "2 selected")
+            compare(controller.topicKey, "")
+            // The header row has made room for Delete, More and Done.
+            const trashTopics = findChild(panel, "aiTrashTopics"), done = findChild(panel, "aiTopicsDone")
+            tryVerify(function() { return trashTopics.x > 0 && done.x > trashTopics.x })
+            mouseClick(trashTopics)
+            tryCompare(confirm, "opened", true)
+            compare(confirm.title, "Delete 2 Threads and their chats?")
+            verify(confirm.message.indexOf("Are you sure?") >= 0)
+            confirm.reject()
+            tryCompare(confirm, "opened", false)
+            verify(topicRow("Alpha") !== null)
+            mouseClick(findChild(panel, "aiTopicsMore"))
+            const chosenMenu = findChild(panel, "aiSelectedTopicsMenu")
+            tryCompare(chosenMenu, "opened", true)
+            menuItem(findChild(panel, "aiMergeSelectedMenu"), "aiMergeSelectedInto-General").triggered()
+            chosenMenu.close()
+            tryVerify(function() { return researchStore.aiThread(a).topic === "general" && researchStore.aiThread(b).topic === "general" })
+            verify(!panel.selectingTopics)
+            verify(topicRow("Alpha") === null && topicRow("Beta") === null)
+            // Several chats, chosen from a chat's menu: clicks mark them, the header acts on them all.
+            panel.chooseTopic("general")
+            const list = chats()
+            tryVerify(function() { return rowFor(list, a) !== null && rowFor(list, b) !== null })
+            mouseClick(rowFor(list, a), 10, 10, Qt.RightButton)
+            const menu = findChild(panel, "aiThreadMenu")
+            tryCompare(menu, "opened", true)
+            // A right-click opens the menu, not the chat.
+            wait(50)
+            compare(controller.conversationOpen, false)
+            findChild(panel, "aiSelectChatsOption").triggered()
+            menu.close()
+            verify(panel.selectingChats)
+            compare(panel.selectedThreads, [a])
+            mouseClick(rowFor(list, b))
+            compare(panel.selectedThreads.length, 2)
+            verify(shown(rowFor(list, b), "aiChatMark").checked)
+            compare(controller.conversationOpen, false)
+            compare(findChild(panel, "aiThreadTitle").text, "2 selected")
+            const trashChats = findChild(panel, "aiTrashSelected"), chatsDone = findChild(panel, "aiChatsDone")
+            tryVerify(function() { return trashChats.x > 0 && chatsDone.x > trashChats.x })
+            mouseClick(trashChats)
+            const ask = findChild(panel, "aiTrashChatsDialog")
+            tryCompare(ask, "opened", true)
+            ask.accept()
+            tryVerify(function() { return researchStore.aiThread(a).trashed === true && researchStore.aiThread(b).trashed === true })
+            mouseClick(chatsDone)
+            verify(!panel.selectingChats)
+            compare(findChild(panel, "aiThreadTitle").text, "General")
+        }
     }
 }

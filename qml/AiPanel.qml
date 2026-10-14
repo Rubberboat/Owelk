@@ -36,6 +36,31 @@ Item {
         trashChatsDialog.ids = ids.slice()
         trashChatsDialog.open()
     }
+    // Choosing several at once (from a "…" menu: Select Chats, Select Threads), for long lists: a click
+    // marks a row instead of opening it; the header then counts them and acts on them all.
+    property bool selectingChats: false
+    property bool selectingTopics: false
+    property var selectedTopics: []
+    onShowingThreadsChanged: if (!showingThreads) stopSelectingChats()
+    function startSelectingChats(key, id) {
+        if (key !== undefined && c.topicKey !== key) chooseTopic(key)
+        selectedThreads = id ? [id] : []
+        selectingChats = true
+    }
+    function stopSelectingChats() { selectingChats = false; selectedThreads = [] }
+    function selectAllChats(on) { selectedThreads = on ? threadList.model.map(function(t) { return t.id }) : [] }
+    function startSelectingTopics(key) {
+        selectedTopics = key ? [key] : []
+        selectingTopics = true
+        if (!wide) topicsOpen = true
+    }
+    function stopSelectingTopics() { selectingTopics = false; selectedTopics = [] }
+    function toggleTopic(key) {
+        if (!key.length) return
+        selectedTopics = selectedTopics.indexOf(key) >= 0 ? selectedTopics.filter(function(k) { return k !== key }) : selectedTopics.concat([key])
+    }
+    readonly property var selectedTopicRows: topics.filter(function(t) { return root.selectedTopics.indexOf(t.key) >= 0 })
+    onTopicsChanged: if (selectedTopics.length) selectedTopics = selectedTopics.filter(function(k) { return root.topics.some(function(t) { return t.key === k }) })
     // Threads hold the chats: All Chats, one per paper (made as its chats are), General, and Threads of the
     // reader's own, which may hold chats about several papers. Wide, the Threads stand in a column beside
     // the chats (and the conversation); narrow, one list at a time.
@@ -64,12 +89,13 @@ Item {
         if (!c || c.streaming) return false
         return showingThreads ? c.askIn(askKey, text) : c.send(text)
     }
-    // Threads a chat can move into, or a Thread can merge into: one's own first, then General, then papers.
-    // General is offered even while it holds no chats.
-    function otherTopics(key) {
+    // Threads a chat can move into, or Threads can merge into (all but those given): one's own first, then
+    // General, then papers. General is offered even while it holds no chats.
+    function otherTopics(keys) {
+        const skip = Array.isArray(keys) ? keys : [keys]
         const rank = function(t) { return t.kind === "custom" ? 0 : t.kind === "general" ? 1 : 2 }
-        const list = topics.filter(function(t) { return t.key.length > 0 && t.key !== key })
-        if (key !== "general" && !list.some(function(t) { return t.key === "general" }))
+        const list = topics.filter(function(t) { return t.key.length > 0 && skip.indexOf(t.key) < 0 })
+        if (skip.indexOf("general") < 0 && !list.some(function(t) { return t.key === "general" }))
             list.push({key: "general", kind: "general", title: "General", chats: 0})
         return list.sort(function(a, b) { return rank(a) - rank(b) })
     }
@@ -83,12 +109,12 @@ Item {
     function newChatIn(key) {
         selectedThreads = []
         c.chooseTopic(key)
-        c.startIn(key)
+        c.startIn(key || readerTopic || "general")
         focusQuestion()
     }
     function chooseTopic(key) {
         c.showThreads()
-        selectedThreads = []
+        stopSelectingChats()
         c.chooseTopic(key)
         topicsOpen = false
     }
@@ -116,38 +142,56 @@ Item {
         if (c.topicKey === key) c.chooseTopic("")
         researchStore.deleteAiTopic(key)
     }
-    // One Thread into another: its chats move there and stay; a Thread of one's own then goes.
-    function mergeTopic(from, into) {
-        const ids = topicChats(from.key)
-        if (ids.length) researchStore.moveAiThreads(ids, into.key)
-        if (from.kind === "custom") researchStore.deleteAiTopic(from.key)
-        if (c.topicKey === from.key) c.chooseTopic(into.key)
-        researchStore.notify("Merged \u201c" + from.title + "\u201d into \u201c" + into.title + "\u201d.")
+    // Threads into another: their chats move there and stay; Threads of one's own then go.
+    function mergeTopics(rows, into) {
+        for (const from of rows) {
+            const ids = topicChats(from.key)
+            if (ids.length) researchStore.moveAiThreads(ids, into.key)
+            if (from.kind === "custom") researchStore.deleteAiTopic(from.key)
+            if (c.topicKey === from.key) c.chooseTopic(into.key)
+        }
+        stopSelectingTopics()
+        researchStore.notify("Merged " + (rows.length === 1 ? "\u201c" + rows[0].title + "\u201d" : rows.length + " Threads")
+                             + " into \u201c" + into.title + "\u201d.")
     }
-    // A Thread with its chats: they go to the Trash in the Library, where they can be restored.
-    function trashTopic(row) {
-        trashThreads(topicChats(row.key))
-        if (row.kind === "custom") deleteTopic(row.key)
+    function mergeTopic(from, into) { mergeTopics([from], into) }
+    // Threads with their chats (All Chats: every chat): the chats go to the Trash in the Library, where
+    // they can be restored. Or, keepChats, Threads of one's own whose chats go back to their papers.
+    function deleteTopics(rows, keepChats) {
+        if (!keepChats) {
+            let ids = []
+            for (const row of rows)
+                ids = ids.concat(row.kind === "all" ? researchStore.aiThreads().map(function(t) { return t.id }) : topicChats(row.key))
+            trashThreads(ids)
+        }
+        for (const row of rows) if (row.kind === "custom") deleteTopic(row.key)
+        stopSelectingTopics()
     }
-    // Deleting a Thread asks first: with its chats, or (one's own) leaving them to their papers.
-    function askDeleteTopic(row, keepChats) {
-        deleteTopicDialog.row = row
+    function trashTopic(row) { deleteTopics([row], false) }
+    // Deleting Threads asks first.
+    function askDeleteTopics(rows, keepChats) {
+        if (!rows.length) return
+        deleteTopicDialog.rows = rows.slice()
         deleteTopicDialog.keepChats = keepChats
         deleteTopicDialog.open()
     }
     function openTopicMenu(row, item, x, y) {
-        if (!row || !row.key) return
-        topicMenu.row = row
-        topicMenu.popup(item, x, y)
+        if (!row) return
+        const menu = row.kind === "all" ? allChatsMenu : topicMenu
+        menu.row = row
+        menu.popup(item, x, y)
     }
     function openChatMenu(ids, row, item, x, y) {
         threadMenu.ids = ids
         threadMenu.row = row
         threadMenu.popup(item, x, y)
     }
-    // The header's menu: the Thread shown, or the open chat.
+    // The header's menu: the Thread shown, the chats chosen, or the open chat.
     function openHeaderMenu(item, x, y) {
-        if (showingThreads) openTopicMenu(currentTopic, item, x, y)
+        if (showingThreads && selectingChats) {
+            const first = threadList.model.find(function(t) { return t.id === selectedThreads[0] }) || ({})
+            openChatMenu(selectedThreads.slice(), first, item, x, y)
+        } else if (showingThreads) openTopicMenu(currentTopic, item, x, y)
         else if (c.threadId.length) openChatMenu([c.threadId], c.thread, item, x, y)
     }
     // The chats being dragged onto a Thread. The drop moves them once the drag is over: the row that
@@ -191,6 +235,16 @@ Item {
             selectionColor: Theme.onAccent; selectedTextColor: Theme.accent
             TapHandler { acceptedButtons: Qt.RightButton; onTapped: function(point) { root.openTextMenu(bubbleText, point.position) } }
         }
+    }
+    // A row's mark while choosing several: an empty box, or filled with a check.
+    component SelectMark: Rectangle {
+        property bool checked: false
+        implicitWidth: 16; implicitHeight: 16
+        radius: 4
+        color: checked ? Theme.accent : "transparent"
+        border.width: checked ? 0 : 1
+        border.color: Theme.textTertiary
+        Icon { anchors.centerIn: parent; visible: parent.checked; name: "check"; size: 12; color: Theme.onAccent }
     }
     // An attachment: what goes with a question (× removes it) or went with an earlier one. Images show a
     // thumbnail.
@@ -387,13 +441,36 @@ Item {
             RowLayout {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
                 spacing: 2
+                // Choosing several Threads: how many, then Delete (red), more actions, Done.
                 Label {
+                    objectName: "aiTopicsTitle"
                     Layout.fillWidth: true; Layout.minimumWidth: 0
-                    text: "Threads"
+                    text: root.selectingTopics ? root.selectedTopics.length + " selected" : "Threads"
                     elide: Text.ElideRight; textFormat: Text.PlainText
                     font.pixelSize: Theme.fontBody; font.weight: Font.DemiBold; color: Theme.text
                 }
-                IconButton { objectName: "aiNewTopic"; icon.name: "add"; description: "New Thread"; onClicked: root.askTopicName("", []) }
+                IconButton {
+                    objectName: "aiNewTopic"; visible: !root.selectingTopics
+                    icon.name: "add"; description: "New Thread"
+                    onClicked: root.askTopicName("", [])
+                }
+                IconButton {
+                    objectName: "aiTrashTopics"; visible: root.selectingTopics
+                    enabled: root.selectedTopics.length > 0
+                    icon.name: "trash"; tint: Theme.danger; description: "Delete Threads and Chats…"
+                    onClicked: root.askDeleteTopics(root.selectedTopicRows, false)
+                }
+                IconButton {
+                    id: topicsMore
+                    objectName: "aiTopicsMore"
+                    icon.name: "more"; description: root.selectingTopics ? "Selected Threads" : "Threads"
+                    onClicked: (root.selectingTopics ? selectedTopicsMenu : topicsHeaderMenu).popup(topicsMore, 0, topicsMore.height)
+                }
+                IconButton {
+                    objectName: "aiTopicsDone"; visible: root.selectingTopics
+                    icon.name: "check"; description: "Done"
+                    onClicked: root.stopSelectingTopics()
+                }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
             ListView {
@@ -411,12 +488,34 @@ Item {
                     objectName: "aiTopic-" + index
                     width: ListView.view.width
                     height: Theme.rowHeightTall
-                    // The Thread shown, and the one a dragged chat would go into.
-                    highlighted: (root.c && root.c.topicKey === modelData.key) || chatDrop.containsDrag
-                    onClicked: root.chooseTopic(modelData.key)
+                    readonly property bool marked: root.selectedTopics.indexOf(modelData.key) >= 0
+                    // All Chats is not a Thread to choose among others.
+                    readonly property bool choosable: !root.selectingTopics || modelData.key.length > 0
+                    opacity: choosable ? 1 : .45
+                    // The Thread shown, and the one a dragged chat would go into; while choosing, those chosen.
+                    highlighted: root.selectingTopics ? marked : (root.c && root.c.topicKey === modelData.key) || chatDrop.containsDrag
+                    // A right-click opens the menu only (some Qt versions also report it as a click).
+                    property int pressButton: Qt.LeftButton
+                    onClicked: {
+                        const button = pressButton
+                        pressButton = Qt.LeftButton
+                        if (button !== Qt.LeftButton) return
+                        if (!root.selectingTopics) root.chooseTopic(modelData.key)
+                        else root.toggleTopic(modelData.key)
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        acceptedModifiers: Qt.KeyboardModifierMask
+                        onPressedChanged: if (pressed) topicRow.pressButton = Qt.LeftButton
+                    }
                     HoverHandler { id: topicHover }
                     contentItem: RowLayout {
-                        spacing: 2
+                        spacing: 6
+                        SelectMark {
+                            objectName: "aiTopicMark"
+                            visible: root.selectingTopics && topicRow.modelData.key.length > 0
+                            checked: topicRow.marked
+                        }
                         ColumnLayout {
                             Layout.fillWidth: true; Layout.minimumWidth: 0
                             spacing: 1
@@ -437,7 +536,7 @@ Item {
                         IconButton {
                             id: topicMore
                             objectName: "aiTopicMore"
-                            visible: topicRow.modelData.key.length > 0 && (topicHover.hovered || topicRow.highlighted)
+                            visible: !root.selectingTopics && (topicHover.hovered || topicRow.highlighted)
                             implicitWidth: 24; implicitHeight: 24; glyphSize: Theme.fontBody
                             icon.name: "more"; description: "Thread actions"
                             onClicked: root.openTopicMenu(topicRow.modelData, topicMore, 0, topicMore.height)
@@ -455,10 +554,16 @@ Item {
                             Qt.callLater(function() { root.moveChats(ids, key) })
                         }
                     }
+                    // While choosing several, the menu for those chosen (this one joins them).
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        enabled: topicRow.modelData.key.length > 0
-                        onTapped: function(point) { root.openTopicMenu(topicRow.modelData, topicRow, point.position.x, point.position.y) }
+                        enabled: topicRow.choosable
+                        onPressedChanged: if (pressed) topicRow.pressButton = Qt.RightButton
+                        onTapped: function(point) {
+                            if (!root.selectingTopics) { root.openTopicMenu(topicRow.modelData, topicRow, point.position.x, point.position.y); return }
+                            if (!topicRow.marked) root.toggleTopic(topicRow.modelData.key)
+                            selectedTopicsMenu.popup(topicRow, point.position.x, point.position.y)
+                        }
                     }
                 }
             }
@@ -477,7 +582,7 @@ Item {
             IconButton {
                 objectName: "aiTopicsButton"
                 icon.name: "back"; description: "Threads"
-                visible: root.showingThreads && !root.wide
+                visible: root.showingThreads && !root.wide && !root.selectingChats
                 onClicked: { root.selectedThreads = []; root.topicsOpen = true }
             }
             IconButton {
@@ -490,7 +595,8 @@ Item {
                 id: headerTitle
                 objectName: "aiThreadTitle"
                 Layout.fillWidth: true; Layout.minimumWidth: 0
-                text: root.showingThreads ? root.currentTopic.title : (root.c.thread.title || "New chat")
+                text: root.showingThreads ? (root.selectingChats ? root.selectedThreads.length + " selected" : root.currentTopic.title)
+                                          : (root.c.thread.title || "New chat")
                 elide: Text.ElideRight; textFormat: Text.PlainText
                 font.pixelSize: Theme.fontBody; font.weight: Font.DemiBold; color: Theme.text
                 TapHandler {
@@ -500,19 +606,35 @@ Item {
             }
             IconButton {
                 objectName: "aiTrashButton"
-                visible: root.showingThreads
+                visible: root.showingThreads && !root.selectingChats
                 icon.name: "trash"; description: "Trash (in the Library)"
                 onClicked: root.trashRequested()
             }
             // A new chat in the Thread shown (from All Chats: the paper in front's, else General).
-            IconButton { objectName: "aiNewThread"; icon.name: "add"; description: "New chat"; onClicked: { root.c.startIn(root.askKey); root.focusQuestion() } }
-            // The Thread's menu, or the open chat's.
+            IconButton {
+                objectName: "aiNewThread"; visible: !root.selectingChats
+                icon.name: "add"; description: "New chat"
+                onClicked: { root.c.startIn(root.askKey); root.focusQuestion() }
+            }
+            // Choosing several chats: Delete (red; several ask first), more actions, Done.
+            IconButton {
+                objectName: "aiTrashSelected"; visible: root.selectingChats
+                enabled: root.selectedThreads.length > 0
+                icon.name: "trash"; tint: Theme.danger; description: "Move to Trash"
+                onClicked: root.askTrashThreads(root.selectedThreads.slice())
+            }
+            // The Thread's menu (All Chats' too), the open chat's, or the chosen chats'.
             IconButton {
                 id: headerMore
                 objectName: "aiMoreButton"
-                visible: root.showingThreads ? root.currentTopic.key.length > 0 : !!root.c && root.c.threadId.length > 0
-                icon.name: "more"; description: root.showingThreads ? "Thread actions" : "Chat actions"
+                visible: root.showingThreads || (!!root.c && root.c.threadId.length > 0)
+                icon.name: "more"; description: root.selectingChats ? "Selected chats" : root.showingThreads ? "Thread actions" : "Chat actions"
                 onClicked: root.openHeaderMenu(headerMore, 0, headerMore.height)
+            }
+            IconButton {
+                objectName: "aiChatsDone"; visible: root.selectingChats
+                icon.name: "check"; description: "Done"
+                onClicked: root.stopSelectingChats()
             }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
@@ -540,6 +662,7 @@ Item {
                 root.selectedThreads = root.selectedThreads.filter(function(id) { return ids.indexOf(id) >= 0 })
             }
             Keys.onDeletePressed: if (root.selectedThreads.length) root.askTrashThreads(root.selectedThreads)
+            Keys.onEscapePressed: if (root.selectingChats) root.stopSelectingChats()
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Backspace && root.selectedThreads.length) { root.askTrashThreads(root.selectedThreads); event.accepted = true }
             }
@@ -554,9 +677,14 @@ Item {
                 highlighted: chosen
                 separator: index < threadList.count - 1
                 onClicked: {
+                    // A right-click opens the menu only (some Qt versions also report it as a click).
+                    const button = threadList.clickButton
+                    threadList.clickButton = Qt.LeftButton
+                    if (button !== Qt.LeftButton) return
                     threadList.forceActiveFocus()
                     const mods = threadList.clickModifiers
-                    if (mods & (Qt.ControlModifier | Qt.MetaModifier)) root.toggleThread(row.modelData.id, row.index)
+                    if (root.selectingChats && (mods & Qt.ShiftModifier)) root.selectThreadRange(row.index)
+                    else if (root.selectingChats || (mods & (Qt.ControlModifier | Qt.MetaModifier))) root.toggleThread(row.modelData.id, row.index)
                     else if (mods & Qt.ShiftModifier) root.selectThreadRange(row.index)
                     else { root.selectedThreads = []; const id = row.modelData.id, controller = root.c; Qt.callLater(function() { controller.openThread(id, true) }) }
                 }
@@ -564,7 +692,7 @@ Item {
                     acceptedButtons: Qt.LeftButton
                     acceptedModifiers: Qt.KeyboardModifierMask
                     // Only notes the keys held; the click itself goes to the row.
-                    onPressedChanged: if (pressed) threadList.clickModifiers = point.modifiers
+                    onPressedChanged: if (pressed) { threadList.clickModifiers = point.modifiers; threadList.clickButton = Qt.LeftButton }
                 }
                 DragHandler {
                     id: chatDrag
@@ -578,16 +706,18 @@ Item {
                     onCentroidChanged: if (active) root.moveChatDrag(centroid.scenePosition)
                 }
                 function openMenu(item, x, y) {
-                    if (!row.chosen) root.selectedThreads = [row.modelData.id]
+                    if (!row.chosen) root.selectedThreads = root.selectingChats ? root.selectedThreads.concat([row.modelData.id]) : [row.modelData.id]
                     root.openChatMenu(root.selectedThreads.slice(), row.modelData, item, x, y)
                 }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
+                    onPressedChanged: if (pressed) threadList.clickButton = Qt.RightButton
                     onTapped: function(point) { row.openMenu(row, point.position.x, point.position.y) }
                 }
                 HoverHandler { id: chatHover }
                 contentItem: RowLayout {
-                    spacing: 2
+                    spacing: 6
+                    SelectMark { objectName: "aiChatMark"; visible: root.selectingChats; checked: row.chosen }
                     ColumnLayout {
                         Layout.fillWidth: true; Layout.minimumWidth: 0
                         spacing: 1
@@ -601,7 +731,7 @@ Item {
                     IconButton {
                         id: chatMore
                         objectName: "aiChatMore"
-                        visible: chatHover.hovered
+                        visible: chatHover.hovered && !root.selectingChats
                         implicitWidth: 24; implicitHeight: 24; glyphSize: Theme.fontBody
                         icon.name: "more"; description: "Chat actions"
                         onClicked: row.openMenu(chatMore, 0, chatMore.height)
@@ -609,6 +739,7 @@ Item {
                 }
             }
             property int clickModifiers: 0
+            property int clickButton: Qt.LeftButton
             Label {
                 anchors.centerIn: parent
                 width: parent.width - 16
@@ -1126,6 +1257,23 @@ Item {
         objectName: "aiThreadMenu"
         property var ids: []
         property var row: ({})
+        // From a list: choose several at once (this one first); while choosing, all or none.
+        MenuItem {
+            objectName: "aiSelectChatsOption"
+            visible: root.showingThreads && !root.selectingChats
+            height: visible ? implicitHeight : 0
+            text: "Select Chats"
+            onTriggered: root.startSelectingChats(undefined, threadMenu.row.id)
+        }
+        MenuItem {
+            objectName: "aiSelectAllChats"
+            readonly property bool all: threadList.count > 0 && root.selectedThreads.length === threadList.count
+            visible: root.showingThreads && root.selectingChats
+            height: visible ? implicitHeight : 0
+            text: all ? "Deselect All" : "Select All"
+            onTriggered: root.selectAllChats(!all)
+        }
+        MenuSeparator { visible: root.showingThreads; height: visible ? implicitHeight : 0 }
         MenuItem {
             visible: threadMenu.ids.length === 1
             height: visible ? implicitHeight : 0
@@ -1159,6 +1307,7 @@ Item {
         }
         MenuItem {
             objectName: "trashThreadOption"
+            enabled: threadMenu.ids.length > 0
             text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " to Trash…" : "Move to Trash"
             palette.windowText: Theme.danger
             onTriggered: root.askTrashThreads(threadMenu.ids)
@@ -1184,6 +1333,13 @@ Item {
         property var row: ({})
         readonly property bool own: row.kind === "custom"
         MenuItem { objectName: "aiTopicNewChat"; text: "New Chat"; onTriggered: root.newChatIn(topicMenu.row.key) }
+        MenuItem {
+            objectName: "aiTopicSelectChats"
+            enabled: topicMenu.row.chats > 0
+            text: "Select Chats"
+            onTriggered: root.startSelectingChats(topicMenu.row.key)
+        }
+        MenuItem { objectName: "aiTopicSelectThreads"; text: "Select Threads"; onTriggered: root.startSelectingTopics(topicMenu.row.key) }
         MenuItem {
             objectName: "aiRenameTopic"
             visible: topicMenu.own; height: visible ? implicitHeight : 0
@@ -1213,33 +1369,124 @@ Item {
             visible: topicMenu.own; height: visible ? implicitHeight : 0
             text: "Delete Thread, Keep Chats…"
             palette.windowText: Theme.danger
-            onTriggered: root.askDeleteTopic(topicMenu.row, true)
+            onTriggered: root.askDeleteTopics([topicMenu.row], true)
         }
         MenuItem {
             objectName: "aiTrashTopic"
             enabled: topicMenu.row.chats > 0
             text: "Delete Thread and Chats…"
             palette.windowText: Theme.danger
-            onTriggered: root.askDeleteTopic(topicMenu.row, false)
+            onTriggered: root.askDeleteTopics([topicMenu.row], false)
         }
     }
-    // Asked once before a Thread goes: with its chats (to the Trash), or leaving them to their papers.
+    // All Chats' menu: a new chat, choosing several chats or Threads, or every chat to the Trash (asks).
+    Menu {
+        id: allChatsMenu
+        objectName: "aiAllChatsMenu"
+        property var row: ({})
+        MenuItem { objectName: "aiAllNewChat"; text: "New Chat"; onTriggered: root.newChatIn("") }
+        MenuItem {
+            objectName: "aiAllSelectChats"
+            enabled: allChatsMenu.row.chats > 0
+            text: "Select Chats"
+            onTriggered: root.startSelectingChats("")
+        }
+        MenuItem { objectName: "aiAllSelectThreads"; text: "Select Threads"; onTriggered: root.startSelectingTopics("") }
+        MenuSeparator {}
+        MenuItem {
+            objectName: "aiDeleteAllChats"
+            enabled: allChatsMenu.row.chats > 0
+            text: "Delete All Chats…"
+            palette.windowText: Theme.danger
+            onTriggered: root.askDeleteTopics([allChatsMenu.row], false)
+        }
+    }
+    // The Threads column's "…": a new Thread, or choosing several.
+    Menu {
+        id: topicsHeaderMenu
+        objectName: "aiTopicsHeaderMenu"
+        MenuItem { objectName: "aiTopicsNew"; text: "New Thread…"; onTriggered: root.askTopicName("", []) }
+        MenuItem { objectName: "aiSelectThreadsOption"; text: "Select Threads"; onTriggered: root.startSelectingTopics("") }
+    }
+    // The Threads chosen: all or none, merged into another, or deleted (red; asks first).
+    Menu {
+        id: selectedTopicsMenu
+        objectName: "aiSelectedTopicsMenu"
+        readonly property var rows: root.selectedTopicRows
+        readonly property int chosen: rows.length
+        MenuItem {
+            objectName: "aiSelectAllTopics"
+            readonly property var choosable: root.topics.filter(function(t) { return t.key.length > 0 })
+            readonly property bool all: choosable.length > 0 && selectedTopicsMenu.chosen === choosable.length
+            text: all ? "Deselect All" : "Select All"
+            onTriggered: root.selectedTopics = all ? [] : choosable.map(function(t) { return t.key })
+        }
+        Menu {
+            id: mergeSelectedMenu
+            objectName: "aiMergeSelectedMenu"
+            title: "Merge Into"
+            Instantiator {
+                model: root.otherTopics(root.selectedTopics)
+                delegate: MenuItem {
+                    required property var modelData
+                    objectName: "aiMergeSelectedInto-" + modelData.title
+                    text: modelData.title
+                    enabled: selectedTopicsMenu.chosen > 0
+                    onTriggered: root.mergeTopics(selectedTopicsMenu.rows, modelData)
+                }
+                onObjectAdded: function(index, item) { mergeSelectedMenu.insertItem(index, item) }
+                onObjectRemoved: function(index, item) { mergeSelectedMenu.removeItem(item) }
+            }
+        }
+        MenuSeparator {}
+        MenuItem {
+            objectName: "aiDeleteSelectedKeep"
+            visible: selectedTopicsMenu.chosen > 0 && selectedTopicsMenu.rows.every(function(t) { return t.kind === "custom" })
+            height: visible ? implicitHeight : 0
+            text: selectedTopicsMenu.chosen === 1 ? "Delete Thread, Keep Chats…" : "Delete " + selectedTopicsMenu.chosen + " Threads, Keep Chats…"
+            palette.windowText: Theme.danger
+            onTriggered: root.askDeleteTopics(selectedTopicsMenu.rows, true)
+        }
+        MenuItem {
+            objectName: "aiDeleteSelectedTopics"
+            enabled: selectedTopicsMenu.chosen > 0
+            text: selectedTopicsMenu.chosen === 1 ? "Delete Thread and Chats…" : "Delete " + selectedTopicsMenu.chosen + " Threads and Chats…"
+            palette.windowText: Theme.danger
+            onTriggered: root.askDeleteTopics(selectedTopicsMenu.rows, false)
+        }
+    }
+    // Asked once before Threads go: with their chats (to the Trash), or, keepChats, leaving them to their
+    // papers' Threads; All Chats: every chat.
     ConfirmDialog {
         id: deleteTopicDialog
         objectName: "aiDeleteTopicDialog"
-        property var row: ({})
+        property var rows: []
         property bool keepChats: false
-        readonly property int chats: row.chats || 0
-        readonly property string name: "\u201c" + (row.title || "") + "\u201d"
-        title: keepChats ? "Delete this Thread?" : "Delete this Thread and its chats?"
-        message: keepChats
-                 ? "The Thread " + name + " will be deleted. Are you sure?\n\n" + (chats === 1 ? "Its chat is kept and goes" : "Its " + chats + " chats are kept and go")
-                   + " back to their papers' Threads (or General)."
-                 : name + " and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
+        readonly property int count: rows.length
+        readonly property bool all: count === 1 && rows[0].kind === "all"
+        readonly property int chats: rows.reduce(function(n, t) { return n + (t.chats || 0) }, 0)
+        readonly property string names: {
+            const quoted = rows.map(function(t) { return "\u201c" + t.title + "\u201d" })
+            if (quoted.length > 4) return quoted.slice(0, 3).join(", ") + " and " + (quoted.length - 3) + " more"
+            return quoted.length > 1 ? quoted.slice(0, -1).join(", ") + " and " + quoted[quoted.length - 1] : quoted.join("")
+        }
+        readonly property string its: count === 1 ? "its" : "their"
+        title: all ? "Delete all chats?"
+             : count === 1 ? (keepChats ? "Delete this Thread?" : "Delete this Thread and its chats?")
+             : keepChats ? "Delete " + count + " Threads?" : "Delete " + count + " Threads and their chats?"
+        message: all
+                 ? "All " + chats + " chats, in every Thread, will be deleted. Are you sure?\n\nThey go to the Trash in the Library: "
+                   + "until it is emptied, they can be restored there. Threads of your own stay, empty."
+                 : keepChats
+                 ? (count === 1 ? "The Thread " : "The Threads ") + names + " will be deleted. Are you sure?\n\n"
+                   + (chats === 1 ? "The chat in " + (count === 1 ? "it" : "them") + " is kept and goes back to its paper's Thread (or General)."
+                      : "The " + chats + " chats in " + (count === 1 ? "it" : "them") + " are kept and go back to their papers' Threads (or General).")
+                 : names + " and " + (chats === 1 ? its + " chat" : "all " + chats + " of " + its + " chats")
                    + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
                    + (chats === 1 ? "it" : "they") + " can be restored there."
-        actionText: keepChats ? "Delete Thread" : "Delete Thread and Chats"
-        onConfirmed: keepChats ? root.deleteTopic(row.key) : root.trashTopic(row)
+        actionText: all ? "Delete All Chats" : keepChats ? (count === 1 ? "Delete Thread" : "Delete Threads")
+                  : count === 1 ? "Delete Thread and Chats" : "Delete Threads and Chats"
+        onConfirmed: root.deleteTopics(rows, keepChats)
     }
     // Asked once before several chats (a selection) go to the Trash.
     ConfirmDialog {
