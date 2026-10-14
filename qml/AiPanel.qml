@@ -1148,6 +1148,7 @@ Item {
         MenuItem {
             objectName: "trashThreadOption"
             text: threadMenu.ids.length > 1 ? "Move " + threadMenu.ids.length + " to Trash" : "Move to Trash"
+            palette.windowText: Theme.danger
             onTriggered: root.trashThreads(threadMenu.ids)
         }
     }
@@ -1204,17 +1205,22 @@ Item {
             objectName: "aiTrashTopic"
             enabled: topicMenu.row.chats > 0
             text: "Delete Thread and Chats…"
+            // Red, apart from the rest; asks first (deleteTopicDialog).
+            palette.windowText: Theme.danger
             onTriggered: { deleteTopicDialog.row = topicMenu.row; deleteTopicDialog.open() }
         }
     }
+    // Asked once before a Thread and its chats are deleted.
     ConfirmDialog {
         id: deleteTopicDialog
         objectName: "aiDeleteTopicDialog"
         property var row: ({})
-        title: "Delete \u201c" + (row.title || "") + "\u201d?"
-        message: (row.chats === 1 ? "Its chat goes" : "Its " + row.chats + " chats go")
-                 + " to the Trash in the Library, where " + (row.chats === 1 ? "it" : "they") + " can be restored."
-        actionText: "Delete"
+        readonly property int chats: row.chats || 0
+        title: "Delete this Thread and its chats?"
+        message: "\u201c" + (row.title || "") + "\u201d and " + (chats === 1 ? "its chat" : "all " + chats + " of its chats")
+                 + " will be deleted. Are you sure?\n\nThe chats go to the Trash in the Library: until it is emptied, "
+                 + (chats === 1 ? "it" : "they") + " can be restored there."
+        actionText: "Delete Thread and Chats"
         onConfirmed: root.trashTopic(row)
     }
     Dialog {
