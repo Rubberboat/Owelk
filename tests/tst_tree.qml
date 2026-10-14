@@ -143,7 +143,13 @@ TestCase {
     function test_webSearchGoesWhereItIsAsked() {
         const scholar = Tree.searchEngines[0].template, arxiv = Tree.searchEngine("https://arxiv.org/search/?query=%s&searchtype=all")
         compare(arxiv.label, "arXiv")
-        compare(Tree.searchEngine("https://example.org/?q=%s").name, "Google Scholar")
+        // An engine set some other way is named by its site; one of the reader's own by its name.
+        compare(Tree.searchEngine("https://example.org/?q=%s").name, "example.org")
+        compare(Tree.searchEngine("").name, "Google Scholar")
+        Tree.setCustomEngines([{name: "Semantic", label: "Semantic", template: "https://www.semanticscholar.org/search?q=%s"}])
+        compare(Tree.searchEngine("https://www.semanticscholar.org/search?q=%s").label, "Semantic")
+        compare(Tree.allEngines().length, Tree.searchEngines.length + 1)
+        Tree.setCustomEngines([])
         compare(Tree.addressToUrl("lidar odometry", scholar), "https://scholar.google.com/scholar?q=lidar%20odometry")
         compare(Tree.addressToUrl("lidar odometry", arxiv.template), "https://arxiv.org/search/?query=lidar%20odometry&searchtype=all")
         // A prefix searches there once, whatever engine is chosen.

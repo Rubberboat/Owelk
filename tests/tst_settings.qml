@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtTest
 import Owelk.Ui
 import "../qml" as App
+import "../qml/WorkspaceTree.js" as Tree
 
 Item {
     id: scene
@@ -50,6 +51,35 @@ Item {
             compare(Theme.seeds("custom").window, Theme.seeds("nord").window)
             verify(!customize.enabled)
             tryVerify(function() { const seed = visualChild(settings.contentItem, "seed-window"); return seed !== null && seed.visible })
+        }
+        function test_searchEnginesOfOnesOwn() {
+            settings.openPage("web"); tryCompare(settings, "opened", true)
+            tryVerify(function() { return page() !== null })
+            const name = visualChild(settings.contentItem, "engineNameField"), address = visualChild(settings.contentItem, "engineAddressField")
+            const add = visualChild(settings.contentItem, "addEngine")
+            // An address without %s cannot be added.
+            name.text = "Semantic"; address.text = "https://www.semanticscholar.org/"
+            verify(!add.enabled)
+            address.text = "https://www.semanticscholar.org/search?q=%s"
+            verify(add.enabled)
+            add.clicked()
+            tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Semantic") !== null })
+            compare(name.text, "")
+            // Chosen as the default: searches go there, named after it.
+            const box = visualChild(settings.contentItem, "searchEngineBox")
+            const at = box.model.indexOf("Semantic")
+            verify(at >= Tree.searchEngines.length)
+            box.activated(at)
+            const template = "https://www.semanticscholar.org/search?q=%s"
+            compare(researchStore.setting("searchEngine"), template)
+            compare(Tree.searchEngine(template).label, "Semantic")
+            compare(Tree.webIntent("slam", template).title, "Search Semantic for \u201cslam\u201d")
+            compare(Tree.webIntent("slam", template).url, "https://www.semanticscholar.org/search?q=slam")
+            // Removed, the first built-in engine is the default again.
+            visualChild(settings.contentItem, "removeEngine-Semantic").clicked()
+            compare(researchStore.setting("searchEngine"), Tree.searchEngines[0].template)
+            tryVerify(function() { return visualChild(settings.contentItem, "removeEngine-Semantic") === null })
+            compare(box.model.indexOf("Semantic"), -1)
         }
         function test_categoriesLoadOneAtATime() {
             settings.openPage("appearance"); tryCompare(settings, "opened", true)

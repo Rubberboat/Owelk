@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Owelk.Ui
 import "Platform.js" as Platform
 import "WorkspaceTree.js" as Tree
+import "WebSearch.js" as WebSearch
 
 Rectangle {
     id: root
@@ -206,7 +207,7 @@ Rectangle {
                             id: engineMenu
                             objectName: "homeSearchEngineMenu"
                             Instantiator {
-                                model: Tree.searchEngines
+                                model: (searchModel.enginesRevision, WebSearch.all(researchStore))
                                 delegate: MenuItem {
                                     required property var modelData
                                     objectName: "homeEngine-" + modelData.label

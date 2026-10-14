@@ -20,8 +20,19 @@ var searchEngines = [
     {name: "Google", label: "Google", prefix: "google", template: "https://www.google.com/search?q=%s"},
     {name: "DuckDuckGo", label: "DuckDuckGo", prefix: "ddg", template: "https://duckduckgo.com/?q=%s"}
 ]
+// Engines of the reader's own (Settings › Web, address with %s), as WebSearch.js last read them.
+var customEngines = []
+function setCustomEngines(list) { customEngines = list || [] }
+function allEngines() { return searchEngines.concat(customEngines) }
+// An engine by its template; one set some other way is named by its site.
 function searchEngine(template) {
-    return searchEngines.find(function(e) { return e.template === template }) || searchEngines[0]
+    const known = allEngines().find(function(e) { return e.template === template })
+    if (known) return known
+    if (/^https?:\/\/\S+$/i.test(template || "") && template.indexOf("%s") >= 0) {
+        const site = template.replace(/^https?:\/\/(www\.)?/i, "").replace(/[\/?#].*$/, "")
+        return {name: site, label: site, template: template}
+    }
+    return searchEngines[0]
 }
 // "arxiv: words" or "scholar: words" searches there once, whatever engine is chosen;
 // "arxiv: 2305.01234" opens that paper's page.

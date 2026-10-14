@@ -5,11 +5,15 @@ import QtQuick.Dialogs as Native
 import Owelk.Ui
 import "Platform.js" as Platform
 import "WorkspaceTree.js" as Tree
+import "WebSearch.js" as WebSearch
 
 ColumnLayout {
     id: root
     spacing: 22
-    readonly property var engines: Tree.searchEngines
+    // Read again after a change here (the engines are kept in the settings table).
+    property int revision: 0
+    readonly property var engines: (revision, WebSearch.all(researchStore))
+    readonly property string defaultEngine: (revision, WebSearch.template(researchStore))
     readonly property var tor: researchStore.tor
     readonly property bool keepsPdfs: researchStore.setting("library.keepPdfs", "1") === "1"
     function folder() { const f = researchStore.setting("downloadFolder"); return f.length ? f : researchStore.downloadTarget("x").directory }
@@ -58,8 +62,46 @@ ColumnLayout {
                 objectName: "searchEngineBox"
                 Layout.preferredWidth: 200
                 model: root.engines.map(function(e) { return e.name })
-                currentIndex: Math.max(0, root.engines.findIndex(function(e) { return e.template === researchStore.setting("searchEngine", root.engines[0].template) }))
-                onActivated: function(index) { researchStore.setSetting("searchEngine", root.engines[index].template) }
+                currentIndex: Math.max(0, root.engines.findIndex(function(e) { return e.template === root.defaultEngine }))
+                onActivated: function(index) { WebSearch.setDefault(researchStore, root.engines[index].template); root.revision++ }
+            }
+        }
+        // Engines of one's own: a name and the search address, %s standing for the words; each can be the
+        // default above (and on Home's engine button) or removed.
+        Repeater {
+            model: root.engines.filter(function(e) { return !WebSearch.isBuiltIn(e.template) })
+            delegate: SettingsRow {
+                required property var modelData
+                label: modelData.name
+                detail: modelData.template
+                IconButton {
+                    objectName: "removeEngine-" + modelData.name
+                    icon.name: "trash"; description: "Remove"
+                    onClicked: { WebSearch.remove(researchStore, modelData.template); root.revision++ }
+                }
+            }
+        }
+        SettingsRow {
+            label: "Add an engine"
+            detail: "Its search address, with %s where the words go."
+            wide: true
+            TextField { id: engineName; objectName: "engineNameField"; Layout.preferredWidth: 120; placeholderText: "Name" }
+            TextField {
+                id: engineAddress
+                objectName: "engineAddressField"
+                Layout.fillWidth: true
+                placeholderText: "https://example.org/search?q=%s"
+                onAccepted: addEngine.clicked()
+            }
+            Button {
+                id: addEngine
+                objectName: "addEngine"
+                text: "Add"
+                enabled: engineName.text.trim().length > 0 && engineAddress.text.indexOf("%s") >= 0
+                onClicked: {
+                    if (WebSearch.add(researchStore, engineName.text, engineAddress.text)) { engineName.clear(); engineAddress.clear(); root.revision++ }
+                    else researchStore.notify("Use a web address with %s where the words go, not one already listed.")
+                }
             }
         }
         SettingsRow {

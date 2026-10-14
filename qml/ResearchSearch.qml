@@ -1,5 +1,6 @@
 import QtQuick
 import "WorkspaceTree.js" as Tree
+import "WebSearch.js" as WebSearch
 
 QtObject {
     id: root
@@ -77,7 +78,9 @@ QtObject {
     // The web, from the same field (Tree.webIntent): not while narrowing the Library (tag: …), completing a
     // condition, or looking inside one paper. The engine is Settings › Web's (Home's button sets it too).
     property bool withWeb: true
-    function readEngine() { return researchStore.setting("searchEngine") || Tree.searchEngines[0].template }
+    function readEngine() { return WebSearch.template(researchStore) }
+    // Bumped when the engines change (Settings › Web), for lists of them.
+    property int enginesRevision: 0
     property string webTemplate: readEngine()
     // Set before the results are cleared for a new query (not a binding): lists built from both then never
     // read a web row that is still about to change. Worked out from the query itself, since the bindings
@@ -181,7 +184,7 @@ QtObject {
     property Connections storeUpdates: Connections {
         target: researchStore
         function onHomeChanged() { if (root.active) root.delay.restart() }
-        function onSettingsChanged() { root.webTemplate = root.readEngine() }
+        function onSettingsChanged() { root.webTemplate = root.readEngine(); root.enginesRevision++ }
         function onKnowledgeFound(id, rows) {
             if (!root.active || root.namesRequest !== id) return
             root.names = rows; root.namesPending = false; root.publish()
