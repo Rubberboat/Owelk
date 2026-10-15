@@ -132,6 +132,9 @@ public:
     Q_INVOKABLE int notesLinkingTo(const QVariantList &items) const;
     Q_INVOKABLE int trashDays() const;
     void purgeExpired();
+    // The text index keeps only papers in the Library: entries for papers removed or deleted (here or,
+    // through sync, on another computer) are dropped. Answers how many.
+    int pruneIndex();
     Q_INVOKABLE QUrl resolvedSource(const QUrl &source) const;
     // Whether a paper's file is there to open (a web address counts as there); when not, requestRelink.
     Q_INVOKABLE bool paperFileExists(const QUrl &source) const;

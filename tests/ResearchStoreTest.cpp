@@ -1696,6 +1696,34 @@ private slots:
         QVERIFY(store.updateDocumentDetails(b, {{"title", "Observation in Context"}}));
         QCOMPARE(firstPaper(), b);
     }
+    void textIndexKeepsOnlyLibraryPapers()
+    {
+        // A paper deleted on another computer arrives as a missing row: its index entry goes too.
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY(store.initialize(&error));
+        const auto a = QUrl::fromLocalFile(directory.filePath("a.pdf")),
+                   b = QUrl::fromLocalFile(directory.filePath("b.pdf"));
+        writeFixture(a.toLocalFile());
+        writeFixture(b.toLocalFile());
+        QVERIFY(store.rememberDocument(a));
+        QVERIFY(store.rememberDocument(b));
+        auto *index = qobject_cast<PaperIndex *>(store.paperIndex());
+        QTRY_VERIFY_WITH_TIMEOUT(!index->busy() && index->documents().size() == 2, 20000);
+        {
+            WorkerConnection db(store.dataDirectory() + "/owelk.sqlite3");
+            QSqlQuery query(db.db);
+            query.prepare("DELETE FROM documents WHERE url=?");
+            query.addBindValue(b.toString());
+            QVERIFY(query.exec());
+        }
+        QFile::remove(b.toLocalFile());
+        QCOMPARE(store.pruneIndex(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(index->documents().size(), 1, 10000);
+        QCOMPARE(index->documents()[0].toMap()["source"].toUrl(), a);
+        QCOMPARE(store.pruneIndex(), 0);
+    }
     void relatedPapersAndNotesShareDistinctiveWords()
     {
         QTemporaryDir directory;

@@ -77,6 +77,7 @@ public:
         writeFixture(path, "Unique Paper " + QUuid::createUuid().toString(QUuid::Id128).left(12));
         return QUrl::fromLocalFile(path);
     }
+    Q_INVOKABLE bool removeFile(const QUrl &url) const { return QFile::remove(url.toLocalFile()); }
     Q_INVOKABLE QVariantMap relinkFixture(bool specialPath = false)
     {
         const auto prefix = m_directory.filePath(
