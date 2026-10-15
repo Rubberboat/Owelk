@@ -4,10 +4,12 @@ import QtQuick.Layouts
 import Owelk.Ui
 import QtQuick.Dialogs as Native
 import QtQuick.Pdf
+import "CollectionTree.js" as CollectionTree
 
 // The Library tab: Papers (filtered by reading state, favorites, collection or tag), Notes, and the
 // Trash (papers, notes and AI conversations together). Papers are referenced, never copied:
-// collections and tags only group them.
+// collections and tags only group them. With the Library panel open, the panel is where papers are
+// chosen (its rows show here) and this tab's own sidebar steps aside; without it, the sidebar is here.
 Rectangle {
     id: root
     // PDFs and folders added here go through the window, which checks them for papers already kept.
@@ -19,6 +21,41 @@ Rectangle {
     objectName: "libraryView"
     color: Theme.content
     property var filter: ({})
+    // The tab's filter as saved; changed from outside (the Library panel, Home, a link) it is shown here.
+    property var tabFilter: ({})
+    function adoptTabFilter() {
+        const next = tabFilter || {}
+        if (JSON.stringify(next) === JSON.stringify(filter)) return
+        filter = Object.assign({}, next); selection = []; selectionAnchor = -1
+        refresh()
+    }
+    onTabFilterChanged: adoptTabFilter()
+    // The Library panel open in this window: it lists what the sidebar would.
+    readonly property bool panelNavigates: { const w = ApplicationWindow.window; return !!w && w.filesVisible === true }
+    // Collections fold (shared with the Library panel); the one shown keeps its parents open.
+    property var openCollections: CollectionTree.parse(researchStore.setting("library.openCollections"))
+    function setCollectionOpen(id, on) {
+        openCollections = CollectionTree.toggled(openCollections, id, on)
+        researchStore.setSetting("library.openCollections", openCollections.join(","))
+    }
+    // A collection chosen in the sidebar: shown, and unfolded to its sub-collections; chosen again, folded.
+    function chooseCollection(row) {
+        if (row.hasChildren) setCollectionOpen(row.id, !(row.open && filter.collection === row.id))
+        setFilter({collection: row.id})
+    }
+    // What the list shows, as a title (the sidebar's row, when the sidebar steps aside).
+    readonly property string filterTitle: {
+        if (filter.collection) {
+            const path = CollectionTree.ancestors(collectionRows, filter.collection).reverse().concat([filter.collection])
+            return path.map(function(id) { const c = collectionRows.find(function(r) { return r.id === id }); return c ? c.name : "" })
+                       .filter(function(n) { return n.length }).join(" \u203a ") || "Collection"
+        }
+        if (filter.tag) { const t = tagRows.find(function(r) { return r.id === filter.tag }); return t ? "# " + t.name : "Tag" }
+        if (filter.favorite) return "Favorites"
+        if (filter.unsorted) return "Unsorted"
+        if (filter.state) return ({unread: "Unread", reading: "Reading", read: "Read"})[filter.state] || "Papers"
+        return "All Papers"
+    }
     property string sort: "opened"
     property string query: ""
     property var rows: []
@@ -232,13 +269,17 @@ Rectangle {
         if (filter.open) openForYou(filter.open)
     }
     onSortChanged: refresh()
-    Component.onCompleted: refresh()
+    Component.onCompleted: { if (JSON.stringify(tabFilter || {}) !== JSON.stringify(filter)) filter = Object.assign({}, tabFilter || {}); refresh() }
     Timer { id: refreshTimer; interval: 120; onTriggered: root.refresh() }
     Connections {
         target: researchStore
         function onDocumentsChanged() { root.refresh() }
         function onRecentDocumentsChanged() { root.refresh() }
         function onNotesChanged() { root.refresh() }
+        function onSettingsChanged() {
+            const open = CollectionTree.parse(researchStore.setting("library.openCollections"))
+            if (open.join(",") !== root.openCollections.join(",")) root.openCollections = open
+        }
         function onAiThreadsChanged() { if (root.showingTrash) root.refresh(); else root.trashCount = researchStore.trashCount() }
     }
     Dialog {
@@ -417,9 +458,10 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true
             spacing: 0
-            // Sidebar for papers: built-in views, collections, tags.
+            // Sidebar for papers: built-in views, collections, tags (the Library panel's rows, when it is closed).
             Rectangle {
-                visible: root.showingPapers
+                objectName: "librarySidebar"
+                visible: root.showingPapers && !root.panelNavigates
                 Layout.preferredWidth: 210; Layout.fillHeight: true
                 color: Theme.sidebar
                 ListView {
@@ -430,7 +472,9 @@ Rectangle {
                     model: [{key: "all", label: "All Papers"}, {key: "unsorted", value: true, label: "Unsorted", count: root.unsortedCount}, {key: "favorite", value: true, label: "Favorites"},
                             {key: "state", value: "unread", label: "Unread"}, {key: "state", value: "reading", label: "Reading"},
                             {key: "state", value: "read", label: "Read"}, {header: "Collections", add: true}]
-                        .concat(root.collectionRows.map(function(c) { return {key: "collection", value: c.id, label: c.name, depth: c.depth, count: c.count, row: c} }))
+                        .concat(CollectionTree.rows(root.collectionRows, root.openCollections, root.filter.collection).map(function(c) {
+                            return {key: "collection", value: c.id, label: c.name, depth: c.depth, count: c.count, row: c, hasChildren: c.hasChildren, open: c.open}
+                        }))
                         .concat(root.tagRows.length ? [{header: "Tags"}] : [])
                         .concat(root.tagRows.map(function(t) { return {key: "tag", value: t.id, label: "# " + t.name, count: t.count} }))
                     delegate: Item {
@@ -454,7 +498,7 @@ Rectangle {
                             visible: !entry.modelData.header
                             objectName: "librarySidebar-" + entry.modelData.key + "-" + (entry.modelData.value === undefined ? "" : entry.modelData.value)
                             anchors.fill: parent
-                            leftPadding: 8 + 14 * (entry.modelData.depth || 0)
+                            leftPadding: (entry.modelData.key === "collection" ? 22 : 8) + 14 * (entry.modelData.depth || 0)
                             highlighted: !entry.modelData.header && root.selected(entry.modelData.key, entry.modelData.value)
                             text: entry.modelData.label || ""
                             contentItem: Label {
@@ -464,9 +508,23 @@ Rectangle {
                                 verticalAlignment: Text.AlignVCenter
                             }
                             onClicked: {
+                                if (entry.modelData.key === "collection") { root.chooseCollection(entry.modelData.row); return }
                                 const next = {}
                                 if (entry.modelData.key !== "all") next[entry.modelData.key] = entry.modelData.value
                                 root.setFilter(next)
+                            }
+                            // A collection with sub-collections folds and unfolds at its chevron.
+                            Icon {
+                                visible: !!entry.modelData.hasChildren
+                                x: 6 + 14 * (entry.modelData.depth || 0); anchors.verticalCenter: parent.verticalCenter
+                                name: entry.modelData.open ? "down" : "right"; size: Theme.fontSmall
+                                color: item.highlighted ? Theme.selectedText : Theme.textTertiary
+                            }
+                            MouseArea {
+                                objectName: "librarySidebarFold-" + (entry.modelData.value || "")
+                                visible: !!entry.modelData.hasChildren
+                                x: 14 * (entry.modelData.depth || 0); width: 22; height: parent.height
+                                onClicked: root.setCollectionOpen(entry.modelData.value, !entry.modelData.open)
                             }
                             Label {
                                 anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
@@ -490,7 +548,7 @@ Rectangle {
                     }
                 }
             }
-            Rectangle { visible: root.showingPapers; Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.separator }
+            Rectangle { visible: root.showingPapers && !root.panelNavigates; Layout.preferredWidth: 1; Layout.fillHeight: true; color: Theme.separator }
             ColumnLayout {
                 id: listColumn
                 Layout.fillWidth: true; Layout.fillHeight: true
@@ -933,6 +991,14 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: root.showingPapers
+                    Label {
+                        objectName: "libraryTitle"
+                        visible: root.panelNavigates && !root.selecting
+                        Layout.maximumWidth: Math.max(160, root.width * .5)
+                        text: root.filterTitle
+                        elide: Text.ElideMiddle; textFormat: Text.PlainText
+                        font.pixelSize: Theme.fontBody; font.weight: Font.DemiBold; color: Theme.text
+                    }
                     Label {
                         objectName: "libraryCount"; Layout.fillWidth: true
                         text: root.selecting ? (root.selection.length ? root.selection.length + " selected" : "Choose papers")

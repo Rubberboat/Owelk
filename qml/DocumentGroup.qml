@@ -399,7 +399,7 @@ Rectangle {
             Layout.fillWidth: true; Layout.fillHeight: true
             visible: root.isLibrary; active: root.isLibrary && !root.controller.suspended
             sourceComponent: LibraryView {
-                filter: root.activeTabData && root.activeTabData.filter ? root.activeTabData.filter : ({})
+                tabFilter: root.activeTabData && root.activeTabData.filter ? root.activeTabData.filter : ({})
                 onFilterEdited: function(filter) { if (root.activeTabData) root.controller.setLibraryFilter(root.activeTabData.id, filter) }
                 onDocumentChosen: function(source, position) { root.controller.activateGroup(root.groupId); root.controller.openDocument(source, position, true) }
                 onNoteChosen: function(id) { root.controller.activateGroup(root.groupId); root.controller.openNote(id, true) }

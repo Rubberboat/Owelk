@@ -438,7 +438,9 @@ Flickable {
         const g = Tree.owner(tree, tabId)
         const t = g ? g.tabs.find(function(tab) { return tab.id === tabId }) : null
         if (!t || t.kind !== "library" || JSON.stringify(t.filter) === JSON.stringify(filter)) return
-        t.filter = Tree.clone(filter); changed()
+        // Synced, so the groups' copy of the tab (and the Library panel's highlight) follow: a later
+        // openLibrary() with the earlier filter then reads as a change and the list follows it.
+        t.filter = Tree.clone(filter); sync(); changed()
     }
     function newHomeTab() {
         prepare()

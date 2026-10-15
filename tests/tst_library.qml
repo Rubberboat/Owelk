@@ -16,6 +16,8 @@ Item {
             workspace.width = 1440; workspace.height = 930
             workspace.documents.restore({})
             workspace.homeVisible = true
+            // The Library tab's own sidebar (it steps aside while the Library panel is open).
+            workspace.filesVisible = false
         }
         function visualChild(item, name) {
             if (!item) return null
@@ -88,7 +90,8 @@ Item {
             // Other test files leave other panels in this dock; show the Library panel.
             workspace.setPanelShown("files", true); workspace.closeOthers("files")
             let panel = null
-            tryVerify(function() { panel = findChild(workspace, "libraryPanel"); return panel !== null })
+            // (The panel closed before this test may still be going: the one shown.)
+            tryVerify(function() { panel = findChild(workspace, "libraryPanel"); return panel !== null && panel.visible && !!panel.shelfRows })
             tryVerify(function() { return visibleChild(panel, "panelCollection-Panel Topic") !== null })
             waitForPolish(workspace); wait(50)
             // Drag the open paper's tab onto the collection: it is filed there and stays open.
@@ -103,30 +106,66 @@ Item {
             d.finishDrag(false)
             tryVerify(function() { return researchStore.libraryDocuments({collection: topic}).length === 1 })
             verify(Tree.owner(d.tree, tab) !== null, "the tab stays open")
-            // Clicking the collection unfolds it to its papers (all of them); a paper there opens.
-            const name = researchStore.displayName(fixtureSource)
+            // Clicking the collection shows its papers in the Library tab and stays highlighted there; the
+            // Library tab's own sidebar steps aside while the panel is open.
             mouseClick(visibleChild(panel, "panelCollection-Panel Topic"))
-            let paperRow = null
-            tryVerify(function() { paperRow = visibleChild(panel, "panelCollectionPaper-" + name); return paperRow !== null })
-            verify(researchStore.setting("library.openCollections").indexOf(topic) >= 0, "remembered open")
-            mouseClick(paperRow)
-            tryVerify(function() { return workspace.currentReader && researchStore.sameSource(workspace.currentReader.source, fixtureSource) })
-            // Clicked again it folds; Open in Library (its menu) shows it in the Library.
+            let view = library()
+            tryVerify(function() { return view.filter.collection === topic && view.rows.length === 1 })
+            tryVerify(function() { return visibleChild(panel, "panelCollection-Panel Topic").highlighted })
+            verify(!findChild(view, "librarySidebar").visible)
+            compare(visibleChild(view, "libraryTitle").text, "Panel Topic")
+            // A sub-collection folds under its parent: the chevron unfolds it without choosing the parent.
+            const sub = researchStore.createCollection("Panel Sub", topic)
+            tryVerify(function() { return visibleChild(panel, "panelCollectionFold-Panel Topic") !== null })
+            verify(visibleChild(panel, "panelCollection-Panel Sub") === null, "folded at first")
+            mouseClick(visibleChild(panel, "panelCollectionFold-Panel Topic"))
+            tryVerify(function() { return visibleChild(panel, "panelCollection-Panel Sub") !== null })
+            compare(view.filter.collection, topic)
+            wait(100) // The list grows to its new row.
+            mouseClick(visibleChild(panel, "panelCollection-Panel Sub"))
+            tryVerify(function() { return view.filter.collection === sub })
+            compare(visibleChild(view, "libraryTitle").text, "Panel Topic \u203a Panel Sub")
+            verify(visibleChild(panel, "panelCollection-Panel Sub").highlighted)
+            // The parent chosen shows it and keeps it open; chosen again while shown, it folds.
             mouseClick(visibleChild(panel, "panelCollection-Panel Topic"))
-            tryVerify(function() { return visibleChild(panel, "panelCollectionPaper-" + name) === null })
-            mouseClick(visibleChild(panel, "panelCollection-Panel Topic"), 20, 10, Qt.RightButton)
-            const shelfMenu = findChild(panel, "panelCollectionMenu")
-            tryCompare(shelfMenu, "opened", true)
-            shelfMenu.itemAt(0).triggered(); shelfMenu.close()
-            const view = library()
             tryVerify(function() { return view.filter.collection === topic })
-            // Favorites unfold in the panel; Open Library goes to the whole Library.
+            verify(visibleChild(panel, "panelCollection-Panel Sub") !== null)
+            mouseClick(visibleChild(panel, "panelCollection-Panel Topic"))
+            tryVerify(function() { return visibleChild(panel, "panelCollection-Panel Sub") === null })
+            verify(researchStore.setting("library.openCollections").indexOf(topic) < 0, "remembered folded")
+            // A collection chosen from elsewhere opens its parents in the panel.
+            workspace.documents.openLibrary({collection: sub})
+            tryVerify(function() { return visibleChild(panel, "panelCollection-Panel Sub") !== null && visibleChild(panel, "panelCollection-Panel Sub").highlighted })
+            // Favorites, Unsorted, the reading states and All Papers show there too.
             mouseClick(visibleChild(panel, "panelFavorites"))
-            tryCompare(panel, "favoritesOpen", true)
-            mouseClick(visibleChild(panel, "panelFavorites"))
-            tryCompare(panel, "favoritesOpen", false)
-            mouseClick(visibleChild(panel, "panelOpenLibrary"))
+            tryVerify(function() { return view.filter.favorite === true })
+            verify(visibleChild(panel, "panelFavorites").highlighted)
+            compare(visibleChild(view, "libraryTitle").text, "Favorites")
+            mouseClick(visibleChild(panel, "panelState-read"))
+            tryVerify(function() { return view.filter.state === "read" })
+            mouseClick(visibleChild(panel, "panelUnsorted"))
+            tryVerify(function() { return view.filter.unsorted === true })
+            // The list follows the panel even after a change made in the tab itself.
+            view.setFilter({favorite: true})
+            mouseClick(visibleChild(panel, "panelUnsorted"))
+            tryVerify(function() { return view.filter.unsorted === true && !view.filter.favorite })
+            mouseClick(visibleChild(panel, "panelAllPapers"))
             tryVerify(function() { return Object.keys(view.filter).length === 0 })
+            verify(visibleChild(panel, "panelAllPapers").highlighted)
+            // Without the panel, the Library tab has its own sidebar again (with the same folding).
+            workspace.filesVisible = false
+            tryVerify(function() { return findChild(view, "librarySidebar").visible })
+            verify(!visibleChild(view, "libraryTitle"))
+            tryVerify(function() { return visualChild(view, "librarySidebarFold-" + topic) !== null })
+            verify(visualChild(view, "librarySidebar-collection-" + sub) === null, "folded there too")
+            waitForPolish(view); wait(50)
+            mouseClick(visualChild(view, "librarySidebarFold-" + topic))
+            tryVerify(function() { return visualChild(view, "librarySidebar-collection-" + sub) !== null })
+            compare(Object.keys(view.filter).length, 0, "the chevron only unfolds")
+            workspace.filesVisible = true
+            tryVerify(function() { panel = findChild(workspace, "libraryPanel"); return panel !== null && panel.visible && !!panel.shelfRows && visibleChild(panel, "panelNewCollection") !== null })
+            waitForPolish(workspace); wait(50)
+            researchStore.deleteCollection(sub)
             // New and renamed collections from the panel.
             mouseClick(visibleChild(panel, "panelNewCollection"))
             const nameDialog = findChild(panel, "panelCollectionName")
