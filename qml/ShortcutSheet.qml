@@ -43,6 +43,7 @@ Popup {
             action("tabsPanel"), action("filesPanel"), action("documentPanel"), action("annotations"), action("aiPanel")]},
         {title: "Reading", rows: [
             action("previousPage"), action("nextPage"),
+            fixed("Previous / Next Page (a wide page scrolls sideways first)", ["Left", "Right"]),
             fixed("Find in This PDF", ["Ctrl+F"]),
             fixed("Zoom In / Out", ["Ctrl+Plus", "Ctrl+-"]),
             action("fitWidth"), action("fitPage"),
@@ -50,8 +51,7 @@ Popup {
             action("highlight"), action("comment"), action("markRegion"), action("darkPages"),
             fixed("Undo / Redo Annotation", ["Ctrl+Z", mac ? "Ctrl+Shift+Z" : "Ctrl+Y"]),
             fixed("Delete Selected Mark", ["Delete"]),
-            fixed("Stop Drawing or Marking", ["Esc"]),
-            fixed("Scroll Sideways (wide page)", ["Left", "Right"])]},
+            fixed("Stop Drawing or Marking", ["Esc"])]},
         {title: "Splits", rows: [
             action("splitRight"), action("splitDown"), action("moveRight"), action("moveDown"),
             action("nextSplit"), action("previousSplit")]},

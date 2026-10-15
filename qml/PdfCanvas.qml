@@ -223,10 +223,13 @@ Item {
     }
     // Sideways by a number of pixels (Shift+wheel, ←/→), kept within the pages.
     readonly property bool wide: pages.contentWidth > pages.width + 1
+    // Answers whether it moved (false on a page that fits, or at the edge already).
     function scrollAcross(pixels) {
         if (pages.contentWidth <= pages.width) return false
+        const x = Math.max(0, Math.min(pages.contentWidth - pages.width, pages.contentX + pixels))
+        if (Math.abs(x - pages.contentX) < .5) return false
         stopSourceMotion()
-        pages.contentX = Math.max(0, Math.min(pages.contentWidth - pages.width, pages.contentX + pixels))
+        pages.contentX = x
         return true
     }
     // Going to a place: annotations and search results move quickly and flash; a place cited by an AI answer

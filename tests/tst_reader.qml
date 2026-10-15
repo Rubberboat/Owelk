@@ -93,6 +93,23 @@ Item {
             verify(canvas.position().y < .05, "a new page starts at its top")
             testInput.keyClick(canvas, Qt.Key_BracketLeft, Qt.ControlModifier)
             tryCompare(canvas, "currentPage", 1)
+            // ← and → turn the page too.
+            testInput.keyClick(canvas, Qt.Key_Right)
+            tryCompare(canvas, "currentPage", 2)
+            verify(canvas.position().y < .05, "the arrow also starts at the top")
+            testInput.keyClick(canvas, Qt.Key_Left)
+            tryCompare(canvas, "currentPage", 1)
+            // A text field with the cursor keeps its arrows.
+            reader.find()
+            const field = findChild(reader, "searchField")
+            tryCompare(field, "activeFocus", true)
+            field.text = "ab"; field.cursorPosition = 2
+            testInput.keyClick(field, Qt.Key_Left)
+            compare(field.cursorPosition, 1)
+            wait(100)
+            compare(canvas.currentPage, 1)
+            field.text = ""
+            reader.hideSearch()
             mouseClick(back)
             tryCompare(canvas, "currentPage", 0)
             // On the last page there is no next one.
@@ -289,6 +306,22 @@ Item {
             const list = findChild(canvas, "pageList"), start = list.contentX
             verify(canvas.scrollAcross(80))
             verify(list.contentX > start)
+            // → scrolls sideways while there is more to the right; at the edge it turns the page (the arrows'
+            // keys themselves are pressed in test_previousAndNextPage).
+            const right = findChild(reader, "nextPageArrow"), left = findChild(reader, "previousPageArrow")
+            const page = canvas.currentPage, across = list.contentX
+            right.activated()
+            verify(list.contentX > across)
+            compare(canvas.currentPage, page)
+            list.contentX = list.contentWidth - list.width
+            verify(!canvas.scrollAcross(80), "at the right edge")
+            right.activated()
+            tryCompare(canvas, "currentPage", page + 1)
+            // ← at the left edge turns back.
+            list.contentX = 0
+            left.activated()
+            tryCompare(canvas, "currentPage", page)
+            canvas.jump(0, 0, 0); tryCompare(canvas, "restoring", false)
             // Shift + mouse wheel scrolls sideways.
             const before = list.contentX
             mouseWheel(list, list.width / 2, list.height / 2, 0, -120, Qt.NoButton, Qt.ShiftModifier)

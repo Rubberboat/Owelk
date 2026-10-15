@@ -670,16 +670,19 @@ Rectangle {
         }
     }
     Timer { id: searchDelay; interval: 220; onTriggered: canvas.searchString = searchField.text }
-    // ←/→ scroll sideways when the page is wider than the view (a focused text field keeps its arrows).
+    // ←/→ turn the page, as Previous Page and Next Page do. On a page wider than the view they scroll
+    // sideways first and turn the page at its edge. A focused text field keeps its arrows.
     Shortcut {
+        objectName: "previousPageArrow"
         sequence: "Left"
-        enabled: root.isActive && canvas.ready && canvas.wide
-        onActivated: canvas.scrollAcross(-80)
+        enabled: root.isActive && canvas.ready
+        onActivated: if (!canvas.scrollAcross(-80)) canvas.previousPage()
     }
     Shortcut {
+        objectName: "nextPageArrow"
         sequence: "Right"
-        enabled: root.isActive && canvas.ready && canvas.wide
-        onActivated: canvas.scrollAcross(80)
+        enabled: root.isActive && canvas.ready
+        onActivated: if (!canvas.scrollAcross(80)) canvas.nextPage()
     }
     Shortcut {
         sequences: [StandardKey.Copy]

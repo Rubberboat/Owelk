@@ -30,6 +30,7 @@
 - Library 선택 모드(원본 x-or-b에서 가져옴): Add 옆 체크 버튼으로 켜면 클릭으로 논문을 고름(열리지 않음). 바에 Select All / Delete(고른 게 있을 때) / Done, Esc로 나가고 Delete·Backspace는 고른 논문을 Trash로(입력 칸에서는 글자 지우기). 모드 밖 ⌘/Ctrl-클릭·Shift-클릭은 그대로. 목록의 논문을 끌면 포인터를 따라다니는 라벨이 생기고 왼쪽 Collection(또는 AI 패널, Library 패널)에 놓을 수 있음.
 - 뒤로/앞으로(원본 x-or-b에서 가져옴): 브라우저처럼 다녀온 곳(Home, 탭: Library·논문·노트·웹 페이지)을 오감. 앞의 탭 안에서 갈 곳(웹 탭의 이전 페이지, 논문의 링크·인용 이동)을 먼저 따르고, 그다음 장소 사이. 상태 표시줄 왼쪽 끝의 `<` `>`, `⌥←`/`⌥→`(Windows·Linux `Alt+←`/`Alt+→`), View 메뉴. 새 곳으로 가면 앞쪽 기록은 지워짐.
 - 단축키 설정(Settings → Shortcuts)을 종류별 섹션으로(Search and places·Tabs·Splits·Panels·Reading·Notes and AI; 원본 x-or-b에서 가져옴). 새로 바꿀 수 있는 키: 이전/다음 쪽(`⌘[`·`⌘]`), 뒤로/앞으로, Fit Width(`⌘0`), Fit Page(`⌥⌘0`), Highlight Selection(`⌃⌘H`, Windows·Linux `Ctrl+Alt+H`), Comment(`⌃⌘M`), Dark Pages(`⇧⌘D`), Ask AI(`⇧⌘A`: 선택한 글, 없으면 앞의 논문에 새 Chat), 패널 열고 닫기(Library `⇧⌘E`, Document `⇧⌘O`, Annotations `⇧⌘M`, AI `⇧⌘I`). View 메뉴에도 있음.
+- 논문에서 `←`/`→`는 이전/다음 쪽(새 쪽의 맨 위로). 쪽이 보기보다 넓으면 먼저 옆으로 움직이고 가장자리에서 쪽을 넘김. 입력 칸에 커서가 있으면 그 칸이 방향키를 씀. 단축키 시트에도 표시.
 - 저장된 탭 중 열 수 없는 것만 빼고 나머지를 엶(전부 못 읽으면 탭 없이 시작, 원래 세션은 한 번 보관).
 - PDF 끌어 넣기: 창 어디에 놓아도(Finder·다운로드 폴더·브라우저 다운로드 목록) PDF 폴더로 옮기고 Library에 추가, 6개까지는 탭으로 엶. 폴더는 Collection으로 가져오고, 웹 주소는 웹 탭. Settings → Data에서 옮기기/복사 선택.
 - PDF 폴더 바꾸기: Settings → Data → PDF folder → `Change…`. 이미 있던 PDF도 새 폴더로 옮기고 주석·노트 연결은 그대로.
