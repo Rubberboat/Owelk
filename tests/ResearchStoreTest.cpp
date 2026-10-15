@@ -855,15 +855,25 @@ private slots:
         forYou->refresh();
         QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
         QCOMPARE(forYou->items().size(), 1);
+        // Preview: the PDF comes into a cache, not the Library; Add then uses it without asking again.
+        QSignalSpy previews(forYou, &ForYou::previewReady);
+        forYou->preview("arxiv:2601.00001");
+        QTRY_COMPARE_WITH_TIMEOUT(previews.size(), 1, 10000);
+        const auto previewFile = previews[0][1].toUrl().toLocalFile();
+        QVERIFY(QFileInfo(previewFile).size() > 0);
+        QVERIFY(!store.hasPaper("2601.00001", ""));
+        const auto asked = requests.join('\n').count("/pdf/2601.00001");
         // Add: the PDF comes into the Library, named and described from arXiv.
         forYou->add({"arxiv:2601.00001"});
         QTRY_VERIFY_WITH_TIMEOUT(forYou->adding().isEmpty(), 10000);
         QCOMPARE(forYou->items().size(), 0);
         QVERIFY(store.hasPaper("2601.00001v2", ""));
-        const auto added = store.paperWithFile(QUrl::fromLocalFile(store.papersFolder() + "/Lovelace et al. - "
-                                                       + QString::number(QDate::currentDate().year())
-                                                       + " - Fresh LiDAR Odometry.pdf"),
-            {});
+        QCOMPARE(requests.join('\n').count("/pdf/2601.00001"), asked);
+        QVERIFY(!QFileInfo::exists(previewFile));
+        const auto added
+            = store.paperWithFile(QUrl::fromLocalFile(store.papersFolder() + "/Lovelace et al. - "
+                                      + QString::number(QDate::currentDate().year()) + " - Fresh LiDAR Odometry.pdf"),
+                {});
         QVERIFY(!added.isEmpty());
         QCOMPARE(store.documentDetails(added)["arxiv"].toString(), QString("2601.00001"));
         QCOMPARE(store.documentDetails(added)["doi"].toString(), QString("10.9/fresh"));
@@ -875,6 +885,124 @@ private slots:
             QVERIFY(later->lastChecked().isValid());
             QCOMPARE(later->items().size(), 0);
         }
+    }
+    void forYouPapersWithoutAFreePdf()
+    {
+        QVERIFY(ForYouParse::isPdfAddress("https://arxiv.org/pdf/2601.00001"));
+        QVERIFY(!ForYouParse::isPdfAddress("https://doi.org/10.1109/x"));
+        QVERIFY(!ForYouParse::isPdfAddress(""));
+        // A Semantic Scholar "open PDF" that is only a DOI link is no PDF; an arXiv ID still gives one.
+        const auto parsed = ForYouParse::recommendations(
+            "{\"recommendedPapers\":[{\"paperId\":\"a\",\"title\":\"Journal Only\",\"externalIds\":{\"DOI\":\"10.1/j\"},"
+            "\"openAccessPdf\":{\"url\":\"https://doi.org/10.1/j\"}},{\"paperId\":\"b\",\"title\":\"Also On arXiv\","
+            "\"externalIds\":{\"ArXiv\":\"2601.00009\"},\"openAccessPdf\":{\"url\":\"\"}}]}");
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].toMap()["pdf"].toString(), QString());
+        QCOMPARE(parsed[1].toMap()["pdf"].toString(), QString("https://arxiv.org/pdf/2601.00009"));
+        // A stand-in Semantic Scholar recommending one journal paper.
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+                if (!socket->readAll().contains("\r\n\r\n")) return;
+                const QByteArray body = QStringLiteral(
+                    "{\"recommendedPapers\":[{\"paperId\":\"j1\",\"title\":\"Journal Only\",\"publicationDate\":\"%1\","
+                    "\"externalIds\":{\"DOI\":\"10.1/j\"},\"openAccessPdf\":{\"url\":\"https://doi.org/10.1/j\"}}]}")
+                                            .arg(QDate::currentDate().toString(Qt::ISODate))
+                                            .toUtf8();
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        store.setSetting("forYou.recommendBaseUrl", QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        store.setSetting("forYou.delayMs", "10");
+        const auto seed = QUrl::fromLocalFile(directory.filePath("seed.pdf"));
+        writeFixture(seed.toLocalFile(), "Seed Paper");
+        QVERIFY(store.rememberDocument(seed));
+        QVERIFY(store.updateDocumentDetails(seed, {{"title", "Seed Paper"}, {"arxiv", "2501.00001"}}));
+        const auto topic = store.createCollection("Journals");
+        QVERIFY(store.setDocumentCollection(seed, topic, true));
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        forYou->follow(topic, true);
+        forYou->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
+        QCOMPARE(forYou->items().size(), 1);
+        QVERIFY(!forYou->items()[0].toMap()["hasPdf"].toBool());
+        // Added with others, it is left (its page would open a tab of its own); alone, its page opens.
+        QSignalSpy pages(forYou, &ForYou::webRequested);
+        forYou->add({"doi:10.1/j", "doi:10.1/missing"});
+        QCOMPARE(pages.size(), 0);
+        QVERIFY(forYou->adding().isEmpty());
+        forYou->add({"doi:10.1/j"});
+        QTRY_COMPARE_WITH_TIMEOUT(pages.size(), 1, 5000);
+        QCOMPARE(forYou->items().size(), 1);
+        // A PDF of it that reaches the Library some other way (downloaded from that page) takes it off the list.
+        const auto got = QUrl::fromLocalFile(directory.filePath("got.pdf"));
+        writeFixture(got.toLocalFile(), "Journal Only");
+        QCOMPARE(store.addDocuments({got}), 1);
+        QVERIFY(store.updateDocumentDetails(got, {{"title", "What The PDF Says"}, {"doi", "10.1/J"}}));
+        QTRY_COMPARE_WITH_TIMEOUT(forYou->items().size(), 0, 10000);
+        // Its page was opened for it, so it gets Add's details and collection, and stays unread.
+        const auto arrived = store.paperUrlFor("", "10.1/j");
+        QCOMPARE(store.documentDetails(arrived)["title"].toString(), QString("Journal Only"));
+        QCOMPARE(store.documentDetails(arrived)["readingState"].toString(), QString("unread"));
+        QCOMPARE(store.libraryDocuments({{"collection", topic}}).size(), 2);
+    }
+    void forYouAddGoesThroughTheBrowserWhenTheDownloadFails()
+    {
+        // arXiv answers the query; its "PDF" address answers with a web page instead.
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        const auto base = QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort());
+        const auto today = QDate::currentDate().toString(Qt::ISODate);
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+                const auto head = QString::fromUtf8(socket->readAll()).section("\r\n", 0, 0);
+                const QByteArray body = head.contains("/api/query")
+                    ? QStringLiteral("<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>"
+                                     "http://arxiv.org/abs/2609.07777v1</id><published>%1T08:00:00Z</published><title>"
+                                     "Behind A Wall</title><author><name>Ada Lovelace</name></author><link title=\"pdf\" "
+                                     "href=\"%2/pdf/wall\"/></entry></feed>")
+                          .arg(today, base)
+                          .toUtf8()
+                    : QByteArray("<html><body>Please verify you are human.</body></html>");
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: "
+                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        store.setSetting("forYou.arxivBaseUrl", base + "/api");
+        store.setSetting("forYou.delayMs", "10");
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        QVERIFY(forYou->saveTopics({QVariantMap{{"words", "walls"}}}));
+        forYou->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
+        QCOMPARE(forYou->items().size(), 1);
+        // Add: the download is not a PDF, so the PDF's address opens in the browser instead.
+        QSignalSpy pages(forYou, &ForYou::webRequested);
+        forYou->add({"arxiv:2609.07777"});
+        QTRY_COMPARE_WITH_TIMEOUT(pages.size(), 1, 10000);
+        QCOMPARE(pages[0][0].toUrl().toString(), base + "/pdf/wall");
+        QCOMPARE(forYou->items().size(), 1);
+        // The browser's download reaches the Library: it gets Add's details and leaves the list.
+        const auto got = QUrl::fromLocalFile(directory.filePath("wall.pdf"));
+        writeFixture(got.toLocalFile(), "Some Title The PDF Shows");
+        QVERIFY(store.rememberDocument(got));
+        QVERIFY(store.updateDocumentDetails(got, {{"title", "Some Title The PDF Shows"}, {"arxiv", "2609.07777v1"}}));
+        QTRY_COMPARE_WITH_TIMEOUT(forYou->items().size(), 0, 10000);
+        QCOMPARE(store.documentDetails(got)["title"].toString(), QString("Behind A Wall"));
+        QCOMPARE(store.documentDetails(got)["authors"].toString(), QString("Ada Lovelace"));
     }
     void forYouSyncsBetweenComputers()
     {

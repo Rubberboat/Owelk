@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QHash>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
@@ -8,6 +9,7 @@
 #include <functional>
 
 class QNetworkAccessManager;
+class QNetworkReply;
 class QTimer;
 class ResearchStore;
 
@@ -20,8 +22,8 @@ class ResearchStore;
 // look are settings (forYou.*) of this computer.
 class ForYou final : public QObject {
     Q_OBJECT
-    // The papers waiting, newest first: {id, title, authors, date, year, abstract, arxiv, doi, pdf, url,
-    // source, sourceName}.
+    // The papers waiting, most relevant first: {id, title, authors, date, year, abstract, arxiv, doi, pdf,
+    // hasPdf (a free PDF to fetch), url, source, sourceName, score, why}.
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
     // Whether anything is followed (a topic turned on or a collection).
     Q_PROPERTY(bool configured READ configured NOTIFY settingsChanged)
@@ -34,6 +36,8 @@ class ForYou final : public QObject {
     // The AI reading the papers found (Explain), and what went wrong the last time.
     Q_PROPERTY(bool explaining READ explaining NOTIFY explainingChanged)
     Q_PROPERTY(QString aiProblem READ aiProblem NOTIFY changed)
+    // The paper whose PDF is coming for a preview (its id), or empty.
+    Q_PROPERTY(QString previewing READ previewing NOTIFY previewingChanged)
 public:
     explicit ForYou(ResearchStore *store, QObject *parent = nullptr);
     QVariantList items() const;
@@ -44,6 +48,7 @@ public:
     QStringList adding() const { return m_adding; }
     bool explaining() const { return m_explaining; }
     QString aiProblem() const { return m_aiProblem; }
+    QString previewing() const { return m_previewing; }
     // Reads what was found and starts the daily check (a little after launch, then every hour).
     void start();
     // Read again (rows arrived from another computer).
@@ -66,6 +71,13 @@ public:
     // The AI scores the papers not yet explained (0-100, most relevant first) and gives each one sentence on
     // why (score, why), from what is followed. Done after each check when forYou.ai is on.
     Q_INVOKABLE void explain();
+    // A paper's PDF to read before deciding: fetched into <data>/foryou-preview (kept a week) and not
+    // added to the Library; Add then uses it rather than fetching again. Answered by previewReady(id,
+    // file) or previewFailed(id, why).
+    Q_INVOKABLE void preview(const QString &id);
+    // A paper's page opened (Open Page, Get PDF on Its Page): a PDF of it that then reaches the Library gets
+    // Add's details and collection, and the paper leaves the list.
+    Q_INVOKABLE void expect(const QString &id);
     // Whether the AI can be asked (set up in Settings › AI, and agreed to).
     Q_INVOKABLE bool aiReady() const;
     Q_INVOKABLE QString aiName() const;
@@ -76,6 +88,9 @@ signals:
     void checkingChanged();
     void addingChanged();
     void explainingChanged();
+    void previewingChanged();
+    void previewReady(const QString &id, const QUrl &file);
+    void previewFailed(const QString &id, const QString &why);
     void webRequested(const QUrl &url);
 
 private:
@@ -89,8 +104,15 @@ private:
     void found(const QVariantList &papers, const QString &source, const QString &sourceName);
     void addNext();
     void finishAdd(const QVariantMap &item, const QUrl &file);
+    // A PDF's bytes into the Library under the paper's name, then finishAdd.
+    bool saveIntoLibrary(const QVariantMap &paper, const QByteArray &bytes);
+    QString previewPath(const QString &id) const;
+    // The details Add gives a paper (from arXiv or Semantic Scholar), and its collection.
+    void finishDetails(const QVariantMap &paper, const QUrl &url);
     QVariantMap item(const QString &id) const;
     void ranked(int request, const QVariantList &ranking, const QString &error);
+    // Papers now in the Library (added here, or a PDF got from their page) leave the list.
+    void dropKept();
     // What is followed, as text for the AI: topics, and some titles from each followed collection.
     QString interests() const;
     // Most relevant first (papers the AI scored), then newest.
@@ -101,6 +123,7 @@ private:
     ResearchStore *m_store;
     QNetworkAccessManager *m_network = nullptr;
     QTimer *m_daily = nullptr;
+    QTimer *m_libraryCheck = nullptr;
     QVariantList m_items;
     // Papers dismissed or added (here or on another computer): not suggested again.
     QStringList m_handled;
@@ -113,6 +136,10 @@ private:
     QVariantList m_found;
     QStringList m_adding;
     QStringList m_addQueue;
+    // Papers Add sent to the browser (the direct download failed), finished when they reach the Library.
+    QHash<QString, QVariantMap> m_viaBrowser;
+    QString m_previewing;
+    QNetworkReply *m_previewReply = nullptr;
     bool m_explaining = false;
     int m_rankRequest = -1;
     QString m_aiProblem;
@@ -125,4 +152,6 @@ QString arxivQuery(const QString &words, const QString &categories, const QDateT
 // Papers in an arXiv API answer (Atom) or a Semantic Scholar recommendations answer (JSON).
 QVariantList arxivEntries(const QByteArray &atom);
 QVariantList recommendations(const QByteArray &json);
+// An address a PDF can be fetched from (not a DOI link, which leads to a publisher's page).
+bool isPdfAddress(const QString &address);
 }

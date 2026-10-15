@@ -262,12 +262,15 @@ Flickable {
         if (Tree.isWebAddress(value)) return openWeb(value, forceNew)
         return false
     }
-    function openWeb(url, forceNew, title) {
+    // paperPage: a page opened to get one paper (For You); the PDF downloaded there joins the Library and
+    // the page closes (openDownloaded).
+    function openWeb(url, forceNew, title, paperPage) {
         if (!Tree.isWebAddress(url)) return false
         prepare()
         const g = Tree.find(tree, activeGroup) || Tree.leaves(tree)[0]
         const home = !forceNew && g.tabs.find(function(t) { return t.id === g.activeTab && t.kind === "home" })
         const t = Tree.webTab(url, title)
+        if (paperPage) t.paperPage = true
         if (home) { t.id = home.id; g.tabs[g.tabs.indexOf(home)] = t }
         else g.tabs.push(t)
         g.activeTab = t.id; activeGroup = g.id
@@ -288,6 +291,15 @@ Flickable {
     // A finished download opens beside its web tab; a paper the Library already has is offered first
     // (Main's checkDownload), so the reader can open the copy they keep instead.
     function openDownloaded(tabId, file, replace) {
+        // A page opened to get a paper (For You): its PDF is added, not opened (so it stays unread), as Add
+        // does, and the page closes.
+        const owner = Tree.owner(tree, tabId)
+        const page = owner ? owner.tabs.find(function(tab) { return tab.id === tabId }) : null
+        if (page && page.paperPage) {
+            if (researchStore.addDocuments([file], "") < 1) return false
+            closeTab(tabId)
+            return true
+        }
         const window = ApplicationWindow.window
         if (window && window.checkDownload) {
             window.checkDownload(file, function(chosen) { placeDownloaded(tabId, chosen, replace) })

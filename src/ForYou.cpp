@@ -16,6 +16,7 @@
 #include <QNetworkReply>
 #include <QRegularExpression>
 #include <QTimer>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
 #include <QXmlStreamReader>
@@ -117,6 +118,12 @@ QVariantList arxivEntries(const QByteArray &atom)
     return list;
 }
 
+bool isPdfAddress(const QString &address)
+{
+    const QUrl url(address);
+    return url.isValid() && url.scheme().startsWith("http") && !url.host().endsWith("doi.org");
+}
+
 QVariantList recommendations(const QByteArray &json)
 {
     QVariantList list;
@@ -132,6 +139,7 @@ QVariantList recommendations(const QByteArray &json)
         const auto date = paper.value("publicationDate").toString();
         const auto year = paper.value("year").isDouble() ? QString::number(paper.value("year").toInt()) : date.left(4);
         auto pdf = paper.value("openAccessPdf").toObject().value("url").toString();
+        if (!ForYouParse::isPdfAddress(pdf)) pdf.clear(); // A DOI link leads to the publisher's page, not a PDF.
         if (pdf.isEmpty() && !arxiv.isEmpty()) pdf = "https://arxiv.org/pdf/" + arxiv;
         list.append(QVariantMap{{"title", title}, {"authors", authors.join(", ")}, {"date", date}, {"year", year},
             {"abstract", paper.value("abstract").toString().simplified()}, {"arxiv", arxiv}, {"doi", doi}, {"pdf", pdf},
@@ -152,6 +160,11 @@ ForYou::ForYou(ResearchStore *store, QObject *parent) : QObject(parent), m_store
         emit settingsChanged();
         emit changed();
     });
+    m_libraryCheck = new QTimer(this);
+    m_libraryCheck->setSingleShot(true);
+    m_libraryCheck->setInterval(2000);
+    connect(m_libraryCheck, &QTimer::timeout, this, &ForYou::dropKept);
+    connect(store, &ResearchStore::documentsChanged, m_libraryCheck, qOverload<>(&QTimer::start));
     if (auto *ai = qobject_cast<AiService *>(store->ai())) {
         connect(ai, &AiService::papersRanked, this, &ForYou::ranked);
         // The AI may be ready only after a check (an account read a little after launch, a key added later):
@@ -265,6 +278,9 @@ void ForYou::ranked(int request, const QVariantList &ranking, const QString &err
 void ForYou::start()
 {
     load();
+    const QDir previews(m_store->dataDirectory() + "/foryou-preview");
+    for (const auto &old : previews.entryInfoList({"*.pdf"}, QDir::Files))
+        if (old.lastModified().daysTo(QDateTime::currentDateTime()) > 7) QFile::remove(old.absoluteFilePath());
     // Once a day, a little after launch (not while the window opens) and again when the date changes.
     m_daily = new QTimer(this);
     m_daily->setInterval(60 * 60 * 1000);
@@ -278,7 +294,9 @@ bool ForYou::exec(const QString &sql, const QVariantList &values) const
     QSqlQuery query(m_store->m_database);
     query.prepare(sql);
     for (const auto &value : values) query.addBindValue(value);
-    return query.exec();
+    if (query.exec()) return true;
+    qWarning("For You: %s", qPrintable(query.lastError().text()));
+    return false;
 }
 
 void ForYou::reload()
@@ -307,6 +325,7 @@ void ForYou::load()
         }
         auto item = QJsonDocument::fromJson(query.value(2).toByteArray()).object().toVariantMap();
         item.insert({{"id", id}, {"foundAt", query.value(3)}});
+        item.insert("hasPdf", ForYouParse::isPdfAddress(item.value("pdf").toString()));
         if (!query.value(4).isNull()) item.insert("score", query.value(4).toInt());
         if (!query.value(5).toString().isEmpty()) item.insert("why", query.value(5).toString());
         m_items.append(item);
@@ -359,7 +378,9 @@ bool ForYou::saveTopics(const QVariantList &topics)
                   "DO UPDATE SET words=excluded.words,categories=excluded.categories,enabled=excluded.enabled,"
                   "position=excluded.position WHERE words<>excluded.words OR categories<>excluded.categories OR "
                   "enabled<>excluded.enabled OR position<>excluded.position",
-                {id, words, categories, topic.value("on", true).toBool() ? 1 : 0, position++}))
+                // An empty part is "", not NULL (a null QString binds as NULL).
+                {id, words.isNull() ? QString("") : words, categories.isNull() ? QString("") : categories,
+                    topic.value("on", true).toBool() ? 1 : 0, position++}))
             return false;
         kept << id;
     }
@@ -597,8 +618,26 @@ QVariantMap ForYou::item(const QString &id) const
     return {};
 }
 
+void ForYou::dropKept()
+{
+    bool changed = false;
+    for (const auto &value : std::as_const(m_items)) {
+        const auto item = value.toMap();
+        const auto id = item.value("id").toString();
+        if (m_adding.contains(id)) continue;
+        const auto url = m_store->paperUrlFor(item.value("arxiv").toString(), item.value("doi").toString());
+        if (url.isEmpty()) continue;
+        // Got through the browser for Add: its details and collection, as Add gives them.
+        if (m_viaBrowser.contains(id)) finishDetails(m_viaBrowser.take(id), url);
+        exec("UPDATE foryou_items SET state='added',paper='{}',score=NULL,why=NULL WHERE id=?", {id});
+        changed = true;
+    }
+    if (changed) load();
+}
+
 void ForYou::dismiss(const QStringList &ids)
 {
+    for (const auto &id : ids) QFile::remove(previewPath(id));
     for (const auto &id : ids)
         exec("UPDATE foryou_items SET state='dismissed',paper='{}',score=NULL,why=NULL WHERE id=?", {id});
     load();
@@ -606,11 +645,22 @@ void ForYou::dismiss(const QStringList &ids)
 void ForYou::add(const QStringList &ids)
 {
     const bool idle = m_adding.isEmpty();
-    for (const auto &id : ids)
-        if (!m_adding.contains(id) && !item(id).isEmpty()) {
-            m_adding << id;
-            m_addQueue << id;
+    int pageOnly = 0;
+    for (const auto &id : ids) {
+        const auto paper = item(id);
+        if (m_adding.contains(id) || paper.isEmpty()) continue;
+        // Several at once: a paper with no free PDF is left (its page would open in a tab of its own).
+        if (ids.size() > 1 && !paper.value("hasPdf").toBool()) {
+            ++pageOnly;
+            continue;
         }
+        m_adding << id;
+        m_addQueue << id;
+    }
+    if (pageOnly)
+        m_store->notify(QString(pageOnly == 1 ? ui("1 paper has no free PDF; open its page from the list.")
+                                              : ui("%1 papers have no free PDF; open their pages from the list."))
+                .arg(pageOnly));
     emit addingChanged();
     if (idle) addNext();
 }
@@ -630,11 +680,23 @@ void ForYou::addNext()
         addNext();
     };
     const auto pdf = paper.value("pdf").toString();
-    if (pdf.isEmpty()) {
-        // No PDF to fetch: its page, where the reader can find one.
+    if (!ForYouParse::isPdfAddress(pdf)) {
+        // No free PDF: its page, where the reader may get one (a PDF downloaded there joins the Library, and
+        // the paper then leaves For You).
+        m_store->notify(QString(ui("No free PDF for “%1”: its page opens.")).arg(paper.value("title").toString()));
+        m_viaBrowser.insert(id, paper);
         if (!paper.value("url").toString().isEmpty()) emit webRequested(QUrl(paper.value("url").toString()));
         done();
         return;
+    }
+    // Read in a preview already: that PDF, without fetching it again.
+    if (QFile previewed(previewPath(id)); previewed.open(QIODevice::ReadOnly)) {
+        const auto bytes = previewed.readAll();
+        previewed.close();
+        if (bytes.startsWith("%PDF") && saveIntoLibrary(paper, bytes)) {
+            done();
+            return;
+        }
     }
     if (!m_network) m_network = new QNetworkAccessManager(this);
     m_store->startTask("forYouAdd", ui("Downloading ") + paper.value("title").toString());
@@ -650,32 +712,123 @@ void ForYou::addNext()
         reply->deleteLater();
         const auto bytes = reply->readAll();
         if (reply->error() != QNetworkReply::NoError || !bytes.startsWith("%PDF")) {
+            // The browser often gets it where this did not (another network path, a site that wants one): the
+            // PDF itself opens in a web tab, is downloaded there, and is finished when it reaches the Library.
+            const QString why = reply->error() != QNetworkReply::NoError ? reply->errorString()
+                                                                         : QString(ui("the answer was not a PDF"));
             m_store->notify(
-                QString(ui("Could not download “%1”. Its page opens instead.")).arg(paper.value("title").toString()));
-            if (!paper.value("url").toString().isEmpty()) emit webRequested(QUrl(paper.value("url").toString()));
+                QString(ui("Getting “%1” through the browser (%2).")).arg(paper.value("title").toString(), why));
+            m_viaBrowser.insert(paper.value("id").toString(), paper);
+            emit webRequested(QUrl(paper.value("pdf").toString()));
             done();
             return;
         }
-        // Named as the Library names papers (Settings › Data › Paper names).
-        PaperMetadata metadata;
-        metadata.title = paper.value("title").toString();
-        metadata.authors = paper.value("authors").toString();
-        metadata.year = paper.value("year").toString();
-        metadata.arxiv = paper.value("arxiv").toString();
-        auto stem = PaperMetadataText::fileStem(metadata, m_store->fileNameParts());
-        if (stem.isEmpty()) stem = metadata.arxiv.isEmpty() ? QStringLiteral("paper") : metadata.arxiv;
-        const auto target = m_store->downloadTarget(stem + ".pdf", true).value("url").toUrl();
-        QDir().mkpath(QFileInfo(target.toLocalFile()).absolutePath()); // The folder may not be there yet.
-        QFile file(target.toLocalFile());
+        saveIntoLibrary(paper, bytes);
+        done();
+    });
+}
+
+bool ForYou::saveIntoLibrary(const QVariantMap &paper, const QByteArray &bytes)
+{
+    // Named as the Library names papers (Settings › Data › Paper names).
+    PaperMetadata metadata;
+    metadata.title = paper.value("title").toString();
+    metadata.authors = paper.value("authors").toString();
+    metadata.year = paper.value("year").toString();
+    metadata.arxiv = paper.value("arxiv").toString();
+    auto stem = PaperMetadataText::fileStem(metadata, m_store->fileNameParts());
+    if (stem.isEmpty()) stem = metadata.arxiv.isEmpty() ? QStringLiteral("paper") : metadata.arxiv;
+    const auto target = m_store->downloadTarget(stem + ".pdf", true).value("url").toUrl();
+    QDir().mkpath(QFileInfo(target.toLocalFile()).absolutePath()); // The folder may not be there yet.
+    QFile file(target.toLocalFile());
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) {
+        m_store->notify(ui("Could not save the PDF."));
+        return false;
+    }
+    file.close();
+    finishAdd(paper, target);
+    QFile::remove(previewPath(paper.value("id").toString()));
+    return true;
+}
+
+QString ForYou::previewPath(const QString &id) const
+{
+    return m_store->dataDirectory() + "/foryou-preview/"
+        + QString(id).replace(QRegularExpression("[^A-Za-z0-9.-]"), "_") + ".pdf";
+}
+
+void ForYou::expect(const QString &id)
+{
+    const auto paper = item(id);
+    if (!paper.isEmpty()) m_viaBrowser.insert(id, paper);
+}
+
+void ForYou::preview(const QString &id)
+{
+    const auto paper = item(id);
+    const auto fail = [this, id](const QString &why) {
+        QMetaObject::invokeMethod(this, [this, id, why] { emit previewFailed(id, why); }, Qt::QueuedConnection);
+    };
+    if (paper.isEmpty() || !ForYouParse::isPdfAddress(paper.value("pdf").toString())) {
+        fail(ui("No free PDF to preview."));
+        return;
+    }
+    const auto path = previewPath(id);
+    if (QFileInfo(path).size() > 0) {
+        QMetaObject::invokeMethod(
+            this, [this, id, path] { emit previewReady(id, QUrl::fromLocalFile(path)); }, Qt::QueuedConnection);
+        return;
+    }
+    // One preview at a time: a newer one replaces a slower one.
+    if (m_previewReply) m_previewReply->abort();
+    if (!m_network) m_network = new QNetworkAccessManager(this);
+    QNetworkRequest request{QUrl(paper.value("pdf").toString())};
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(90000);
+    m_previewing = id;
+    emit previewingChanged();
+    m_store->startTask("forYouPreview", ui("Preview: ") + paper.value("title").toString());
+    auto *reply = m_network->get(request);
+    m_previewReply = reply;
+    connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64 total) {
+        m_store->progressTask("forYouPreview", double(received), total > 0 ? double(total) : 0);
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, id, path] {
+        reply->deleteLater();
+        if (m_previewReply == reply) m_previewReply = nullptr;
+        if (reply->error() == QNetworkReply::OperationCanceledError) return; // Another took its place.
+        m_store->finishTask("forYouPreview");
+        m_previewing.clear();
+        emit previewingChanged();
+        const auto bytes = reply->readAll();
+        if (reply->error() != QNetworkReply::NoError || !bytes.startsWith("%PDF")) {
+            emit previewFailed(id,
+                reply->error() != QNetworkReply::NoError ? reply->errorString()
+                                                         : QString(ui("the answer was not a PDF")));
+            return;
+        }
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile file(path);
         if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) {
-            m_store->notify(ui("Could not save the PDF."));
-            done();
+            emit previewFailed(id, ui("Could not save the PDF."));
             return;
         }
         file.close();
-        finishAdd(paper, target);
-        done();
+        emit previewReady(id, QUrl::fromLocalFile(path));
     });
+}
+
+void ForYou::finishDetails(const QVariantMap &paper, const QUrl &url)
+{
+    static const QRegularExpression year("^\\d{4}$");
+    m_store->updateDocumentDetails(url,
+        {{"title", paper.value("title").toString().left(300)},
+            {"authors", paper.value("authors").toString().left(1000)},
+            {"year", year.match(paper.value("year").toString()).hasMatch() ? paper.value("year") : QString()},
+            {"doi", paper.value("doi").toString().left(200)}, {"arxiv", paper.value("arxiv").toString().left(40)}});
+    const auto source = paper.value("source").toString();
+    if (source.startsWith("collection:")) m_store->setDocumentCollection(url, source.mid(11), true);
 }
 
 void ForYou::finishAdd(const QVariantMap &paper, const QUrl &file)
@@ -686,16 +839,14 @@ void ForYou::finishAdd(const QVariantMap &paper, const QUrl &file)
     m_store->addDocuments({file}, collection);
     // The same bytes may already be a paper (then the download was not kept): that one.
     const auto url = m_store->paperWithFile(file, hash);
-    if (url.isValid() && !url.isEmpty()) {
-        static const QRegularExpression year("^\\d{4}$");
-        m_store->updateDocumentDetails(url,
-            {{"title", paper.value("title").toString().left(300)},
-                {"authors", paper.value("authors").toString().left(1000)},
-                {"year", year.match(paper.value("year").toString()).hasMatch() ? paper.value("year") : QString()},
-                {"doi", paper.value("doi").toString().left(200)}, {"arxiv", paper.value("arxiv").toString().left(40)}});
-        if (!collection.isEmpty()) m_store->setDocumentCollection(url, collection, true);
-    }
-    exec("UPDATE foryou_items SET state='added',paper='{}',score=NULL,why=NULL WHERE id=?", {paper.value("id")});
+    if (url.isValid() && !url.isEmpty()) finishDetails(paper, url);
+    const auto id = paper.value("id").toString();
+    // Off the list; once more a moment later should the library be busy (syncing) just then.
+    if (!exec("UPDATE foryou_items SET state='added',paper='{}',score=NULL,why=NULL WHERE id=?", {id}))
+        QTimer::singleShot(1500, this, [this, id] {
+            exec("UPDATE foryou_items SET state='added',paper='{}',score=NULL,why=NULL WHERE id=?", {id});
+            load();
+        });
     load();
     m_store->notify(QString(ui("Added “%1” to the Library.")).arg(paper.value("title").toString()));
 }

@@ -100,7 +100,7 @@ ApplicationWindow {
     function openForYouPage(address) {
         if (window.restoreFailed || !address || !address.toString().length) return
         homeVisible = false
-        documents.openWeb(address, true)
+        documents.openWeb(address, true, "", true)
     }
     Connections { target: researchStore.forYou; function onWebRequested(address) { window.openForYouPage(address) } }
     // The Document panel's Annotations view (the reader toolbar button opens and closes it).
@@ -833,6 +833,7 @@ ApplicationWindow {
             onLibraryRequested: if (!window.restoreFailed) documents.openLibrary({})
             onLibraryFilterRequested: function(filter) { if (!window.restoreFailed) documents.openLibrary(filter) }
             onWebRequested: function(url) { if (!window.restoreFailed) documents.openWeb(url, true) }
+            onForYouPageRequested: function(url) { window.openForYouPage(url) }
             onNewNoteRequested: if (!window.restoreFailed) documents.newNote()
             onSettingsRequested: function(page) { settingsDialog.openPage(page) }
         }

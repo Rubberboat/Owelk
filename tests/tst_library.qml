@@ -1,5 +1,6 @@
 import QtQuick
 import QtTest
+import QtQuick.Pdf
 import "../qml" as App
 import "../qml/WorkspaceTree.js" as Tree
 
@@ -369,6 +370,22 @@ Item {
             workspace.documents.closeTab(page)
             view = library()
             tryCompare(view, "view", "foryou")
+            // Preview: the PDF beside the list (the list moves left); Esc closes it.
+            waitForPolish(view); wait(50)
+            view.previewForYou(forYou.items[0].id)
+            const pane = findChild(view, "forYouPreviewPane")
+            tryVerify(function() { return pane.visible && view.forYouPreviewUrl.toString().length > 0 }, 10000)
+            const pdfView = findChild(view, "forYouPreviewView")
+            tryVerify(function() { return pdfView.visible && pdfView.document.status === PdfDocument.Ready }, 10000)
+            verify(pane.width > view.width * .4)
+            // ⌘/Ctrl + wheel zooms every page at once (the scale is the view's, not one page's).
+            const scale = pdfView.renderScale
+            mouseWheel(pdfView, pdfView.width / 2, pdfView.height / 3, 0, 240, Qt.NoButton, Qt.ControlModifier)
+            tryVerify(function() { return pdfView.renderScale > scale * 1.2 })
+            mouseWheel(pdfView, pdfView.width / 2, pdfView.height / 3, 0, -240, Qt.NoButton, Qt.ControlModifier)
+            tryVerify(function() { return Math.abs(pdfView.renderScale - scale) < .01 })
+            testInput.keyClick(view, Qt.Key_Escape)
+            tryCompare(pane, "visible", false)
             // Select and Add: the PDF comes into the Library with its arXiv details.
             waitForPolish(view); wait(50)
             mouseClick(visibleChild(view, "libraryForYouSelect"))

@@ -59,6 +59,7 @@ symbols sigma
 gloss languages
 preview eye
 hidden eye-off
+forYou heart
 check check
 home house
 library library

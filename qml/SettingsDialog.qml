@@ -22,7 +22,7 @@ Dialog {
         {id: "appearance", name: "Appearance", icon: "appearance"},
         {id: "web", name: "Web", icon: "globe"},
         {id: "search", name: "Search", icon: "search"},
-        {id: "foryou", name: "For You", icon: "related"},
+        {id: "foryou", name: "For You", icon: "forYou"},
         {id: "ai", name: "AI", icon: "ai"},
         {id: "shortcuts", name: "Shortcuts", icon: "keyboard"},
         {id: "data", name: "Data", icon: "data"}

@@ -44,6 +44,8 @@ Rectangle {
     }
     // An address or a web search chosen on Home (opens a web tab).
     signal webRequested(string url)
+    // A For You paper's page, in a tab that gives way to the PDF downloaded there.
+    signal forYouPageRequested(string url)
     signal documentChosen(url source, var position)
     signal resultChosen(var result)
     // A Settings page to open (For You's gear and hint).
@@ -331,7 +333,7 @@ Rectangle {
                     }
                     contentItem: RowLayout {
                         spacing: 10
-                        Icon { name: "related"; size: Theme.fontBody + 2; color: Theme.textTertiary }
+                        Icon { name: "forYou"; size: Theme.fontBody + 2; color: Theme.textTertiary }
                         Label {
                             Layout.fillWidth: true
                             text: "Follow a collection or a topic to see new papers here"
@@ -390,8 +392,9 @@ Rectangle {
                                     IconButton {
                                         objectName: "homeForYouAdd-" + suggestion.index
                                         visible: !suggestion.adding
-                                        icon.name: "download"; description: "Add to the Library"
-                                        onClicked: forYouBox.forYou.add([suggestion.modelData.id])
+                                        icon.name: suggestion.modelData.hasPdf ? "download" : "external"
+                                        description: suggestion.modelData.hasPdf ? "Add to the Library" : "No free PDF: open its page"
+                                        onClicked: suggestion.modelData.hasPdf ? forYouBox.forYou.add([suggestion.modelData.id]) : (forYouBox.forYou.expect(suggestion.modelData.id), root.forYouPageRequested(suggestion.modelData.url))
                                     }
                                     IconButton {
                                         objectName: "homeForYouDismiss-" + suggestion.index
