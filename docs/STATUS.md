@@ -47,7 +47,7 @@
 - Captures를 주석으로 통합: 문장 캡처는 하이라이트, 영역 캡처는 새 영역 주석(캡션·메모 유지), 웹 캡처는 그림이 든 노트가 됩니다(스키마 15, 같은 ID·링크 유지). 새 `Mark Region` 도구, AI의 PDF·웹 영역 첨부는 저장하지 않는 그림.
 - Document 패널 네 칸: Contents(Outline·Pages), Annotations(이 논문에 대한 노트 + 모든 주석; 리더 옆 메모 열을 대신함), Symbols, Related(Library·Cites·Cited by). 새 노트는 논문 옆 분할에 링크와 함께 열림.
 - AI 답변 Save as Note: 질문 인용, 이 논문의 노트에 덧붙이기. 노트의 AI 링크는 휴지통이면 Restore 안내, 영구 삭제면 회색 `Deleted conversation`.
-- Library: Papers · Notes · Trash, 논문·노트·AI 대화를 함께 담는 휴지통(지울 항목을 링크한 노트가 있으면 먼저 알림, 기간이 지나면 노트도 자동 삭제). Library 패널은 Open Library·펼쳐지는 Favorites·Collections·Tags·Notes(+).
+- Library: Papers · Notes · Trash, 논문·노트·AI 대화를 함께 담는 휴지통(지울 항목을 링크한 노트가 있으면 먼저 알림, 기간이 지나면 노트도 자동 삭제). Library 패널은 Open Library·펼쳐지는 Favorites·Collections·Tags·Notes(+). Collection을 누르면 그 자리에서 펼쳐져 논문이 모두 보이고(다시 누르면 접힘, 펼친 상태 기억, 원본 x-or-b에서 가져옴) 논문을 누르면 열림; 논문 우클릭은 논문 메뉴(이 Collection에서 빼기 포함), Collection 우클릭의 Open in Library는 그대로; 펼친 논문 줄에 놓은 것은 그 Collection으로.
 - Home: 검색창 하나(라이브러리 결과와 웹 행: 주소·`arxiv:` 같은 엔진 접두어면 웹이 맨 위, 단어면 맨 아래, Ctrl/⌘+Return은 웹, 엔진 칩은 칸 오른쪽 끝, Cmd+K 팔레트도 같은 웹 행), 이어 읽기 카드, Collections | Recent Papers, Notes | AI Conversations(마지막으로 연 순서, 고정 자리 안에서 상자가 항목 수만큼). 본문 색인 상태는 색인 중·실패일 때만 보이고 Settings → Search로 옮김.
 
 ## 지난 단계 (2026-10-09): 어려운 부분 읽기 돕기
