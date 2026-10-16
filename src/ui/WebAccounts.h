@@ -34,6 +34,9 @@ public:
     // The Firefox the sign-in pages see (the current one on this kind of computer).
     static QByteArray firefoxAgent();
     static int firefoxVersion(const QDate &today);
+    // What the sign-in pages' scripts see of the browser, as Firefox too (navigator, no window.chrome), so
+    // that it agrees with what their requests say; run in those pages only.
+    Q_INVOKABLE QString firefoxScript() const;
     // Google's "This browser or app may not be secure" page.
     Q_INVOKABLE static bool refusedPage(const QUrl &url);
     // Whether a request to this host goes as Firefox (Google's sign-in pages only).

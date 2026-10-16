@@ -235,8 +235,28 @@ Flickable {
             if (typeof webAccounts !== "undefined") {
                 webAccounts.firefoxForGoogle = researchStore.setting("web.googleAsFirefox", "1") === "1"
                 webAccounts.watch(profile)
+                root.applyGoogleScript()
             }
         }
+    }
+    // As Firefox, the sign-in pages' scripts see Firefox too (WebAccounts::firefoxScript), so what the page
+    // reads agrees with what its requests say.
+    readonly property string googleScriptName: "owelk-google-as-firefox"
+    function applyGoogleScript() {
+        const scripts = webProfile.userScripts
+        scripts.find(googleScriptName).forEach(function(s) { scripts.remove(s) })
+        if (!webAccounts.firefoxForGoogle) return
+        const script = WebEngine.script()
+        script.name = googleScriptName
+        script.sourceCode = webAccounts.firefoxScript()
+        script.injectionPoint = WebEngineScript.DocumentCreation
+        script.worldId = WebEngineScript.MainWorld
+        script.runsOnSubFrames = true
+        scripts.insert(script)
+    }
+    Connections {
+        target: typeof webAccounts !== "undefined" ? webAccounts : null
+        function onChanged() { if (root.webProfile.userScripts.find(root.googleScriptName).length !== (webAccounts.firefoxForGoogle ? 1 : 0)) root.applyGoogleScript() }
     }
     // Route an address to the right surface: local PDFs open in the reader, web addresses in a web tab
     // (a PDF on the web downloads there and then opens in the reader).

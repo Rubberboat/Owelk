@@ -57,11 +57,16 @@ Item {
             // Google's sign-in pages go as Firefox unless turned off (kept as a setting).
             const firefox = visibleChild(settings.contentItem, "googleFirefoxSwitch")
             verify(firefox.checked && webAccounts.firefoxForGoogle)
+            // The sign-in pages' scripts see Firefox too (only there: other pages still see Chrome).
+            compare(d.webProfile.userScripts.find(d.googleScriptName).length, 1)
+            verify(webAccounts.firefoxScript().indexOf("accounts.google.com") > 0)
             firefox.toggle(); firefox.toggled()
             verify(!webAccounts.firefoxForGoogle)
             compare(researchStore.setting("web.googleAsFirefox"), "0")
+            compare(d.webProfile.userScripts.find(d.googleScriptName).length, 0)
             firefox.toggle(); firefox.toggled()
             verify(webAccounts.firefoxForGoogle)
+            compare(d.webProfile.userScripts.find(d.googleScriptName).length, 1)
             // What was kept from before is read from the profile's cookie file (the engine tells only once a
             // page has loaded).
             verify(testInput.keptGoogleSignIn(true))
@@ -69,6 +74,19 @@ Item {
             // Signed in in a web tab (Google's cookie arrives in the profile): Signed in, with Sign Out.
             verify(d.openWeb(testInput.webFixture("/page.html").toString(), true))
             tryCompare(activeTab(), "title", "Owelk Test Page", 15000)
+            let agent = ""
+            webPane().view.runJavaScript("navigator.userAgent", function(result) { agent = result })
+            tryVerify(function() { return agent.length > 0 })
+            verify(agent.indexOf("Firefox") < 0 && agent.indexOf("Chrome") > 0, agent)
+            // What the script does on Google's sign-in page, tried here: Firefox all through.
+            let seen = ""
+            webPane().view.runJavaScript(webAccounts.firefoxScript().replace('location.hostname !== "accounts.google.com"', 'false')
+                + "; [navigator.userAgent, navigator.vendor, typeof navigator.userAgentData, typeof window.chrome].join('|')",
+                function(result) { seen = result })
+            tryVerify(function() { return seen.length > 0 })
+            const parts = seen.split("|")
+            verify(parts[0].indexOf("Firefox/") > 0 && parts[0].indexOf("Chrome") < 0, parts[0])
+            compare(parts.slice(1), ["", "undefined", "undefined"])
             d.closeTab(activeTab().id)
             testInput.setWebCookie(d.webProfile, "SID", ".google.com", "https://accounts.google.com/")
             testInput.setWebCookie(d.webProfile, "LOGIN_INFO", ".youtube.com", "https://www.youtube.com/")

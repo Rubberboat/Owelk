@@ -49,6 +49,27 @@ QByteArray WebAccounts::firefoxAgent()
     return "Mozilla/5.0 (" + system + "; rv:" + v + ") Gecko/20100101 Firefox/" + v;
 }
 
+QString WebAccounts::firefoxScript() const
+{
+#if defined(Q_OS_MACOS)
+    const QString appVersion = "5.0 (Macintosh)", platform = "MacIntel", oscpu = "Intel Mac OS X 10.15";
+#elif defined(Q_OS_WIN)
+    const QString appVersion = "5.0 (Windows)", platform = "Win32", oscpu = "Windows NT 10.0; Win64; x64";
+#else
+    const QString appVersion = "5.0 (X11)", platform = "Linux x86_64", oscpu = "Linux x86_64";
+#endif
+    return QStringLiteral(R"((function () {
+    if (location.hostname !== "accounts.google.com") return;
+    var values = {userAgent: "%1", appVersion: "%2", platform: "%3", oscpu: "%4", vendor: "", productSub: "20100101",
+        buildID: "20181001000000", userAgentData: undefined};
+    Object.keys(values).forEach(function (key) {
+        try { Object.defineProperty(Navigator.prototype, key, {get: function () { return values[key]; }, configurable: true}); } catch (e) {}
+    });
+    try { delete window.chrome; } catch (e) {}
+})();)")
+        .arg(QString::fromLatin1(firefoxAgent()), appVersion, platform, oscpu);
+}
+
 bool WebAccounts::refusedPage(const QUrl &url)
 {
     return signInHost(url.host()) && url.path().contains("/signin/rejected");
