@@ -310,6 +310,20 @@ public slots:
                             });
                             return;
                         }
+                    } else if (head.contains("/graph/v1/author/search")) {
+                        // Semantic Scholar for For You's people: one researcher by that name.
+                        type = "application/json";
+                        body = R"({"total":1,"data":[{"authorId":"77","name":"Grace Hopper","affiliations":["Navy"],"paperCount":12,"hIndex":5}]})";
+                    } else if (head.contains("/graph/v1/author/")) {
+                        type = "application/json";
+                        body = QStringLiteral(R"({"data":[{"paperId":"g1","publicationDate":"%1"}]})")
+                                   .arg(QDate::currentDate().toString(Qt::ISODate))
+                                   .toUtf8();
+                    } else if (head.contains("/graph/v1/paper/batch")) {
+                        type = "application/json";
+                        body = QStringLiteral(R"([{"paperId":"g1","title":"Compilers Today","authors":[{"name":"Grace Hopper"}],"publicationDate":"%1","externalIds":{"DOI":"10.7/compilers"}}])")
+                                   .arg(QDate::currentDate().toString(Qt::ISODate))
+                                   .toUtf8();
                     } else if (head.contains("/graph/v1/paper/")) {
                         // Semantic Scholar: one reference and two citing papers.
                         type = "application/json";

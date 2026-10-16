@@ -839,7 +839,7 @@ Rectangle {
                         Label {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                            text: !root.forYou.configured ? "Follow a collection or a topic to see new papers here"
+                            text: !root.forYou.configured ? "Follow a topic, a person or a collection to see new papers here"
                                 : root.forYou.checking ? "Looking for new papers…"
                                 : root.forYou.problem.length ? root.forYou.problem
                                 : root.forYou.lastChecked.getTime && !isNaN(root.forYou.lastChecked.getTime())

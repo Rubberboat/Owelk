@@ -16,6 +16,7 @@
 #include <QNetworkReply>
 #include <QRegularExpression>
 #include <QTimer>
+#include <QUrlQuery>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -124,32 +125,79 @@ bool isPdfAddress(const QString &address)
     return url.isValid() && url.scheme().startsWith("http") && !url.host().endsWith("doi.org");
 }
 
+QVariantMap s2Paper(const QJsonObject &paper)
+{
+    const auto title = paper.value("title").toString().simplified();
+    if (title.isEmpty()) return {};
+    QStringList authors;
+    for (const auto &author : paper.value("authors").toArray())
+        authors << author.toObject().value("name").toString().simplified();
+    const auto ids = paper.value("externalIds").toObject();
+    const auto arxiv = arxivId(ids.value("ArXiv").toString()), doi = ids.value("DOI").toString().trimmed();
+    const auto date = paper.value("publicationDate").toString();
+    const auto year = paper.value("year").isDouble() ? QString::number(paper.value("year").toInt()) : date.left(4);
+    auto pdf = paper.value("openAccessPdf").toObject().value("url").toString();
+    if (!ForYouParse::isPdfAddress(pdf)) pdf.clear(); // A DOI link leads to the publisher's page, not a PDF.
+    if (pdf.isEmpty() && !arxiv.isEmpty()) pdf = "https://arxiv.org/pdf/" + arxiv;
+    return QVariantMap{{"title", title}, {"authors", authors.join(", ")}, {"date", date}, {"year", year},
+        {"abstract", paper.value("abstract").toString().simplified()}, {"arxiv", arxiv}, {"doi", doi}, {"pdf", pdf},
+        {"paperId", paper.value("paperId").toString()},
+        {"url",
+            !arxiv.isEmpty()     ? "https://arxiv.org/abs/" + arxiv
+                : !doi.isEmpty() ? "https://doi.org/" + doi
+                                 : paper.value("url").toString()}};
+}
+
 QVariantList recommendations(const QByteArray &json)
 {
     QVariantList list;
-    for (const auto &value : QJsonDocument::fromJson(json).object().value("recommendedPapers").toArray()) {
-        const auto paper = value.toObject();
-        const auto title = paper.value("title").toString().simplified();
-        if (title.isEmpty()) continue;
-        QStringList authors;
-        for (const auto &author : paper.value("authors").toArray())
-            authors << author.toObject().value("name").toString().simplified();
-        const auto ids = paper.value("externalIds").toObject();
-        const auto arxiv = arxivId(ids.value("ArXiv").toString()), doi = ids.value("DOI").toString().trimmed();
-        const auto date = paper.value("publicationDate").toString();
-        const auto year = paper.value("year").isDouble() ? QString::number(paper.value("year").toInt()) : date.left(4);
-        auto pdf = paper.value("openAccessPdf").toObject().value("url").toString();
-        if (!ForYouParse::isPdfAddress(pdf)) pdf.clear(); // A DOI link leads to the publisher's page, not a PDF.
-        if (pdf.isEmpty() && !arxiv.isEmpty()) pdf = "https://arxiv.org/pdf/" + arxiv;
-        list.append(QVariantMap{{"title", title}, {"authors", authors.join(", ")}, {"date", date}, {"year", year},
-            {"abstract", paper.value("abstract").toString().simplified()}, {"arxiv", arxiv}, {"doi", doi}, {"pdf", pdf},
-            {"paperId", paper.value("paperId").toString()},
-            {"url",
-                !arxiv.isEmpty()     ? "https://arxiv.org/abs/" + arxiv
-                    : !doi.isEmpty() ? "https://doi.org/" + doi
-                                     : paper.value("url").toString()}});
+    for (const auto &value : QJsonDocument::fromJson(json).object().value("recommendedPapers").toArray())
+        if (const auto paper = s2Paper(value.toObject()); !paper.isEmpty()) list.append(paper);
+    return list;
+}
+
+QVariantList paperBatch(const QByteArray &json)
+{
+    QVariantList list;
+    for (const auto &value : QJsonDocument::fromJson(json).array()) // A paper it does not know comes as null.
+        if (const auto paper = s2Paper(value.toObject()); !paper.isEmpty()) list.append(paper);
+    return list;
+}
+
+QVariantList people(const QByteArray &json)
+{
+    QVariantList list;
+    for (const auto &value : QJsonDocument::fromJson(json).object().value("data").toArray()) {
+        const auto author = value.toObject();
+        const auto id = author.value("authorId").toString(), name = author.value("name").toString().simplified();
+        if (id.isEmpty() || name.isEmpty()) continue;
+        QStringList places, parts;
+        for (const auto &place : author.value("affiliations").toArray())
+            if (const auto text = place.toString().simplified(); !text.isEmpty()) places << text;
+        if (!places.isEmpty()) parts << places.join(", ");
+        const int papers = author.value("paperCount").toInt();
+        if (papers > 0) parts << QString::number(papers) + (papers == 1 ? " paper" : " papers");
+        if (author.value("hIndex").toInt() > 0) parts << "h-index " + QString::number(author.value("hIndex").toInt());
+        list.append(QVariantMap{{"id", id}, {"name", name}, {"detail", parts.join(" · ")}, {"papers", papers}});
     }
     return list;
+}
+
+QStringList recentPaperIds(const QByteArray &json, const QDate &oldest, int limit)
+{
+    QList<QPair<QDate, QString>> dated;
+    for (const auto &value : QJsonDocument::fromJson(json).object().value("data").toArray()) {
+        const auto paper = value.toObject();
+        // Only dated papers: a year alone cannot say whether one is new.
+        const auto date = QDate::fromString(paper.value("publicationDate").toString(), Qt::ISODate);
+        if (date.isValid() && date >= oldest && !paper.value("paperId").toString().isEmpty())
+            dated.append({date, paper.value("paperId").toString()});
+    }
+    std::stable_sort(dated.begin(), dated.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    QStringList ids;
+    for (const auto &entry : std::as_const(dated))
+        if (ids.size() < limit) ids << entry.second;
+    return ids;
 }
 }
 
@@ -210,6 +258,11 @@ QString ForYou::interests() const
         for (const auto &paper : m_store->libraryDocuments({{"collection", collection.value("id")}, {"limit", 8}}))
             titles << paper.toMap().value("name").toString().left(160);
         lines << "- Collection \"" + collection.value("name").toString() + "\": " + titles.join("; ");
+    }
+    for (const auto &value : people()) {
+        const auto person = value.toMap();
+        lines << "- Researcher: " + person.value("name").toString()
+                + (person.value("detail").toString().isEmpty() ? QString() : " (" + person.value("detail").toString() + ")");
     }
     return lines.join('\n');
 }
@@ -410,11 +463,88 @@ int ForYou::usablePapers(const QString &collectionId) const
     return int(m_store->collectionPaperKeys(collectionId, 1000).size());
 }
 
+QVariantList ForYou::people() const
+{
+    QVariantList list;
+    QSqlQuery query(m_store->m_database);
+    query.exec("SELECT id,name,detail FROM foryou_people ORDER BY position,name");
+    while (query.next())
+        list.append(QVariantMap{{"id", query.value(0)}, {"name", query.value(1)}, {"detail", query.value(2)}});
+    return list;
+}
+bool ForYou::followingPerson(const QString &id) const
+{
+    QSqlQuery query(m_store->m_database);
+    query.prepare("SELECT 1 FROM foryou_people WHERE id=?");
+    query.addBindValue(id);
+    return query.exec() && query.next();
+}
+void ForYou::followPerson(const QVariantMap &person, bool on)
+{
+    const auto id = person.value("id").toString().trimmed();
+    if (id.isEmpty()) return;
+    if (!on) {
+        exec("DELETE FROM foryou_people WHERE id=?", {id});
+    } else {
+        const auto name = person.value("name").toString().simplified().left(200);
+        const auto detail = person.value("detail").toString().simplified().left(300);
+        QSqlQuery last(m_store->m_database);
+        const int position = last.exec("SELECT coalesce(max(position),-1)+1 FROM foryou_people") && last.next()
+            ? last.value(0).toInt()
+            : 0;
+        // Only a change is written, so syncing sends only it.
+        exec("INSERT INTO foryou_people(id,name,detail,position) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+             "name=excluded.name,detail=excluded.detail WHERE name<>excluded.name OR detail<>excluded.detail",
+            {id, name.isNull() ? QString("") : name, detail.isNull() ? QString("") : detail, position});
+    }
+    emit settingsChanged();
+}
+QString ForYou::graphBase() const
+{
+    return m_store->setting("forYou.graphBaseUrl", "https://api.semanticscholar.org/graph/v1");
+}
+void ForYou::findPeople(const QString &name)
+{
+    // Semantic Scholar finds no one for hyphenated words: spaces instead.
+    const auto words = QString(name).replace('-', ' ').simplified();
+    if (words.isEmpty()) {
+        QMetaObject::invokeMethod(
+            this, [this, name] { emit peopleFound(name, {}, {}); }, Qt::QueuedConnection);
+        return;
+    }
+    if (!m_network) m_network = new QNetworkAccessManager(this);
+    QUrl url(graphBase() + "/author/search");
+    QUrlQuery query;
+    query.addQueryItem("query", words);
+    query.addQueryItem("fields", "name,affiliations,paperCount,hIndex");
+    query.addQueryItem("limit", "12");
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
+    request.setTransferTimeout(30000);
+    auto *reply = m_network->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, name] {
+        reply->deleteLater();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError || status >= 400) {
+            emit peopleFound(name, {},
+                status == 429 ? ui("Semantic Scholar is busy. Try again in a minute.")
+                              : ui("Semantic Scholar did not answer."));
+            return;
+        }
+        // Most papers first: the person meant is usually the one with the longer record.
+        auto list = ForYouParse::people(reply->readAll());
+        std::stable_sort(list.begin(), list.end(),
+            [](const QVariant &a, const QVariant &b) { return a.toMap().value("papers").toInt() > b.toMap().value("papers").toInt(); });
+        emit peopleFound(name, list, {});
+    });
+}
+
 bool ForYou::configured() const
 {
     QSqlQuery query(m_store->m_database);
     return query.exec("SELECT 1 FROM foryou_topics WHERE enabled=1 UNION ALL SELECT 1 FROM foryou_follows f JOIN "
-                      "collections c ON c.id=f.collection_id LIMIT 1")
+                      "collections c ON c.id=f.collection_id UNION ALL SELECT 1 FROM foryou_people LIMIT 1")
         && query.next();
 }
 QDateTime ForYou::since() const
@@ -526,6 +656,51 @@ void ForYou::refresh()
                      runNext();
                  });
              }});
+    }
+    // Followed people: their papers dated within the period, newest first (the list of dates, then the
+    // details of the new ones).
+    const auto graph = graphBase();
+    for (const auto &value : people()) {
+        const auto person = value.toMap();
+        const auto id = person.value("id").toString();
+        QUrl list(graph + "/author/" + QString::fromLatin1(QUrl::toPercentEncoding(id)) + "/papers");
+        list.setQuery(QStringLiteral("fields=publicationDate&limit=1000"));
+        m_jobs.append({"person:" + id, person.value("name").toString(), [this, list, graph, limit, request](Job job) {
+                           const auto failed = [this, job](QNetworkReply *reply) {
+                               const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                               if (reply->error() == QNetworkReply::NoError && status < 400) return false;
+                               m_problems << (status == 429 ? ui("Semantic Scholar is busy. Try again in a minute.")
+                                                            : QString(ui("Semantic Scholar did not answer for “%1”."))
+                                                                  .arg(job.sourceName));
+                               return true;
+                           };
+                           auto *reply = m_network->get(request(list));
+                           connect(reply, &QNetworkReply::finished, this, [=, this] {
+                               reply->deleteLater();
+                               if (failed(reply)) {
+                                   runNext();
+                                   return;
+                               }
+                               const auto ids = ForYouParse::recentPaperIds(reply->readAll(), since().date(), limit);
+                               if (ids.isEmpty()) {
+                                   runNext();
+                                   return;
+                               }
+                               QUrl batch(graph + "/paper/batch");
+                               batch.setQuery(QStringLiteral("fields=%1").arg(paperFields));
+                               auto call = request(batch);
+                               call.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+                               auto *details = m_network->post(call,
+                                   QJsonDocument(QJsonObject{{"ids", QJsonArray::fromStringList(ids)}})
+                                       .toJson(QJsonDocument::Compact));
+                               connect(details, &QNetworkReply::finished, this, [=, this] {
+                                   details->deleteLater();
+                                   if (!failed(details))
+                                       found(ForYouParse::paperBatch(details->readAll()), job.source, job.sourceName);
+                                   runNext();
+                               });
+                           });
+                       }});
     }
     if (m_jobs.isEmpty()) {
         m_problem = m_problems.join(' ');

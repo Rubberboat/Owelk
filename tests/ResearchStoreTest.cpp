@@ -1006,9 +1006,9 @@ private slots:
     }
     void forYouSyncsBetweenComputers()
     {
-        // Topics, followed collections, the papers found with the AI's reasons and what became of them, and
-        // when it last looked, live in the library (schema 18), so another computer gets them: nothing is
-        // looked for or sent to the AI twice, and what is dismissed on one goes on the other.
+        // Topics, followed collections and people, the papers found with the AI's reasons and what became of
+        // them, and when it last looked, live in the library (schemas 18 and 19), so another computer gets
+        // them: nothing is looked for or sent to the AI twice, and what is dismissed on one goes on the other.
         QTemporaryDir directory;
         const auto drive = directory.filePath("Drive");
         QVERIFY(QDir().mkpath(drive));
@@ -1019,12 +1019,13 @@ private slots:
             WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", true);
             QSqlQuery version(db.db);
             QVERIFY(version.exec("PRAGMA user_version") && version.next());
-            QCOMPARE(version.value(0).toInt(), 18);
+            QCOMPARE(version.value(0).toInt(), 19);
         }
         auto *forYou = qobject_cast<ForYou *>(mac.forYou());
         const auto odometry = mac.createCollection("Odometry");
         QVERIFY(forYou->saveTopics({QVariantMap{{"words", "SLAM"}, {"categories", "cs.RO"}}}));
         forYou->follow(odometry, true);
+        forYou->followPerson({{"id", "1741101"}, {"name", "Ada Lovelace"}, {"detail", "Analytical Engines"}}, true);
         {
             // A paper found earlier, already explained by the AI.
             WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", false);
@@ -1054,6 +1055,8 @@ private slots:
         QCOMPARE(other->topics().size(), 1);
         QCOMPARE(other->topics()[0].toMap()["words"].toString(), QString("SLAM"));
         QVERIFY(other->following(odometry));
+        QVERIFY(other->followingPerson("1741101"));
+        QCOMPARE(other->people()[0].toMap()["name"].toString(), QString("Ada Lovelace"));
         QCOMPARE(other->items().size(), 1);
         QCOMPARE(other->items()[0].toMap()["why"].toString(), QString("On SLAM."));
         QCOMPARE(other->lastChecked(), forYou->lastChecked());
@@ -1061,6 +1064,92 @@ private slots:
         QVERIFY(laptop.librarySync()->syncBlocking().error.isEmpty());
         QVERIFY(mac.librarySync()->syncBlocking().error.isEmpty());
         QCOMPARE(forYou->items().size(), 0);
+    }
+    void forYouFollowsPeople()
+    {
+        // The parts: an author search, an author's paper dates, a batch of papers.
+        const auto people = ForYouParse::people(
+            R"({"total":2,"data":[{"authorId":"1","name":"Ada  Lovelace","affiliations":["Analytical Engines"],"paperCount":42,"hIndex":7},{"authorId":"2","name":"Ada Lovelace","paperCount":1}]})");
+        QCOMPARE(people.size(), 2);
+        QCOMPARE(people[0].toMap()["name"].toString(), QString("Ada Lovelace"));
+        QCOMPARE(people[0].toMap()["detail"].toString(), QString("Analytical Engines · 42 papers · h-index 7"));
+        QCOMPARE(people[1].toMap()["detail"].toString(), QString("1 paper"));
+        const auto today = QDate::currentDate();
+        const auto dates = QStringLiteral(R"({"data":[{"paperId":"old","publicationDate":"2001-01-01"},{"paperId":"a","publicationDate":"%1"},{"paperId":"undated","year":%3},{"paperId":"b","publicationDate":"%2"}]})")
+                               .arg(today.addDays(-2).toString(Qt::ISODate), today.toString(Qt::ISODate))
+                               .arg(today.year())
+                               .toUtf8();
+        QCOMPARE(ForYouParse::recentPaperIds(dates, today.addDays(-7), 10), QStringList({"b", "a"}));
+        QCOMPARE(ForYouParse::recentPaperIds(dates, today.addDays(-7), 1), QStringList({"b"}));
+        QCOMPARE(ForYouParse::paperBatch(R"([{"paperId":"b","title":"New Engine","externalIds":{"DOI":"10.1/b"}},null])").size(), 1);
+        // A stand-in Semantic Scholar: one person, two papers this week and an old one.
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QStringList requests;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            auto *buffer = new QByteArray;
+            connect(socket, &QObject::destroyed, [buffer] { delete buffer; });
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                buffer->append(socket->readAll());
+                const auto end = buffer->indexOf("\r\n\r\n");
+                if (end < 0) return;
+                const auto length = QRegularExpression("Content-Length: (\\d+)", QRegularExpression::CaseInsensitiveOption)
+                                        .match(QString::fromLatin1(buffer->left(end)))
+                                        .captured(1)
+                                        .toInt();
+                if (buffer->size() < end + 4 + length) return;
+                const auto head = QString::fromUtf8(buffer->left(end)).section("\r\n", 0, 0);
+                requests << QString::fromUtf8(*buffer);
+                QByteArray body;
+                if (head.contains("/author/search"))
+                    body = R"({"total":1,"data":[{"authorId":"77","name":"Grace Hopper","affiliations":["Navy"],"paperCount":12}]})";
+                else if (head.contains("/author/77/papers"))
+                    body = QStringLiteral(R"({"data":[{"paperId":"p1","publicationDate":"%1"},{"paperId":"p2","publicationDate":"%2"},{"paperId":"p0","publicationDate":"1952-05-01"}]})")
+                               .arg(today.toString(Qt::ISODate), today.addDays(-1).toString(Qt::ISODate))
+                               .toUtf8();
+                else if (head.contains("/paper/batch"))
+                    body = QStringLiteral(R"([{"paperId":"p1","title":"Compilers Today","authors":[{"name":"Grace Hopper"}],"publicationDate":"%1","externalIds":{"ArXiv":"2610.00077"}},{"paperId":"p2","title":"Bugs Found","authors":[{"name":"Grace Hopper"}],"publicationDate":"%2","externalIds":{"DOI":"10.7/bugs"}}])")
+                               .arg(today.toString(Qt::ISODate), today.addDays(-1).toString(Qt::ISODate))
+                               .toUtf8();
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        store.setSetting("forYou.graphBaseUrl", QStringLiteral("http://127.0.0.1:%1/graph/v1").arg(server.serverPort()));
+        store.setSetting("forYou.delayMs", "10");
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        QVERIFY(!forYou->configured());
+        // Found by name (only the name goes out), then followed.
+        QSignalSpy found(forYou, &ForYou::peopleFound);
+        forYou->findPeople("Grace-Hopper");
+        QTRY_COMPARE_WITH_TIMEOUT(found.size(), 1, 10000);
+        QVERIFY(requests.last().contains("query=Grace%20Hopper") || requests.last().contains("query=Grace+Hopper"));
+        const auto results = found[0][1].toList();
+        QCOMPARE(results.size(), 1);
+        QCOMPARE(results[0].toMap()["detail"].toString(), QString("Navy · 12 papers"));
+        forYou->followPerson(results[0].toMap(), true);
+        QVERIFY(forYou->followingPerson("77"));
+        QVERIFY(forYou->configured());
+        // A check brings their papers of the period, under their name.
+        forYou->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!forYou->checking(), 10000);
+        QVERIFY2(forYou->problem().isEmpty(), qPrintable(forYou->problem()));
+        QVERIFY(requests.join('\n').contains("\"ids\":[\"p1\",\"p2\"]"));
+        QCOMPARE(forYou->items().size(), 2);
+        for (const auto &value : forYou->items()) {
+            QCOMPARE(value.toMap()["source"].toString(), QString("person:77"));
+            QCOMPARE(value.toMap()["sourceName"].toString(), QString("Grace Hopper"));
+        }
+        // No longer followed: nothing more is looked for.
+        forYou->followPerson({{"id", "77"}}, false);
+        QVERIFY(!forYou->followingPerson("77"));
+        QVERIFY(!forYou->configured());
     }
     void forYouTopicsTravelAfterAnUpgradeWhileSyncing()
     {

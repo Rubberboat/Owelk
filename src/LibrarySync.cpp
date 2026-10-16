@@ -40,7 +40,8 @@ const QList<Table> &tables()
         {"collection_documents", {"collection_id", "document_id"}}, {"document_tags", {"document_id", "tag_id"}},
         {"links", {"from_kind", "from_id", "to_kind", "to_id"}}, {"ai_topics", {"id"}}, {"ai_threads", {"id"}},
         {"ai_messages", {"id"}}, {"ai_responses", {"id"}}, {"foryou_topics", {"id"}},
-        {"foryou_follows", {"collection_id"}}, {"foryou_items", {"id"}}, {"foryou_meta", {"key"}}};
+        {"foryou_follows", {"collection_id"}}, {"foryou_people", {"id"}}, {"foryou_items", {"id"}},
+        {"foryou_meta", {"key"}}};
     return list;
 }
 

@@ -172,6 +172,26 @@ Item {
             verify(!forYou.configured)
             visualChild(settings.contentItem, "forYouRemoveTopic-0").clicked()
             compare(forYou.topics().length, 0)
+            // People: found by name, then followed; and no longer.
+            const graph = researchStore.setting("forYou.graphBaseUrl")
+            researchStore.setSetting("forYou.graphBaseUrl", testInput.webFixture("/graph/v1").toString())
+            const person = visualChild(settings.contentItem, "forYouPersonName")
+            person.text = "Grace Hopper"
+            visualChild(settings.contentItem, "forYouFindPeople").clicked()
+            let followPerson = null
+            tryVerify(function() { followPerson = visualChild(settings.contentItem, "forYouFollowPerson-0"); return followPerson !== null && followPerson.visible }, 10000)
+            compare(visualChild(settings.contentItem, "forYouFoundPerson-0").label, "Grace Hopper")
+            compare(visualChild(settings.contentItem, "forYouFoundPerson-0").detail, "Navy · 12 papers · h-index 5")
+            followPerson.clicked()
+            tryVerify(function() { return forYou.followingPerson("77") })
+            tryVerify(function() { return visualChild(settings.contentItem, "forYouPerson-0") !== null })
+            compare(visualChild(settings.contentItem, "forYouPerson-0").label, "Grace Hopper")
+            compare(person.text, "")
+            verify(forYou.configured)
+            visualChild(settings.contentItem, "forYouRemovePerson-0").clicked()
+            tryVerify(function() { return !forYou.followingPerson("77") })
+            verify(!forYou.configured)
+            researchStore.setSetting("forYou.graphBaseUrl", graph)
             // A collection with no arXiv ID or DOI cannot be followed yet.
             let follow = null
             tryVerify(function() { follow = visualChild(settings.contentItem, "forYouFollow-Follow Me"); return follow !== null })

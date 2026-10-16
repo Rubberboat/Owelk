@@ -15,7 +15,7 @@ class ResearchStore;
 
 // For You: new papers in the fields the reader follows. Topics (words and arXiv categories) are looked up
 // on arXiv; followed collections ask Semantic Scholar for papers like theirs (by their arXiv IDs and
-// DOIs). Papers found wait until added to the Library (the PDF is downloaded, named and filed) or
+// DOIs); followed people (Semantic Scholar authors, found by name) bring their own new papers. Papers found wait until added to the Library (the PDF is downloaded, named and filed) or
 // dismissed; papers already in the Library or dismissed are not shown again. Checked when asked and, when
 // on, once a day while Owelk runs. Topics, followed collections, the papers found with the AI's reasons and
 // what became of them live in the library (foryou_* tables), so they sync; how often and how far back to
@@ -61,6 +61,13 @@ public:
     Q_INVOKABLE void follow(const QString &collectionId, bool on);
     // How many of a collection's papers can be looked up (they have an arXiv ID or a DOI).
     Q_INVOKABLE int usablePapers(const QString &collectionId) const;
+    // People followed: [{id (a Semantic Scholar author ID), name, detail (affiliation, papers, h-index)}].
+    Q_INVOKABLE QVariantList people() const;
+    Q_INVOKABLE bool followingPerson(const QString &id) const;
+    Q_INVOKABLE void followPerson(const QVariantMap &person, bool on);
+    // Researchers by that name (Semantic Scholar's author search), the longest records first: answered by
+    // peopleFound(name, [{id, name, detail, papers}], error). Sends only the name.
+    Q_INVOKABLE void findPeople(const QString &name);
     // Where the papers shown came from: [{key, name, count}].
     Q_INVOKABLE QVariantList sources() const;
     Q_INVOKABLE void refresh();
@@ -92,6 +99,7 @@ signals:
     void previewReady(const QString &id, const QUrl &file);
     void previewFailed(const QString &id, const QString &why);
     void webRequested(const QUrl &url);
+    void peopleFound(const QString &name, const QVariantList &people, const QString &error);
 
 private:
     struct Job {
@@ -120,6 +128,7 @@ private:
     void load();
     bool exec(const QString &sql, const QVariantList &values) const;
     QDateTime since() const;
+    QString graphBase() const;
     ResearchStore *m_store;
     QNetworkAccessManager *m_network = nullptr;
     QTimer *m_daily = nullptr;
@@ -152,6 +161,12 @@ QString arxivQuery(const QString &words, const QString &categories, const QDateT
 // Papers in an arXiv API answer (Atom) or a Semantic Scholar recommendations answer (JSON).
 QVariantList arxivEntries(const QByteArray &atom);
 QVariantList recommendations(const QByteArray &json);
+// The papers of a Semantic Scholar paper batch (POST /paper/batch), unknown ones left out.
+QVariantList paperBatch(const QByteArray &json);
+// Researchers in a Semantic Scholar author search: {id, name, detail, papers}.
+QVariantList people(const QByteArray &json);
+// From an author's paper list, the papers dated on or after oldest, newest first, at most limit.
+QStringList recentPaperIds(const QByteArray &json, const QDate &oldest, int limit);
 // An address a PDF can be fetched from (not a DOI link, which leads to a publisher's page).
 bool isPdfAddress(const QString &address);
 }

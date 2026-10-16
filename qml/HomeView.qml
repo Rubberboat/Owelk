@@ -336,7 +336,7 @@ Rectangle {
                         Icon { name: "forYou"; size: Theme.fontBody + 2; color: Theme.textTertiary }
                         Label {
                             Layout.fillWidth: true
-                            text: "Follow a collection or a topic to see new papers here"
+                            text: "Follow a topic, a person or a collection to see new papers here"
                             elide: Text.ElideRight; color: Theme.textSecondary
                         }
                         Icon { name: "right"; size: Theme.fontBody; color: Theme.textTertiary }

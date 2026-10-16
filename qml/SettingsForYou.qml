@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Owelk.Ui
 
-// For You: the topics and collections followed, and how often and how far back to look.
+// For You: the topics, people and collections followed, and how often and how far back to look.
 ColumnLayout {
     id: root
     objectName: "forYouSettings"
@@ -21,6 +21,31 @@ ColumnLayout {
         const list = topics.map(function(t) { return Object.assign({}, t) })
         Object.assign(list[index], change)
         saveTopics(list)
+    }
+    // People: found by name (Semantic Scholar's author records), then followed.
+    readonly property var people: (revision, forYou.people())
+    property var foundPeople: []
+    property string peopleStatus: ""
+    property bool findingPeople: false
+    function findPeople() {
+        const name = personName.text.trim()
+        if (!name.length) return
+        findingPeople = true; peopleStatus = "Looking…"; foundPeople = []
+        forYou.findPeople(name)
+    }
+    // Followed: the search is done (its list goes after this click, whose row it holds).
+    function followFound(person) {
+        personName.clear(); peopleStatus = ""
+        forYou.followPerson(person, true)
+        Qt.callLater(function() { root.foundPeople = [] })
+    }
+    Connections {
+        target: root.forYou
+        function onPeopleFound(name, people, error) {
+            root.findingPeople = false
+            root.foundPeople = people
+            root.peopleStatus = error.length ? error : people.length ? "" : "No one by that name on Semantic Scholar."
+        }
     }
     function addTopic() {
         if (!topicWords.text.trim().length && !topicCategories.text.trim().length) return
@@ -80,6 +105,68 @@ ColumnLayout {
         }
     }
     SettingsGroup {
+        objectName: "settingsGroup-people"
+        title: "People"
+        note: "New papers by researchers you follow, such as the people you follow on Google Scholar. Find one by name and choose the right person (Semantic Scholar's author records); only the name is sent to look, then their author ID."
+        Repeater {
+            model: root.people
+            delegate: SettingsRow {
+                id: personRow
+                required property var modelData
+                required property int index
+                objectName: "forYouPerson-" + index
+                label: modelData.name
+                detail: modelData.detail
+                IconButton {
+                    objectName: "forYouRemovePerson-" + personRow.index
+                    icon.name: "trash"; description: "Stop following"
+                    onClicked: root.forYou.followPerson(personRow.modelData, false)
+                }
+            }
+        }
+        SettingsRow {
+            objectName: "settingsRow-findPerson"
+            wide: true
+            TextField {
+                id: personName
+                objectName: "forYouPersonName"
+                Layout.fillWidth: true
+                placeholderText: "Name: Ada Lovelace"
+                onAccepted: root.findPeople()
+            }
+            Button {
+                objectName: "forYouFindPeople"
+                text: "Find"
+                enabled: personName.text.trim().length > 0 && !root.findingPeople
+                onClicked: root.findPeople()
+            }
+        }
+        SettingsRow {
+            objectName: "settingsRow-peopleStatus"
+            visible: root.peopleStatus.length > 0
+            label: root.peopleStatus
+        }
+        Repeater {
+            model: root.foundPeople
+            delegate: SettingsRow {
+                id: foundRow
+                required property var modelData
+                required property int index
+                readonly property bool followed: (root.revision, root.forYou.followingPerson(modelData.id))
+                objectName: "forYouFoundPerson-" + index
+                label: modelData.name
+                detail: modelData.detail || "No details"
+                Button {
+                    objectName: "forYouFollowPerson-" + foundRow.index
+                    text: foundRow.followed ? "Following" : "Follow"
+                    enabled: !foundRow.followed
+                    highlighted: !foundRow.followed
+                    onClicked: root.followFound(foundRow.modelData)
+                }
+            }
+        }
+    }
+    SettingsGroup {
         objectName: "settingsGroup-followCollections"
         title: "Collections"
         note: root.collections.length ? "Papers like the ones in a followed collection, from Semantic Scholar. It looks at the papers that have an arXiv ID or a DOI (Paper Details)."
@@ -108,7 +195,7 @@ ColumnLayout {
         objectName: "settingsGroup-forYouChecking"
         title: "Checking"
         note: root.forYou.problem.length ? root.forYou.problem
-            : "Papers found wait in Home and in Library › For You until you add or dismiss them. Only the words, categories and arXiv IDs or DOIs above are sent."
+            : "Papers found wait in Home and in Library › For You until you add or dismiss them. Only the words, categories, author IDs and arXiv IDs or DOIs above are sent."
         noteColor: root.forYou.problem.length ? Theme.danger : Theme.textTertiary
         SettingsRow {
             objectName: "settingsRow-forYouDaily"
@@ -168,7 +255,7 @@ ColumnLayout {
         }
         SettingsRow {
             objectName: "settingsRow-forYouCount"
-            label: "At most, per topic or collection"
+            label: "At most, per topic, person or collection"
             ComboBox {
                 objectName: "forYouCount"
                 Layout.preferredWidth: 140
