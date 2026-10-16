@@ -16,6 +16,25 @@ Item {
             tryCompare(canvas(), "restoring", false)
         }
         function canvas() { return findChild(workspace.currentReader, "pdfCanvas0") }
+        function test_readingCheckpointSavesOnlyOnAccept() {
+            const reader = workspace.currentReader
+            verify(researchStore.setReadingReminder(fixtureSource, "Original reminder"))
+            reader.openReadingCheckpoint()
+            const dialog = findChild(reader, "readingCheckpoint")
+            const field = findChild(reader, "readingReminder")
+            tryCompare(dialog, "opened", true)
+            compare(field.text, "Original reminder")
+            field.text = "Unsaved"
+            dialog.reject()
+            tryCompare(dialog, "visible", false)
+            compare(researchStore.readingContext(fixtureSource).reminder, "Original reminder")
+            reader.openReadingCheckpoint()
+            tryCompare(dialog, "opened", true)
+            field.text = "Check Figure 2"
+            dialog.accept()
+            tryCompare(dialog, "visible", false)
+            compare(researchStore.readingContext(fixtureSource).reminder, "Check Figure 2")
+        }
         function test_pinnedReferenceSurvivesScrollingButNotAnotherDocument() {
             const c = canvas()
             c.pinObject({kind: "equation", label: "Equation 1", page: 0, x: 20, y: 50, width: 200, height: 100})

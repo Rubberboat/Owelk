@@ -111,6 +111,52 @@ Rectangle {
     // AI help: a page translated, or something attached to the AI conversation to ask about (the one open
     // in the AI panel, else a new one about this paper). The composer is shared app-wide.
     signal aiRequested(var spec)
+    function openReadingCheckpoint() {
+        if (!canvas.ready) return
+        checkpoint.source = root.source
+        checkpoint.context = researchStore.readingContext(root.source)
+        reminder.text = checkpoint.context.reminder || ""
+        checkpoint.open()
+    }
+    Dialog {
+        id: checkpoint
+        objectName: "readingCheckpoint"
+        property url source
+        property var context: ({})
+        title: "Reading Checkpoint"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(460, parent ? parent.width - 24 : 460)
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        ColumnLayout {
+            width: parent.width
+            Label { text: "Next time, check…"; color: Theme.textSecondary }
+            TextField {
+                id: reminder
+                objectName: "readingReminder"
+                Layout.fillWidth: true
+                maximumLength: 500
+                placeholderText: "For example: compare the ablation results"
+                selectByMouse: true
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: !!checkpoint.context.highlight
+                text: "Last mark · p. " + ((checkpoint.context.page || 0) + 1) + "\n" + (checkpoint.context.highlight || "")
+                textFormat: Text.PlainText; wrapMode: Text.Wrap
+                color: Theme.textSecondary
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: !!checkpoint.context.question
+                text: "Last question\n" + (checkpoint.context.question || "")
+                textFormat: Text.PlainText; wrapMode: Text.Wrap
+                color: Theme.textSecondary
+            }
+        }
+        onAccepted: if (!researchStore.setReadingReminder(source, reminder.text)) researchStore.notify("Could not save the reading checkpoint.")
+    }
     function paperGuide() {
         if (!canvas.ready) return
         activated()
@@ -421,6 +467,7 @@ Rectangle {
                     Menu {
                         id: moreMenu
                         objectName: "readerMoreMenu"
+                        MenuItem { objectName: "readingCheckpointAction"; text: "Reading Checkpoint…"; onTriggered: root.openReadingCheckpoint() }
                         MenuItem { text: "Reading Bar"; checkable: true; checked: canvas.readingBar; onTriggered: canvas.readingBar = !canvas.readingBar }
                         MenuItem { objectName: "paperGuideAction"; text: "Paper Guide with AI"; onTriggered: root.paperGuide() }
                         MenuSeparator {}

@@ -401,6 +401,8 @@ public:
     Q_INVOKABLE int searchKnowledgeAsync(const QString &query, const QUrl &source = QUrl(),
         const QString &target = "all", const QVariant &scopeUrls = QVariant());
     QVariantMap continueReading() const;
+    Q_INVOKABLE QVariantMap readingContext(const QUrl &source) const;
+    Q_INVOKABLE bool setReadingReminder(const QUrl &source, const QString &text);
 
 signals:
     void highlightsChanged();

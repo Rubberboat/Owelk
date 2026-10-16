@@ -294,6 +294,18 @@ Rectangle {
                             elide: Text.ElideRight; textFormat: Text.PlainText
                             color: Theme.textTertiary; font.pixelSize: Theme.fontSmall
                         }
+                        Label {
+                            objectName: "continueContext"
+                            readonly property var context: root.continuation.context || ({})
+                            Layout.fillWidth: true
+                            visible: !!(context.reminder || context.question || context.highlight)
+                            text: [context.reminder ? "Next: " + context.reminder : "",
+                                   context.highlight ? "Last mark: " + context.highlight : "",
+                                   context.question ? "Last question: " + context.question : ""].filter(function(t) { return !!t }).join("\n")
+                            textFormat: Text.PlainText; wrapMode: Text.Wrap
+                            maximumLineCount: 4; elide: Text.ElideRight
+                            color: Theme.textSecondary; font.pixelSize: Theme.fontSmall
+                        }
                     }
                     Button {
                         highlighted: true

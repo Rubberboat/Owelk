@@ -648,6 +648,42 @@ QVariantMap ResearchStore::readingPosition(const QUrl &source) const
     return QJsonDocument::fromJson(query.value(0).toByteArray()).object().toVariantMap();
 }
 
+QVariantMap ResearchStore::readingContext(const QUrl &source) const
+{
+    const auto document = findDocument(source);
+    if (document.isEmpty()) return {};
+    QVariantMap context{{"reminder", setting("reading.reminder." + document)}};
+    QSqlQuery mark(m_database);
+    mark.prepare("SELECT id,page,text,body FROM highlights WHERE document_id=? AND deleted_at IS NULL "
+                 "ORDER BY created_at DESC,rowid DESC LIMIT 1");
+    mark.addBindValue(document);
+    if (mark.exec() && mark.next()) {
+        context.insert("highlightId", mark.value(0));
+        context.insert("page", mark.value(1));
+        context.insert("highlight",
+            (mark.value(3).toString().isEmpty() ? mark.value(2).toString() : mark.value(3).toString()).left(240));
+    }
+    QSqlQuery question(m_database);
+    question.prepare("SELECT m.thread_id,coalesce(nullif(m.display,''),m.content) FROM ai_messages m "
+                     "JOIN ai_threads t ON t.id=m.thread_id WHERE t.source=? AND t.trashed_at IS NULL "
+                     "AND m.role='user' ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1");
+    question.addBindValue(resolvedSource(source).toString());
+    if (question.exec() && question.next()) {
+        context.insert("threadId", question.value(0));
+        context.insert("question", question.value(1).toString().left(240));
+    }
+    return context;
+}
+
+bool ResearchStore::setReadingReminder(const QUrl &source, const QString &text)
+{
+    const auto document = findDocument(source);
+    if (document.isEmpty() || text.size() > 500) return false;
+    if (!setSetting("reading.reminder." + document, text.trimmed())) return false;
+    emit homeChanged();
+    return true;
+}
+
 QVariantMap ResearchStore::continueReading() const
 {
     const auto state = session();
@@ -665,6 +701,7 @@ QVariantMap ResearchStore::continueReading() const
         const QUrl source(tab.value("source").toString());
         if (!source.isLocalFile()) return {};
         tab.insert("name", displayName(source));
+        tab.insert("context", readingContext(source));
         return tab;
     }
     const QString preferred = state.value("active").toInt() == 1 && state.value("split").toBool() ? "right" : "left";
@@ -674,6 +711,7 @@ QVariantMap ResearchStore::continueReading() const
     const QUrl source(reader.value("source").toString());
     if (!source.isLocalFile()) return {};
     reader.insert("name", displayName(source));
+    reader.insert("context", readingContext(source));
     return reader;
 }
 

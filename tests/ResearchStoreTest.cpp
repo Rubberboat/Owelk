@@ -35,6 +35,35 @@
 class ResearchStoreTest : public QObject {
     Q_OBJECT
 private slots:
+    void readingReminderSurvivesRestartAndStaysWithItsPaper()
+    {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("reading.pdf"), other = dir.filePath("other.pdf");
+        writeFixture(path);
+        writeFixture(other, "Other paper");
+        const auto source = QUrl::fromLocalFile(path);
+        const auto elsewhere = QUrl::fromLocalFile(other);
+        QString error;
+        {
+            ResearchStore store(dir.filePath("data"));
+            QVERIFY(store.initialize(&error));
+            QVERIFY(store.rememberDocument(source));
+            QVERIFY(store.rememberDocument(elsewhere));
+            QVERIFY(store.setReadingReminder(source, "Compare the ablation results"));
+            QVERIFY(store.readingContext(elsewhere).value("reminder").toString().isEmpty());
+            QVERIFY(!store.setReadingReminder(source, QString(501, 'x')));
+            const auto thread = store.createAiThread({{"source", source}, {"title", "Question"}});
+            QVERIFY(store.appendAiMessage(thread, {{"role", "user"}, {"content", "Why this baseline?"}}));
+            QCOMPARE(store.readingContext(source).value("question").toString(), QString("Why this baseline?"));
+            QVERIFY(store.trashAiThreads({thread}, true));
+            QVERIFY(store.readingContext(source).value("question").toString().isEmpty());
+        }
+        ResearchStore reopened(dir.filePath("data"));
+        QVERIFY(reopened.initialize(&error));
+        QCOMPARE(reopened.readingContext(source).value("reminder").toString(), QString("Compare the ablation results"));
+        QVERIFY(reopened.setReadingReminder(source, ""));
+        QVERIFY(reopened.readingContext(source).value("reminder").toString().isEmpty());
+    }
     void aSecondLaunchHandsItsFilesToTheRunningOne()
     {
         QTemporaryDir directory;
