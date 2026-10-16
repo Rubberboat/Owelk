@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -68,6 +69,8 @@ public:
     // Researchers by that name (Semantic Scholar's author search), the longest records first: answered by
     // peopleFound(name, [{id, name, detail, papers}], error). Sends only the name.
     Q_INVOKABLE void findPeople(const QString &name);
+    // Identity details for an existing follow, loaded only when expanded. Cached for this session.
+    Q_INVOKABLE void personDetails(const QString &id);
     // Where the papers shown came from: [{key, name, count}].
     Q_INVOKABLE QVariantList sources() const;
     Q_INVOKABLE void refresh();
@@ -100,6 +103,7 @@ signals:
     void previewFailed(const QString &id, const QString &why);
     void webRequested(const QUrl &url);
     void peopleFound(const QString &name, const QVariantList &people, const QString &error);
+    void personDetailsFound(const QString &id, const QVariantMap &person, const QString &error);
 
 private:
     struct Job {
@@ -129,8 +133,11 @@ private:
     bool exec(const QString &sql, const QVariantList &values) const;
     QDateTime since() const;
     QString graphBase() const;
+    void cachePerson(const QString &key, const QVariantMap &person);
     ResearchStore *m_store;
     QNetworkAccessManager *m_network = nullptr;
+    QHash<QString, QVariantMap> m_personDetails;
+    QSet<QString> m_loadingPeople;
     QTimer *m_daily = nullptr;
     QTimer *m_libraryCheck = nullptr;
     QVariantList m_items;
@@ -163,8 +170,9 @@ QVariantList arxivEntries(const QByteArray &atom);
 QVariantList recommendations(const QByteArray &json);
 // The papers of a Semantic Scholar paper batch (POST /paper/batch), unknown ones left out.
 QVariantList paperBatch(const QByteArray &json);
-// Researchers in a Semantic Scholar author search: {id, name, detail, papers}.
+// Researchers: {id, name, detail, papers, affiliation, homepage, profileLoaded}.
 QVariantList people(const QByteArray &json);
+QVariantMap person(const QByteArray &json);
 // From an author's paper list, the papers dated on or after oldest, newest first, at most limit.
 QStringList recentPaperIds(const QByteArray &json, const QDate &oldest, int limit);
 // An address a PDF can be fetched from (not a DOI link, which leads to a publisher's page).

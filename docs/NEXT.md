@@ -4,6 +4,8 @@
 
 ## 1. 실사용 확인 (사용자)
 
+- People: 동명이인을 펼쳐 소속·홈페이지·Paper List를 확인하고, 기본 브라우저에서 링크가 열리는지 Windows/macOS 실사용 확인. 소속·홈페이지가 없는 저자도 대체 검색으로 구별 가능한지 확인.
+
 - GitHub에 push해 CI(Ubuntu·Windows·macOS) 결과 확인 → 실패 로그를 주면 고칩니다.
 - Linux·Windows에서 실제 실행: 키 저장(키링·자격 증명 관리자), 파일 대화상자, 단축키 기본값.
 - 인쇄(실제 프린터·PDF로 저장), 주석 포함 PDF를 미리보기·Acrobat·Okular에서 열어 보기.

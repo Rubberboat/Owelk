@@ -110,18 +110,17 @@ ColumnLayout {
         note: "New papers by researchers you follow, such as the people you follow on Google Scholar. Find one by name and choose the right person (Semantic Scholar's author records); only the name is sent to look, then their author ID."
         Repeater {
             model: root.people
-            delegate: SettingsRow {
+            delegate: PersonRow {
                 id: personRow
                 required property var modelData
                 required property int index
                 objectName: "forYouPerson-" + index
-                label: modelData.name
-                detail: modelData.detail
-                IconButton {
-                    objectName: "forYouRemovePerson-" + personRow.index
-                    icon.name: "trash"; description: "Stop following"
-                    onClicked: root.forYou.followPerson(personRow.modelData, false)
-                }
+                person: modelData
+                service: root.forYou
+                removable: true
+                actionName: "forYouRemovePerson-" + index
+                onFollowRequested: root.forYou.followPerson(modelData, false)
+                onLinkRequested: function(address) { Qt.openUrlExternally(address) }
             }
         }
         SettingsRow {
@@ -148,21 +147,17 @@ ColumnLayout {
         }
         Repeater {
             model: root.foundPeople
-            delegate: SettingsRow {
+            delegate: PersonRow {
                 id: foundRow
                 required property var modelData
                 required property int index
-                readonly property bool followed: (root.revision, root.forYou.followingPerson(modelData.id))
+                followed: (root.revision, root.forYou.followingPerson(modelData.id))
                 objectName: "forYouFoundPerson-" + index
-                label: modelData.name
-                detail: modelData.detail || "No details"
-                Button {
-                    objectName: "forYouFollowPerson-" + foundRow.index
-                    text: foundRow.followed ? "Following" : "Follow"
-                    enabled: !foundRow.followed
-                    highlighted: !foundRow.followed
-                    onClicked: root.followFound(foundRow.modelData)
-                }
+                person: modelData
+                service: root.forYou
+                actionName: "forYouFollowPerson-" + index
+                onFollowRequested: root.followFound(modelData)
+                onLinkRequested: function(address) { Qt.openUrlExternally(address) }
             }
         }
     }

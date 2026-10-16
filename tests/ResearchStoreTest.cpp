@@ -1159,6 +1159,12 @@ private slots:
         const auto results = found[0][1].toList();
         QCOMPARE(results.size(), 1);
         QCOMPARE(results[0].toMap()["detail"].toString(), QString("Navy · 12 papers"));
+        QVERIFY(requests[0].contains("homepage"));
+        QSignalSpy profile(forYou, &ForYou::personDetailsFound);
+        forYou->personDetails("77");
+        QTRY_COMPARE(profile.size(), 1);
+        QCOMPARE(requests.size(), 1); // Search results already contain the identity details.
+        QVERIFY(profile[0][1].toMap()["profileLoaded"].toBool());
         forYou->followPerson(results[0].toMap(), true);
         QVERIFY(forYou->followingPerson("77"));
         QVERIFY(forYou->configured());
@@ -1176,6 +1182,91 @@ private slots:
         forYou->followPerson({{"id", "77"}}, false);
         QVERIFY(!forYou->followingPerson("77"));
         QVERIFY(!forYou->configured());
+    }
+    void forYouPersonLinksAndLazyDetails()
+    {
+        const auto parsed = ForYouParse::person(QJsonDocument(
+            QJsonObject{{"authorId", "77"}, {"name", "Grace Hopper"},
+                {"affiliations", QJsonArray{"Navy", "  Computing  "}}, {"homepage", "https://example.org/hopper"}})
+                .toJson());
+        QCOMPARE(parsed["affiliation"].toString(), QString("Navy, Computing"));
+        QCOMPARE(parsed["homepage"].toString(), QString("https://example.org/hopper"));
+        QVERIFY(parsed["profileLoaded"].toBool());
+        for (const auto &address : {"", "file:///tmp/paper", "javascript:alert(1)", "example.org/hopper",
+                 "https://user:password@example.org"}) {
+            const auto json
+                = QJsonDocument(QJsonObject{{"authorId", "77"}, {"name", "Grace Hopper"}, {"homepage", address}})
+                      .toJson();
+            QVERIFY(ForYouParse::person(json)["homepage"].toString().isEmpty());
+        }
+        QVERIFY(ForYouParse::person("invalid").isEmpty());
+        QVERIFY(ForYouParse::person(R"({"error":"not found"})").isEmpty());
+
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QStringList requests;
+        int retryCount = 0;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            auto buffer = std::make_shared<QByteArray>();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer] {
+                buffer->append(socket->readAll());
+                if (!buffer->contains("\r\n\r\n")) return;
+                const auto head = QString::fromUtf8(*buffer).section("\r\n", 0, 0);
+                requests << head;
+                QByteArray status = "200 OK";
+                QByteArray body
+                    = R"({"authorId":"77","name":"Grace Hopper","affiliations":["Navy"],"homepage":"https://example.org/hopper"})";
+                if (head.contains("/author/88")) {
+                    if (++retryCount == 1) {
+                        status = "429 Too Many Requests";
+                        body = "{}";
+                    } else
+                        body = R"({"authorId":"88","name":"Grace Hopper","homepage":null})";
+                }
+                // /99 deliberately returns someone else's identity. It must never populate /99's row.
+                socket->write("HTTP/1.1 " + status
+                    + "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir directory;
+        ResearchStore store(directory.filePath("data"));
+        QString error;
+        QVERIFY2(store.initialize(&error), qPrintable(error));
+        store.setSetting(
+            "forYou.graphBaseUrl", QStringLiteral("http://127.0.0.1:%1/graph/v1").arg(server.serverPort()));
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        forYou->followPerson({{"id", "77"}, {"name", "Grace Hopper"}}, true);
+        QCOMPARE(requests.size(), 0); // Merely listing existing follows does not request profiles.
+        QCOMPARE(forYou->people().size(), 1);
+        QSignalSpy details(forYou, &ForYou::personDetailsFound);
+        forYou->personDetails("77");
+        forYou->personDetails("77"); // Coalesce repeated expansion while the first request is pending.
+        QTRY_COMPARE_WITH_TIMEOUT(details.size(), 1, 10000);
+        QCOMPARE(requests.size(), 1);
+        QVERIFY(requests[0].contains("homepage"));
+        QVERIFY(!requests[0].contains("papers."));
+        QCOMPARE(details[0][1].toMap()["homepage"].toString(), QString("https://example.org/hopper"));
+        forYou->personDetails("77");
+        QTRY_COMPARE(details.size(), 2);
+        QCOMPARE(requests.size(), 1); // Reopening uses this session's cache.
+        forYou->personDetails("88");
+        QTRY_COMPARE(details.size(), 3);
+        QVERIFY(details[2][1].toMap().isEmpty());
+        QVERIFY(details[2][2].toString().contains("busy"));
+        forYou->personDetails("88");
+        QTRY_COMPARE(details.size(), 4);
+        QVERIFY(details[3][2].toString().isEmpty());
+        QVERIFY(details[3][1].toMap()["homepage"].toString().isEmpty());
+        QCOMPARE(retryCount, 2); // Failures are retryable, not cached.
+        forYou->personDetails("99");
+        QTRY_COMPARE(details.size(), 5);
+        QVERIFY(details[4][1].toMap().isEmpty());
+        QVERIFY(!details[4][2].toString().isEmpty());
+        QVERIFY(forYou->followingPerson("77"));
     }
     void forYouTopicsTravelAfterAnUpgradeWhileSyncing()
     {

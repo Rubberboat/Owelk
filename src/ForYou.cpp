@@ -30,6 +30,7 @@ QString ui(const char *text)
 }
 constexpr int keptItems = 300;
 constexpr auto paperFields = "title,authors,year,publicationDate,externalIds,url,abstract,openAccessPdf";
+constexpr auto personFields = "name,affiliations,paperCount,hIndex,homepage";
 
 QStringList listOf(const QString &text, const QString &separators)
 {
@@ -164,21 +165,36 @@ QVariantList paperBatch(const QByteArray &json)
     return list;
 }
 
+static QVariantMap personRecord(const QJsonObject &author)
+{
+    const auto id = author.value("authorId").toString(), name = author.value("name").toString().simplified();
+    if (id.isEmpty() || name.isEmpty()) return {};
+    QStringList places, parts;
+    for (const auto &place : author.value("affiliations").toArray())
+        if (const auto text = place.toString().simplified(); !text.isEmpty()) places << text;
+    if (!places.isEmpty()) parts << places.join(", ");
+    const int papers = author.value("paperCount").toInt();
+    if (papers > 0) parts << QString::number(papers) + (papers == 1 ? " paper" : " papers");
+    if (author.value("hIndex").toInt() > 0) parts << "h-index " + QString::number(author.value("hIndex").toInt());
+    // A homepage comes from the author's record, never a guessed name match. Only web links may open.
+    const QUrl homepage(author.value("homepage").toString().trimmed());
+    const bool web = homepage.isValid() && !homepage.host().isEmpty() && homepage.userInfo().isEmpty()
+        && (homepage.scheme() == "https" || homepage.scheme() == "http");
+    return {{"id", id}, {"name", name}, {"detail", parts.join(" · ")}, {"papers", papers},
+        {"affiliation", places.join(", ")}, {"homepage", web ? homepage.toString() : QString()},
+        {"profileLoaded", true}};
+}
+
+QVariantMap person(const QByteArray &json)
+{
+    return personRecord(QJsonDocument::fromJson(json).object());
+}
+
 QVariantList people(const QByteArray &json)
 {
     QVariantList list;
     for (const auto &value : QJsonDocument::fromJson(json).object().value("data").toArray()) {
-        const auto author = value.toObject();
-        const auto id = author.value("authorId").toString(), name = author.value("name").toString().simplified();
-        if (id.isEmpty() || name.isEmpty()) continue;
-        QStringList places, parts;
-        for (const auto &place : author.value("affiliations").toArray())
-            if (const auto text = place.toString().simplified(); !text.isEmpty()) places << text;
-        if (!places.isEmpty()) parts << places.join(", ");
-        const int papers = author.value("paperCount").toInt();
-        if (papers > 0) parts << QString::number(papers) + (papers == 1 ? " paper" : " papers");
-        if (author.value("hIndex").toInt() > 0) parts << "h-index " + QString::number(author.value("hIndex").toInt());
-        list.append(QVariantMap{{"id", id}, {"name", name}, {"detail", parts.join(" · ")}, {"papers", papers}});
+        if (const auto record = personRecord(value.toObject()); !record.isEmpty()) list.append(record);
     }
     return list;
 }
@@ -508,22 +524,21 @@ void ForYou::findPeople(const QString &name)
     // Semantic Scholar finds no one for hyphenated words: spaces instead.
     const auto words = QString(name).replace('-', ' ').simplified();
     if (words.isEmpty()) {
-        QMetaObject::invokeMethod(
-            this, [this, name] { emit peopleFound(name, {}, {}); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, name] { emit peopleFound(name, {}, {}); }, Qt::QueuedConnection);
         return;
     }
     if (!m_network) m_network = new QNetworkAccessManager(this);
     QUrl url(graphBase() + "/author/search");
     QUrlQuery query;
     query.addQueryItem("query", words);
-    query.addQueryItem("fields", "name,affiliations,paperCount,hIndex");
+    query.addQueryItem("fields", personFields);
     query.addQueryItem("limit", "12");
     url.setQuery(query);
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
     request.setTransferTimeout(30000);
     auto *reply = m_network->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, name] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, name, base = graphBase()] {
         reply->deleteLater();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError || status >= 400) {
@@ -534,9 +549,62 @@ void ForYou::findPeople(const QString &name)
         }
         // Most papers first: the person meant is usually the one with the longer record.
         auto list = ForYouParse::people(reply->readAll());
-        std::stable_sort(list.begin(), list.end(),
-            [](const QVariant &a, const QVariant &b) { return a.toMap().value("papers").toInt() > b.toMap().value("papers").toInt(); });
+        for (const auto &value : list) {
+            const auto record = value.toMap();
+            cachePerson(base + '/' + record.value("id").toString(), record);
+        }
+        std::stable_sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
+            return a.toMap().value("papers").toInt() > b.toMap().value("papers").toInt();
+        });
         emit peopleFound(name, list, {});
+    });
+}
+
+void ForYou::cachePerson(const QString &key, const QVariantMap &person)
+{
+    // Small identity records only; do not download or store the author's entire paper collection.
+    if (m_personDetails.size() >= 48 && !m_personDetails.contains(key)) m_personDetails.erase(m_personDetails.begin());
+    m_personDetails.insert(key, person);
+}
+
+void ForYou::personDetails(const QString &id)
+{
+    if (id.isEmpty()) return;
+    const auto key = graphBase() + '/' + id;
+    if (m_personDetails.contains(key)) {
+        const auto person = m_personDetails.value(key);
+        QMetaObject::invokeMethod(
+            this, [this, id, person] { emit personDetailsFound(id, person, {}); }, Qt::QueuedConnection);
+        return;
+    }
+    if (m_loadingPeople.contains(key)) return;
+    m_loadingPeople.insert(key);
+    if (!m_network) m_network = new QNetworkAccessManager(this);
+    QUrl url(graphBase() + "/author/" + QString::fromLatin1(QUrl::toPercentEncoding(id)));
+    QUrlQuery query;
+    query.addQueryItem("fields", personFields);
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
+    request.setTransferTimeout(15000);
+    auto *reply = m_network->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, id, key] {
+        reply->deleteLater();
+        m_loadingPeople.remove(key);
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply->error() != QNetworkReply::NoError || status >= 400) {
+            emit personDetailsFound(id, {},
+                status == 429 ? ui("Semantic Scholar is busy. Try again in a minute.")
+                              : ui("Could not load this person's details."));
+            return;
+        }
+        const auto person = ForYouParse::person(reply->readAll());
+        if (person.value("id").toString() != id) {
+            emit personDetailsFound(id, {}, ui("No details available for this author record."));
+            return;
+        }
+        cachePerson(key, person);
+        emit personDetailsFound(id, person, {});
     });
 }
 

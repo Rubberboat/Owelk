@@ -358,7 +358,7 @@ public slots:
                     } else if (head.contains("/graph/v1/author/search")) {
                         // Semantic Scholar for For You's people: one researcher by that name.
                         type = "application/json";
-                        body = R"({"total":1,"data":[{"authorId":"77","name":"Grace Hopper","affiliations":["Navy"],"paperCount":12,"hIndex":5}]})";
+                        body = R"({"total":1,"data":[{"authorId":"77","name":"Grace Hopper","affiliations":["Navy"],"homepage":"https://example.org/hopper","paperCount":12,"hIndex":5}]})";
                     } else if (head.contains("/graph/v1/author/")) {
                         type = "application/json";
                         body = QStringLiteral(R"({"data":[{"paperId":"g1","publicationDate":"%1"}]})")
