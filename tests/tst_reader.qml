@@ -310,6 +310,10 @@ Item {
             let row = null
             tryVerify(function() { row = findChild(card, "linkPreviewEntry-1"); return row !== null && row.visible && row.height > 0 })
             mouseClick(row, 20, row.height / 2)
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, 0)
+            mouseClick(findChild(confirm, "confirmAction"))
             tryCompare(canvas, "currentPage", 2)
             canvas.openFile(fixtureSource, {page: 0, y: 0, x: 0, zoom: 1})
             tryCompare(canvas, "ready", true, 10000)
@@ -449,6 +453,10 @@ Item {
             let row = null
             tryVerify(function() { row = findChild(card, "linkPreviewEntry-0"); return row !== null && row.visible && row.height > 0 })
             mouseClick(row, 20, row.height / 2)
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, 0)
+            mouseClick(findChild(confirm, "confirmAction"))
             tryCompare(canvas, "currentPage", 2)
             canvas.openFile(fixtureSource, {page: 0, y: 0, x: 0, zoom: 1})
             tryCompare(canvas, "ready", true, 10000)

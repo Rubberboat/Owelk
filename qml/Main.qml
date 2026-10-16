@@ -116,20 +116,23 @@ ApplicationWindow {
     Connections { target: researchStore.forYou; function onWebRequested(address) { window.openForYouPage(address) } }
     // The Document panel's Annotations view (the reader toolbar button opens and closes it).
     function toggleAnnotations() {
-        if (documentVisible && navigationMode === 1) { documentVisible = false; return }
+        const wasFocused = focusedReading
+        readingFocus = false
+        if (!wasFocused && documentVisible && navigationMode === 1) { documentVisible = false; return }
         navigationMode = 1
         setPanelShown("document", true); closeOthers("document")
     }
     // The AI panel shows this thread right now (panel open and in front in its dock).
     function aiThreadInView(id) {
         const dock = aiSide === "left" ? leftDock : rightDock
-        return aiVisible && dock.activePanel === "ai" && aiController.conversationOpen && aiController.threadId === id
+        return !focusedReading && aiVisible && dock.activePanel === "ai" && aiController.conversationOpen && aiController.threadId === id
     }
     function togglePanel(panel) {
+        const wasFocused = focusedReading
         readingFocus = false
         const shown = panelShown(panel)
-        setPanelShown(panel, !shown)
-        if (!shown) closeOthers(panel)
+        setPanelShown(panel, wasFocused || !shown)
+        if (wasFocused || !shown) closeOthers(panel)
     }
     function movePanel(panel, side) {
         if (side !== "left" && side !== "right") return
@@ -937,7 +940,7 @@ ApplicationWindow {
                     objectName: "dockIcon-" + modelData
                     kind: modelData; dockSide: "left"
                     description: window.panelName(kind)
-                    selected: window.panelShown(kind)
+                    selected: window.panelShown(kind) && !window.focusedReading
                     onTriggered: window.togglePanel(kind)
                     onDockSideChosen: function(side) { const panel = kind; Qt.callLater(function() { window.movePanel(panel, side) }) }
                 }
@@ -1001,7 +1004,7 @@ ApplicationWindow {
                     objectName: "dockIcon-" + modelData
                     kind: modelData; dockSide: "right"
                     description: window.panelName(kind)
-                    selected: window.panelShown(kind)
+                    selected: window.panelShown(kind) && !window.focusedReading
                     onTriggered: window.togglePanel(kind)
                     onDockSideChosen: function(side) { const panel = kind; Qt.callLater(function() { window.movePanel(panel, side) }) }
                 }

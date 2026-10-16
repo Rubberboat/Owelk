@@ -52,7 +52,7 @@ AiPrompt buildAiPrompt(
 
     // The reader's level (Settings → AI): most readers are students meeting the field's notation for the
     // first time.
-    if (action != "translate" && action != "notation") {
+    if (action != "translate" && action != "notation" && action != "guide") {
         if (materials.level == "brief")
             prompt.system += " Be brief, for a reader who knows the basics of the field: the key point first, "
                              "then only what is needed to follow it; define unfamiliar symbols in a few words and "

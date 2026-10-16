@@ -757,58 +757,62 @@ int AiService::gloss(const QVariantMap &spec)
     emit busyChanged();
     const auto url = m_store->resolvedSource(spec.value("source").toUrl());
     const int page = spec.value("page").toInt();
+    const auto language = aiLanguageName(m_store->setting("aiLanguage", "ko"));
+    const auto into = language.isEmpty() ? QStringLiteral("English") : language;
+    const auto chosenModel = glossModel(id), chosenEffort = glossEffort(id);
     auto *watcher = new QFutureWatcher<QString>(this);
-    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, request, id, text] {
-        const auto context = watcher->result();
-        watcher->deleteLater();
-        if (!m_running.contains(request)) return; // Stopped while reading.
-        QString error;
-        auto *provider = createProvider(id, &error);
-        if (!provider) {
-            m_running.remove(request);
-            emit busyChanged();
-            emit failed(request, error);
-            return;
-        }
-        const auto language = aiLanguageName(m_store->setting("aiLanguage", "ko"));
-        const auto into = language.isEmpty() ? QStringLiteral("English") : language;
-        // A word or a short phrase: what it means here; anything longer: its translation.
-        const bool term = text.split(' ', Qt::SkipEmptyParts).size() <= 3 && text.size() <= 48;
-        AiRequest call;
-        call.system = QStringLiteral("You are Gloss, a quick reading aid in a paper reader. Answer at once, briefly, "
-                                     "in %1, with no headings or preamble. Keep math as LaTeX in $...$.")
-                          .arg(into);
-        call.text = (context.isEmpty() ? QString() : "<passage>\n" + context + "\n</passage>\n\n") + "<selection>\n"
-            + text + "\n</selection>\n\n"
-            + (term ? QStringLiteral("Give the selected term in %1 first, as \"**term** — translation\"; then, in one "
-                                     "or two short sentences, what it means in this passage.")
-                          .arg(into)
-                    : QStringLiteral("Translate the selection into %1. Give only the translation, faithful and "
-                                     "natural; keep equations, symbols and citation markers unchanged.")
-                          .arg(into));
-        call.model = glossModel(id);
-        // Providers ignore an effort the model does not have.
-        call.effort = glossEffort(id);
-        call.maxTokens = 1500;
-        m_running.insert(request, provider);
-        const auto done = [this, request, provider] {
-            m_running.remove(request);
-            provider->deleteLater();
-            emit busyChanged();
-        };
-        connect(
-            provider, &AiProvider::delta, this, [this, request](const QString &part) { emit delta(request, part); });
-        connect(
-            provider, &AiProvider::finished, this, [this, request, done](const QString &answer, const QString &used) {
+    connect(watcher, &QFutureWatcher<QString>::finished, this,
+        [this, watcher, request, id, text, into, chosenModel, chosenEffort] {
+            const auto context = watcher->result();
+            watcher->deleteLater();
+            if (!m_running.contains(request)) return; // Stopped while reading.
+            QString error;
+            auto *provider = createProvider(id, &error);
+            if (!provider) {
+                m_running.remove(request);
+                emit busyChanged();
+                emit failed(request, error);
+                return;
+            }
+            // A word or a short phrase: what it means here; anything longer: its translation.
+            const bool term = text.split(' ', Qt::SkipEmptyParts).size() <= 3 && text.size() <= 48;
+            AiRequest call;
+            call.system
+                = QStringLiteral("You are Gloss, a quick reading aid in a paper reader. Answer at once, briefly, "
+                                 "in %1, with no headings or preamble. Keep math as LaTeX in $...$.")
+                      .arg(into);
+            call.text = (context.isEmpty() ? QString() : "<passage>\n" + context + "\n</passage>\n\n") + "<selection>\n"
+                + text + "\n</selection>\n\n"
+                + (term ? QStringLiteral(
+                              "Give the selected term in %1 first, as \"**term** — translation\"; then, in one "
+                              "or two short sentences, what it means in this passage.")
+                              .arg(into)
+                        : QStringLiteral("Translate the selection into %1. Give only the translation, faithful and "
+                                         "natural; keep equations, symbols and citation markers unchanged.")
+                              .arg(into));
+            call.model = chosenModel;
+            // Providers ignore an effort the model does not have.
+            call.effort = chosenEffort;
+            call.maxTokens = 1500;
+            m_running.insert(request, provider);
+            const auto done = [this, request, provider] {
+                m_running.remove(request);
+                provider->deleteLater();
+                emit busyChanged();
+            };
+            connect(provider, &AiProvider::delta, this,
+                [this, request](const QString &part) { emit delta(request, part); });
+            connect(provider, &AiProvider::finished, this,
+                [this, request, done](const QString &answer, const QString &used) {
+                    done();
+                    emit finished(request, answer, {{"model", used}});
+                });
+            connect(provider, &AiProvider::failed, this, [this, request, done](const QString &message) {
                 done();
-                emit finished(request, answer, {{"model", used}});
+                emit failed(request, message);
             });
-        connect(provider, &AiProvider::failed, this, [this, request, done](const QString &message) {
-            done();
-            emit failed(request, message);
+            provider->start(call);
         });
-        provider->start(call);
-    });
     // The sentences around the selection, from its page: enough to tell which sense a word has.
     watcher->setFuture(QtConcurrent::run([url, page, text, spec] {
         QPdfDocument pdf;

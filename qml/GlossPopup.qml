@@ -38,11 +38,7 @@ Popup {
     // Another model or effort: ask again with it.
     function choose(model, level) {
         ai.setGloss(ai.provider, model, level)
-        if (!opened) return
-        key = ai.glossCacheKey(spec)
-        answer = ""
-        if (recent[key] !== undefined) { answer = recent[key]; return }
-        start()
+        if (opened) show(spec)
     }
     width: Math.min(380, parent ? parent.width - 16 : 380)
     height: Math.min(content.implicitHeight + topPadding + bottomPadding, 300)
