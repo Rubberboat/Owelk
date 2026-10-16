@@ -45,6 +45,11 @@ Item {
             const d = workspace.documents
             compare(webAccounts.googleSignedIn, false)
             compare(webAccounts.googleSignInUrl().toString().indexOf("https://accounts.google.com/"), 0)
+            // Google's refusal page is told apart (Owelk then says what to try).
+            verify(webAccounts.refusedPage("https://accounts.google.com/v3/signin/rejected?continue=x"))
+            verify(webAccounts.refusedPage("https://accounts.google.com/signin/rejected"))
+            verify(!webAccounts.refusedPage("https://accounts.google.com/ServiceLogin"))
+            verify(!webAccounts.refusedPage("https://example.org/signin/rejected"))
             const settings = findChild(workspace, "settingsDialog")
             settings.openPage("web"); tryCompare(settings, "opened", true)
             tryVerify(function() { return visibleChild(settings.contentItem, "googleSignIn") !== null })

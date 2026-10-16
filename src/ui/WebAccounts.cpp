@@ -27,16 +27,31 @@ WebAccounts::WebAccounts(QObject *parent) : QObject(parent) {}
 
 WebAccounts::~WebAccounts() = default;
 
+int WebAccounts::firefoxVersion(const QDate &today)
+{
+    // Google turns away a Firefox much older than the current one, so the version follows the calendar:
+    // Firefox 158 came out on 12 October 2026, and a new one comes every four weeks.
+    const auto weeks = QDate(2026, 10, 12).daysTo(today) / 28;
+    return int(qMax<qint64>(158, 158 + weeks));
+}
+
 QByteArray WebAccounts::firefoxAgent()
 {
-    // Firefox ESR, on this kind of computer.
+    // The current Firefox, on this kind of computer.
+    const auto v = QByteArray::number(firefoxVersion(QDate::currentDate())) + ".0";
 #if defined(Q_OS_MACOS)
-    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0";
+    const QByteArray system = "Macintosh; Intel Mac OS X 10.15";
 #elif defined(Q_OS_WIN)
-    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0";
+    const QByteArray system = "Windows NT 10.0; Win64; x64";
 #else
-    return "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
+    const QByteArray system = "X11; Linux x86_64";
 #endif
+    return "Mozilla/5.0 (" + system + "; rv:" + v + ") Gecko/20100101 Firefox/" + v;
+}
+
+bool WebAccounts::refusedPage(const QUrl &url)
+{
+    return signInHost(url.host()) && url.path().contains("/signin/rejected");
 }
 
 bool WebAccounts::signInHost(const QString &host)

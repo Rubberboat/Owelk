@@ -319,7 +319,16 @@ Rectangle {
             settings.pdfViewerEnabled: root.browserPdf && !root.fetchPdf
             // Chromium's PDF viewer is a built-in plugin.
             settings.pluginsEnabled: root.browserPdf
-            onUrlChanged: if (root.tabId.length) root.controller.updateWebTab(root.tabId, url.toString(), title)
+            onUrlChanged: {
+                if (root.tabId.length) root.controller.updateWebTab(root.tabId, url.toString(), title)
+                // Google turned the sign-in away ("This browser or app may not be secure"): what to try.
+                if (typeof webAccounts !== "undefined" && webAccounts.refusedPage(url))
+                    researchStore.notify(researchStore.tor.enabled
+                        ? "Google refused to sign in through Tor. Turn Tor off (Settings \u203a Web) and sign in again."
+                        : webAccounts.firefoxForGoogle
+                        ? "Google refused this sign-in. Try again with Sign in as Firefox off (Settings \u203a Web \u203a Google account)."
+                        : "Google refused this sign-in. Try again with Sign in as Firefox on (Settings \u203a Web \u203a Google account).")
+            }
             onTitleChanged: if (root.tabId.length) root.controller.updateWebTab(root.tabId, url.toString(), title)
             onNewWindowRequested: function(request) { root.controller.openWeb(request.requestedUrl.toString(), true) }
             onNavigationRequested: function(request) {

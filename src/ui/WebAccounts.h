@@ -2,6 +2,7 @@
 
 #include <QList>
 #include <QNetworkCookie>
+#include <QDate>
 #include <QObject>
 #include <QUrl>
 
@@ -30,8 +31,11 @@ public:
     Q_INVOKABLE QUrl googleSignInUrl() const;
     // Signed out of Google in Owelk's web tabs: Google's and YouTube's cookies go.
     Q_INVOKABLE void signOutOfGoogle();
-    // The Firefox the sign-in pages see.
+    // The Firefox the sign-in pages see (the current one on this kind of computer).
     static QByteArray firefoxAgent();
+    static int firefoxVersion(const QDate &today);
+    // Google's "This browser or app may not be secure" page.
+    Q_INVOKABLE static bool refusedPage(const QUrl &url);
     // Whether a request to this host goes as Firefox (Google's sign-in pages only).
     static bool signInHost(const QString &host);
     // Google's and YouTube's cookies kept in a profile's cookie file (Chromium's Cookies database), names,
