@@ -262,6 +262,7 @@ Rectangle {
             text: root.contextObject ? "Ask AI about " + root.contextObject.label : ""
             onTriggered: root.askAboutObject(root.contextObject)
         }
+        MenuItem { objectName: "pinObjectAction"; text: "Pin for Reference"; onTriggered: canvas.pinObject(root.contextObject) }
         MenuSeparator {}
         MenuItem { text: "Mark Region"; onTriggered: root.setTool("area") }
     }

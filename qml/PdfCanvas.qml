@@ -147,7 +147,7 @@ Item {
     onReadyChanged: { refreshHighlights(); loadSymbols() }
     onSourceChanged: {
         savedHighlights = []; highlightRequest = -1; highlightError = ""; pendingHighlightSelection = null; documentFingerprint = ""; tool = ""
-        referenceNavigation.close(); referenceNavigation.destination = null
+        referenceNavigation.close(); referenceNavigation.destination = null; pinnedPreview = null
         backStack = []; forwardStack = []; selectedMarkId = ""; markEdit = null
         closeLinkPreview(); hoveredLink = null; restSpot = null
         // PdfDocument may become Ready synchronously before this handler resets the request.
@@ -1417,6 +1417,19 @@ Item {
         onRejected: passwordField.clear()
     }
     // --- Reference previews -------------------------------------------------------------------
+    property var pinnedPreview: null
+    function pinPreview() {
+        if (!linkPreview || (linkPreview.kind !== "figure" && linkPreview.kind !== "table" && linkPreview.kind !== "equation")) return
+        pinnedPreview = Object.assign({}, linkPreview)
+        closeLinkPreview()
+    }
+    function pinObject(target) {
+        if (!target || target.page === undefined) return
+        pinnedPreview = {kind: target.kind, label: target.label, page: target.page, float: target,
+                         x: 8, top: 8, bottom: 8, y: 0}
+        closeLinkPreview()
+    }
+    function unpinPreview() { pinnedPreview = null; closeLinkPreview() }
     property var linkPreview: null
     property var pendingPreview: null
     // Where the pages were scrolled when the preview was asked for: reading on (not layout settling) closes it.
@@ -1755,11 +1768,11 @@ Item {
     Rectangle {
         id: previewCard
         objectName: "linkPreview"
-        visible: root.linkPreview !== null
+        visible: root.pinnedPreview !== null || root.linkPreview !== null
         z: 60
-        readonly property var spec: root.linkPreview || ({page: 0, y: 0, x: 0, top: 0, bottom: 0})
+        readonly property var spec: root.pinnedPreview || root.linkPreview || ({page: 0, y: 0, x: 0, top: 0, bottom: 0})
         // Figures and tables get a taller card, zoomed to their column.
-        readonly property bool showsFloat: spec.kind === "figure" || spec.kind === "table"
+        readonly property bool showsFloat: spec.kind === "figure" || spec.kind === "table" || (spec.kind === "equation" && !!spec.float)
         // A citation ([5], [3, 5], [12–14], Vaswani et al.): its reference entries as a list instead of the page.
         readonly property bool showsList: !!spec.entries && spec.entries.length > 0
         // A figure or table found with its caption (ReferenceFinder::floatRegion): shown whole, fitted to
@@ -1779,13 +1792,13 @@ Item {
                 flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, fy * flick.contentHeight - flick.height / 2))
             })
         }
-        width: Math.min(560, root.width - 32)
+        width: Math.min(root.pinnedPreview ? 420 : 560, root.width - 32)
         height: showsList ? Math.min(entryList.contentHeight + 12, root.height * .45)
               : area ? Math.min(root.height * .75, Math.max(180, area.height * fitScale + 16 + 40))
               : showsFloat ? Math.min(420, root.height * .62) : Math.min(240, root.height * .45)
         // Below the reference when there is room, otherwise above it.
-        x: Math.max(8, Math.min(root.width - width - 8, spec.x - 40))
-        y: spec.bottom + height + 12 < root.height ? spec.bottom + 6 : Math.max(8, spec.top - height - 6)
+        x: root.pinnedPreview ? Math.max(8, root.width - width - 8) : Math.max(8, Math.min(root.width - width - 8, spec.x - 40))
+        y: root.pinnedPreview ? 8 : spec.bottom + height + 12 < root.height ? spec.bottom + 6 : Math.max(8, spec.top - height - 6)
         radius: Theme.radiusLarge
         color: root.invertPages ? Theme.paperInverted : Theme.paper
         // The card is a piece of page: its text is ink for that paper, not the app theme's text colour.
@@ -1799,6 +1812,7 @@ Item {
             active: previewCard.visible && !previewCard.showsList
             anchors.fill: parent
             anchors.bottomMargin: previewCard.showsFloat ? 40 : 0
+            anchors.topMargin: previewCard.showsFloat ? 36 : 0
             sourceComponent: Flickable {
                 id: previewFlick
                 objectName: "linkPreviewFlick"
@@ -1979,6 +1993,20 @@ Item {
                     root.figureAiRequested(s.page, Qt.rect(a.x / size.width, a.y / size.height, a.width / size.width, a.height / size.height),
                                            a.label || s.label || "")
                 }
+            }
+        }
+        Row {
+            visible: previewCard.showsFloat
+            anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 3
+            spacing: 4
+            Button {
+                objectName: "pinReferenceButton"
+                text: root.pinnedPreview ? "Unpin" : "Pin"
+                onClicked: { if (root.pinnedPreview) root.unpinPreview(); else root.pinPreview() }
+            }
+            IconButton {
+                icon.name: "close"; description: "Close reference"
+                onClicked: root.unpinPreview()
             }
         }
         // A cited paper: look it up (its DOI or arXiv page, or a search for the entry), in a web tab.

@@ -16,6 +16,24 @@ Item {
             tryCompare(canvas(), "restoring", false)
         }
         function canvas() { return findChild(workspace.currentReader, "pdfCanvas0") }
+        function test_pinnedReferenceSurvivesScrollingButNotAnotherDocument() {
+            const c = canvas()
+            c.pinObject({kind: "equation", label: "Equation 1", page: 0, x: 20, y: 50, width: 200, height: 100})
+            const card = findChild(c, "linkPreview")
+            tryCompare(card, "visible", true)
+            c.jump(3, 0, 0)
+            tryCompare(c, "restoring", false)
+            compare(c.pinnedPreview.page, 0)
+            verify(card.visible)
+            c.closeLinkPreview()
+            verify(card.visible)
+            c.unpinPreview()
+            tryCompare(card, "visible", false)
+            c.pinObject({kind: "figure", page: 0, x: 20, y: 50, width: 200, height: 100})
+            workspace.openDocument(testInput.uniqueFixture("pin-other.pdf"))
+            tryCompare(c, "ready", true)
+            compare(c.pinnedPreview, null)
+        }
         function test_columnViewportKeepsPageAndSource() {
             const c = canvas(), source = c.source.toString(), page = c.currentPage
             c.fitColumn("left")
