@@ -19,6 +19,8 @@ public:
     QTcpServer server;
     QList<QUrl> urls;
     QList<QByteArray> bodies;
+    int status = 200;
+    QByteArray retryAfter;
     std::function<QByteArray(const QUrl &)> answer;
     SearchServer()
     {
@@ -43,9 +45,10 @@ public:
                 urls << url;
                 bodies << buffer->mid(end + 4, length);
                 const auto body = answer ? answer(url) : QByteArray("{}");
-                socket->write(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
-                    + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                socket->write("HTTP/1.1 " + QByteArray::number(status)
+                    + " Response\r\nContent-Type: application/json\r\nConnection: close\r\n"
+                    + (retryAfter.isEmpty() ? QByteArray() : "Retry-After: " + retryAfter + "\r\n")
+                    + "Content-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
                 socket->disconnectFromHost();
             });
         });
@@ -136,7 +139,7 @@ private slots:
         QCOMPARE(found[1][1].toList().size(), 1);
         QCOMPARE(found[1][1].toList()[0].toMap()["page"].toInt(), 0);
     }
-    void peopleExpandSpellingsButKeepDifferentAuthors()
+    void peopleUseOneQueryAndCacheButKeepDifferentAuthors()
     {
         SearchServer server;
         server.answer = [](const QUrl &url) {
@@ -161,15 +164,86 @@ private slots:
         QCOMPARE(found[0][0].toString(), QString("김주현"));
         QCOMPARE(found[0][1].toList().size(), 2);
         QVERIFY(found[0][2].toString().isEmpty());
-        QVERIFY(server.urls.size() > 1 && server.urls.size() <= 6);
+        QCOMPARE(server.urls.size(), 1);
         QVERIFY(std::any_of(server.urls.begin(), server.urls.end(),
             [](const auto &url) { return QUrlQuery(url).queryItemValue("query") == "Juhyun Kim"; }));
         QCOMPARE(forYou->people().size(), 0); // Retrieval never silently follows or merges identities.
+        QCOMPARE(forYou->peopleSearchSuggestions("김주현").size(), 5);
+        QCOMPARE(forYou->peopleSearchSuggestions("김주현").first(), QString("Juhyun Kim"));
+        found.clear();
+        forYou->findPeople("김주현");
+        QTRY_COMPARE(found.size(), 1);
+        QCOMPARE(server.urls.size(), 1); // Repeating a successful lookup uses the short-lived cache.
         found.clear();
         forYou->findPeople("이민호");
         forYou->findPeople("Other Person");
         QTRY_COMPARE(found.size(), 1);
         QCOMPARE(found[0][0].toString(), QString("Other Person"));
+    }
+    void peopleRateLimitRecoversWithoutExtraRequests()
+    {
+        SearchServer server;
+        server.status = 429;
+        server.retryAfter = "2";
+        server.answer = [](const QUrl &) {
+            return QByteArray(R"({"data":[{"authorId":"77","name":"Juhyun Kim","paperCount":12}]})");
+        };
+        QTemporaryDir dir;
+        ResearchStore store(dir.filePath("data"));
+        QString error;
+        QVERIFY(store.initialize(&error));
+        store.setSetting("forYou.graphBaseUrl", server.base());
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        QSignalSpy found(forYou, &ForYou::peopleFound), state(forYou, &ForYou::peopleSearchStateChanged);
+        forYou->findPeople("김주현");
+        QTRY_COMPARE(found.size(), 1);
+        QVERIFY(found[0][2].toString().contains("not a spelling error"));
+        QVERIFY(forYou->peopleRetrySeconds() > 0);
+        QVERIFY(forYou->peopleRetrySeconds() <= 2);
+        found.clear();
+        forYou->findPeople("Other Person");
+        QTRY_COMPARE(found.size(), 1);
+        QCOMPARE(server.urls.size(), 1); // Clicking again during Retry-After cannot hit the server.
+        QVERIFY(!found[0][2].toString().isEmpty());
+        QTRY_COMPARE_WITH_TIMEOUT(forYou->peopleRetrySeconds(), 0, 4000);
+        QVERIFY(!state.isEmpty());
+        found.clear();
+        server.status = 200;
+        forYou->findPeople("김주현");
+        QTRY_COMPARE(found.size(), 1);
+        QCOMPARE(server.urls.size(), 2);
+        QCOMPARE(found[0][1].toList().size(), 1);
+        QVERIFY(found[0][2].toString().isEmpty());
+    }
+    void peopleRankFiveRealRecordsByNameAndDeduplicateIds()
+    {
+        SearchServer server;
+        server.answer = [](const QUrl &) {
+            QJsonArray rows;
+            for (int i = 0; i < 6; ++i)
+                rows << QJsonObject{{"authorId", QString::number(i)},
+                    {"name", "Unrelated Author " + QString::number(i)}, {"paperCount", 10000}};
+            rows << QJsonObject{{"authorId", "77"}, {"name", "Juhyun Kim"}, {"paperCount", 3}};
+            rows << QJsonObject{{"authorId", "77"}, {"name", "Juhyun Kim"}, {"paperCount", 3}};
+            rows << QJsonObject{{"authorId", "78"}, {"name", "Ju-hyun Kim"}, {"paperCount", 2}};
+            return QJsonDocument(QJsonObject{{"data", rows}}).toJson();
+        };
+        QTemporaryDir dir;
+        ResearchStore store(dir.filePath("data"));
+        QString error;
+        QVERIFY(store.initialize(&error));
+        store.setSetting("forYou.graphBaseUrl", server.base());
+        auto *forYou = qobject_cast<ForYou *>(store.forYou());
+        QSignalSpy found(forYou, &ForYou::peopleFound);
+        forYou->findPeople("김주현");
+        forYou->findPeople("김주현"); // An in-flight duplicate must not start another HTTP call.
+        QTRY_COMPARE(found.size(), 1);
+        QCOMPARE(server.urls.size(), 1);
+        const auto rows = found[0][1].toList();
+        QCOMPARE(rows.size(), 5);
+        QCOMPARE(rows[0].toMap()["id"].toString(), QString("77"));
+        QCOMPARE(rows[1].toMap()["id"].toString(), QString("78"));
+        QCOMPARE(forYou->people().size(), 0);
     }
     void aiTranslationIsAutomaticDebouncedAndQueryOnly()
     {

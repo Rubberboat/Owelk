@@ -362,6 +362,13 @@ public slots:
                             });
                             return;
                         }
+                    } else if (head.contains("/limited-graph/author/search")) {
+                        const QByteArray body = R"({"message":"Too Many Requests"})";
+                        socket->write("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Type: "
+                                      "application/json\r\nConnection: close\r\nContent-Length: "
+                            + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                        socket->disconnectFromHost();
+                        return;
                     } else if (head.contains("/graph/v1/author/search")) {
                         // Semantic Scholar for For You's people: one researcher by that name.
                         type = "application/json";

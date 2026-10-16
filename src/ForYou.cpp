@@ -22,6 +22,7 @@
 #include <QSqlQuery>
 #include <QUuid>
 #include <QXmlStreamReader>
+#include <algorithm>
 
 namespace {
 // Interface text (kept apart from what goes to the services).
@@ -44,6 +45,32 @@ QStringList listOf(const QString &text, const QString &separators)
 QString arxivId(QString value)
 {
     return value.trimmed().remove(QRegularExpression("v\\d+$"));
+}
+
+QString personNameKey(QString name)
+{
+    name = name.normalized(QString::NormalizationForm_KC).toCaseFolded().left(128);
+    name.remove('-');
+    name.replace(QRegularExpression("[^\\p{L}\\p{N}]+"), " ");
+    auto parts = name.split(' ', Qt::SkipEmptyParts);
+    parts.sort();
+    return parts.join(' ');
+}
+
+int nameDistance(const QString &a, const QString &b)
+{
+    QList<int> row(b.size() + 1);
+    for (int j = 0; j <= b.size(); ++j) row[j] = j;
+    for (int i = 1; i <= a.size(); ++i) {
+        int previous = row[0];
+        row[0] = i;
+        for (int j = 1; j <= b.size(); ++j) {
+            const int before = row[j];
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] != b[j - 1])});
+            previous = before;
+        }
+    }
+    return row.last();
 }
 }
 
@@ -221,6 +248,12 @@ QStringList recentPaperIds(const QByteArray &json, const QDate &oldest, int limi
 
 ForYou::ForYou(ResearchStore *store, QObject *parent) : QObject(parent), m_store(store)
 {
+    m_peopleRetryTimer = new QTimer(this);
+    m_peopleRetryTimer->setInterval(1000);
+    connect(m_peopleRetryTimer, &QTimer::timeout, this, [this] {
+        if (peopleRetrySeconds() == 0) m_peopleRetryTimer->stop();
+        emit peopleSearchStateChanged();
+    });
     // Options (how long papers stay) change what is shown.
     connect(store, &ResearchStore::settingsChanged, this, [this] {
         emit settingsChanged();
@@ -521,83 +554,136 @@ QString ForYou::graphBase() const
 {
     return m_store->setting("forYou.graphBaseUrl", "https://api.semanticscholar.org/graph/v1");
 }
+QStringList ForYou::peopleSearchSuggestions(const QString &name) const
+{
+    const auto value = name.normalized(QString::NormalizationForm_KC).simplified();
+    if (value.isEmpty()) return {};
+    auto candidates
+        = SearchText::personNames(value) + qobject_cast<SearchText *>(m_store->searchText())->variants(value);
+    static const QRegularExpression hangul("[가-힣]"), latin("[A-Za-z]");
+    if (!hangul.match(value).hasMatch()) candidates.prepend(value);
+    // Joined given names first; spacing and surname-order duplicates need no extra API requests.
+    std::stable_sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+        return a.count(' ') + (a.contains('-') ? 2 : 0) < b.count(' ') + (b.contains('-') ? 2 : 0);
+    });
+    QStringList suggestions;
+    QSet<QString> seen;
+    for (auto candidate : candidates) {
+        if (hangul.match(candidate).hasMatch() || !latin.match(candidate).hasMatch()) continue;
+        const auto key = personNameKey(candidate);
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        suggestions << candidate.replace('-', ' ').simplified();
+        if (suggestions.size() == 5) break;
+    }
+    return suggestions;
+}
+
+int ForYou::peopleRetrySeconds() const
+{
+    return int(qMax<qint64>(0, (QDateTime::currentDateTimeUtc().msecsTo(m_peopleRetryUntil) + 999) / 1000));
+}
+
+void ForYou::limitPeopleRequests(QNetworkReply *reply)
+{
+    bool numeric = false;
+    const auto header = QString::fromLatin1(reply->rawHeader("Retry-After")).trimmed();
+    qint64 seconds = header.toLongLong(&numeric);
+    if (!numeric) {
+        const auto date = QDateTime::fromString(header, Qt::RFC2822Date);
+        seconds = date.isValid() ? QDateTime::currentDateTimeUtc().secsTo(date) : 60;
+    }
+    const auto until = QDateTime::currentDateTimeUtc().addSecs(std::clamp<qint64>(seconds, 1, 86400));
+    if (until > m_peopleRetryUntil) m_peopleRetryUntil = until;
+    m_peopleRetryTimer->start();
+    emit peopleSearchStateChanged();
+}
+
 void ForYou::findPeople(const QString &name)
 {
+    if (m_peopleReply && m_peopleName == name) return;
     const int generation = ++m_peopleRequest;
-    struct Search {
-        QStringList queries;
-        QVariantList results;
-        QSet<QString> ids;
-        int next = 0;
+    if (m_peopleReply) m_peopleReply->abort();
+    m_peopleReply.clear();
+    m_peopleName = name;
+    const auto suggestions = peopleSearchSuggestions(name);
+    const auto queryName = suggestions.value(0, name).normalized(QString::NormalizationForm_KC).simplified().left(128);
+    const auto base = graphBase(), key = base + '/' + personNameKey(queryName);
+    const auto finishLater = [this, name, generation](const QVariantList &rows, const QString &error) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, name, generation, rows, error] {
+                if (generation == m_peopleRequest) emit peopleFound(name, rows, error);
+            },
+            Qt::QueuedConnection);
     };
-    auto state = std::make_shared<Search>();
-    QSet<QString> spellings;
-    for (auto query : QStringList{name} + SearchText::personNames(name)
-            + qobject_cast<SearchText *>(m_store->searchText())->variants(name)) {
-        query = query.replace('-', ' ').normalized(QString::NormalizationForm_KC).simplified();
-        auto words = query.toCaseFolded().split(' ', Qt::SkipEmptyParts);
-        words.sort();
-        const auto spelling = words.join(' ');
-        if (!query.isEmpty() && !spellings.contains(spelling) && state->queries.size() < 6) {
-            state->queries << query;
-            spellings.insert(spelling);
-        }
+    if (queryName.isEmpty()) {
+        finishLater({}, {});
+        return;
+    }
+    if (const auto cached = m_peopleSearchCache.constFind(key);
+        cached != m_peopleSearchCache.cend() && cached->expires > QDateTime::currentDateTimeUtc()) {
+        finishLater(cached->rows, {});
+        return;
+    }
+    if (peopleRetrySeconds() > 0) {
+        finishLater(
+            {}, ui("Semantic Scholar's request limit is active. Wait for the countdown or use a web search below."));
+        return;
     }
     if (!m_network) m_network = new QNetworkAccessManager(this);
-    auto next = std::make_shared<std::function<void()>>();
-    const std::weak_ptr<std::function<void()>> weakNext = next;
-    const auto finish = [this, state, name](const QString &error) {
-        std::stable_sort(state->results.begin(), state->results.end(), [](const auto &a, const auto &b) {
-            return a.toMap().value("papers").toInt() > b.toMap().value("papers").toInt();
-        });
-        emit peopleFound(name, state->results, error);
-    };
-    *next = [this, state, weakNext, name, generation, finish, base = graphBase()] {
+    QUrl url(base + "/author/search");
+    QUrlQuery query;
+    query.addQueryItem("query", queryName);
+    query.addQueryItem("fields", personFields);
+    query.addQueryItem("limit", "12");
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
+    request.setTransferTimeout(15000);
+    auto *reply = m_network->get(request);
+    m_peopleReply = reply;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, name, queryName, base, key, generation] {
+        reply->deleteLater();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status == 429) limitPeopleRequests(reply);
         if (generation != m_peopleRequest) return;
-        if (state->next >= state->queries.size()) {
-            finish({});
+        m_peopleReply.clear();
+        if (reply->error() != QNetworkReply::NoError || status >= 400) {
+            emit peopleFound(name, {},
+                status == 429 ? ui("Semantic Scholar's request limit was reached. This is not a spelling error. Wait "
+                                   "for the countdown or use a web search below.")
+                              : ui("Semantic Scholar could not be reached. Try again or use a web search below."));
             return;
         }
-        QUrl url(base + "/author/search");
-        QUrlQuery query;
-        query.addQueryItem("query", state->queries[state->next++]);
-        query.addQueryItem("fields", personFields);
-        query.addQueryItem("limit", "12");
-        url.setQuery(query);
-        QNetworkRequest request(url);
-        request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
-        request.setTransferTimeout(15000);
-        auto *reply = m_network->get(request);
-        connect(reply, &QNetworkReply::finished, this,
-            [this, state, next = weakNext.lock(), reply, generation, finish, base] {
-                reply->deleteLater();
-                if (generation != m_peopleRequest) return;
-                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                if (reply->error() != QNetworkReply::NoError || status >= 400) {
-                    finish(status == 429 ? ui("Semantic Scholar is busy. Some spellings may not have been checked; try "
-                                              "again in a minute.")
-                                         : ui("Semantic Scholar did not answer for every spelling."));
-                    return;
-                }
-                for (const auto &value : ForYouParse::people(reply->readAll())) {
-                    const auto record = value.toMap();
-                    const auto id = record.value("id").toString();
-                    cachePerson(base + '/' + id, record);
-                    if (!state->ids.contains(id)) {
-                        state->ids.insert(id);
-                        state->results << record;
-                    }
-                }
-                if (state->next >= state->queries.size()) {
-                    finish({});
-                    return;
-                }
-                QTimer::singleShot(qMax(10, m_store->setting("forYou.delayMs", "1100").toInt()), this, [next] {
-                    if (next) (*next)();
-                });
-            });
-    };
-    QMetaObject::invokeMethod(this, [next] { (*next)(); }, Qt::QueuedConnection);
+        QVariantList results;
+        QSet<QString> ids;
+        const auto bytes = reply->readAll();
+        if (!QJsonDocument::fromJson(bytes).object().value("data").isArray()) {
+            emit peopleFound(
+                name, {}, ui("Semantic Scholar returned an unreadable response. Try again or use a web search below."));
+            return;
+        }
+        for (const auto &value : ForYouParse::people(bytes)) {
+            const auto record = value.toMap();
+            const auto id = record.value("id").toString();
+            if (id.isEmpty() || ids.contains(id)) continue;
+            ids.insert(id);
+            cachePerson(base + '/' + id, record);
+            results << record;
+        }
+        const auto needle = personNameKey(queryName);
+        std::stable_sort(results.begin(), results.end(), [&](const auto &a, const auto &b) {
+            const auto left = a.toMap(), right = b.toMap();
+            const auto ld = nameDistance(needle, personNameKey(left.value("name").toString()));
+            const auto rd = nameDistance(needle, personNameKey(right.value("name").toString()));
+            return ld != rd ? ld < rd : left.value("papers").toInt() > right.value("papers").toInt();
+        });
+        results = results.mid(0, 5);
+        if (m_peopleSearchCache.size() >= 48) m_peopleSearchCache.erase(m_peopleSearchCache.begin());
+        m_peopleSearchCache.insert(key, {QDateTime::currentDateTimeUtc().addSecs(600), results});
+        emit peopleFound(name, results, {});
+    });
 }
 
 void ForYou::cachePerson(const QString &key, const QVariantMap &person)

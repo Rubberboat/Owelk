@@ -27,31 +27,40 @@ ColumnLayout {
     property var foundPeople: []
     property string peopleStatus: ""
     property bool findingPeople: false
-    function findPeople() {
-        const name = personName.text.trim()
-        if (!name.length) return
+    property string peopleLookup: ""
+    property string peopleInputAtLookup: ""
+    readonly property var peopleSuggestions: (researchStore.searchText.revision, forYou.peopleSearchSuggestions(personName.text))
+    readonly property int peopleRetrySeconds: forYou.peopleRetrySeconds
+    readonly property string peopleWebQuery: peopleSuggestions.length ? peopleSuggestions[0] : personName.text.trim()
+    function peopleWebUrl(scholar) {
+        return (scholar ? "https://scholar.google.com/scholar?q=" : "https://www.semanticscholar.org/search?sort=relevance&q=") + encodeURIComponent(peopleWebQuery)
+    }
+    function findPeople(spelling) {
+        const name = typeof spelling === "string" ? spelling.trim() : personName.text.trim()
+        if (!name.length || findingPeople || peopleRetrySeconds > 0) return
+        peopleLookup = name
+        peopleInputAtLookup = personName.text.trim()
         findingPeople = true; peopleStatus = "Looking…"; foundPeople = []
-        researchStore.searchText.prepare(name)
+        // Local spelling candidates need no AI request. A late translation only updates the choices.
+        if (!forYou.peopleSearchSuggestions(name).length) researchStore.searchText.prepare(name)
         forYou.findPeople(name)
     }
     // Followed: the search is done (its list goes after this click, whose row it holds).
     function followFound(person) {
-        personName.clear(); peopleStatus = ""
+        personName.clear(); peopleStatus = ""; peopleLookup = ""
         forYou.followPerson(person, true)
         Qt.callLater(function() { root.foundPeople = [] })
     }
     Connections {
         target: root.forYou
         function onPeopleFound(name, people, error) {
+            if (name !== root.peopleLookup) return
             root.findingPeople = false
+            if (personName.text.trim() !== root.peopleInputAtLookup) { root.foundPeople = []; root.peopleStatus = ""; return }
             root.foundPeople = people
-            root.peopleStatus = error.length ? error : people.length ? "" : "No one by that name on Semantic Scholar."
-        }
-    }
-    Connections {
-        target: researchStore.searchText
-        function onChanged(query) {
-            if (query === personName.text.trim().replace(/\s+/g, " ")) root.findPeople()
+            const spellings = root.forYou.peopleSearchSuggestions(name)
+            root.peopleStatus = error.length ? error : people.length ? "Closest matches for “" + (spellings[0] || name) + "”. Check affiliation before following."
+                : "No matches for this spelling. Try another spelling or a web search below."
         }
     }
     function addTopic() {
@@ -114,7 +123,7 @@ ColumnLayout {
     SettingsGroup {
         objectName: "settingsGroup-people"
         title: "People"
-        note: "New papers by researchers you follow, such as the people you follow on Google Scholar. Find one by name and choose the right person (Semantic Scholar's author records); Korean names also try English spellings. Check affiliations and profiles to distinguish people with the same name. Only search names and author IDs are sent."
+        note: "Find researchers by name and check their affiliation and profile before following. Korean names offer English spellings; Find queries one spelling and shows up to five closest author records. Only search names and author IDs are sent."
         Repeater {
             model: root.people
             delegate: PersonRow {
@@ -137,20 +146,78 @@ ColumnLayout {
                 id: personName
                 objectName: "forYouPersonName"
                 Layout.fillWidth: true
-                placeholderText: "Name: Ada Lovelace"
+                placeholderText: "Name: 김주현 or Juhyun Kim"
                 onAccepted: root.findPeople()
             }
             Button {
                 objectName: "forYouFindPeople"
-                text: "Find"
-                enabled: personName.text.trim().length > 0 && !root.findingPeople
+                text: root.peopleRetrySeconds > 0 ? "Retry in " + root.peopleRetrySeconds + "s" : "Find"
+                enabled: personName.text.trim().length > 0 && !root.findingPeople && root.peopleRetrySeconds === 0
                 onClicked: root.findPeople()
             }
         }
         SettingsRow {
             objectName: "settingsRow-peopleStatus"
             visible: root.peopleStatus.length > 0
-            label: root.peopleStatus
+            wide: true
+            Label {
+                objectName: "forYouPeopleStatus"
+                Layout.fillWidth: true
+                text: root.peopleStatus
+                wrapMode: Text.Wrap
+                color: Theme.textSecondary
+            }
+        }
+        SettingsRow {
+            objectName: "settingsRow-peopleSuggestions"
+            visible: root.peopleSuggestions.length > 0
+            wide: true
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Label { text: "Try a spelling"; font.pixelSize: Theme.fontCaption; color: Theme.textSecondary }
+                Label {
+                    Layout.fillWidth: true
+                    text: "Search suggestions, not verified people. Choose one to search."
+                    wrapMode: Text.Wrap; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary
+                }
+                Repeater {
+                    model: root.peopleSuggestions
+                    Button {
+                        required property string modelData
+                        required property int index
+                        objectName: "forYouSpelling-" + index
+                        Layout.fillWidth: true
+                        text: (index + 1) + ". " + modelData
+                        enabled: !root.findingPeople && root.peopleRetrySeconds === 0
+                        onClicked: root.findPeople(modelData)
+                    }
+                }
+            }
+        }
+        SettingsRow {
+            visible: personName.text.trim().length > 0
+            wide: true
+            ColumnLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: "Web searches remain available while the API is limited."
+                    wrapMode: Text.Wrap; font.pixelSize: Theme.fontCaption; color: Theme.textTertiary
+                }
+                Button {
+                    objectName: "forYouPeopleSemanticWeb"
+                    Layout.fillWidth: true
+                    text: "Search Semantic Scholar on the web"
+                    onClicked: Qt.openUrlExternally(root.peopleWebUrl(false))
+                }
+                Button {
+                    objectName: "forYouPeopleScholarWeb"
+                    Layout.fillWidth: true
+                    text: "Search Google Scholar"
+                    onClicked: Qt.openUrlExternally(root.peopleWebUrl(true))
+                }
+            }
         }
         Repeater {
             model: root.foundPeople

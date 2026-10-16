@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QSet>
 #include <QStringList>
 #include <QVariantList>
@@ -39,6 +40,7 @@ class ForYou final : public QObject {
     Q_PROPERTY(QString aiProblem READ aiProblem NOTIFY changed)
     // The paper whose PDF is coming for a preview (its id), or empty.
     Q_PROPERTY(QString previewing READ previewing NOTIFY previewingChanged)
+    Q_PROPERTY(int peopleRetrySeconds READ peopleRetrySeconds NOTIFY peopleSearchStateChanged)
 public:
     explicit ForYou(ResearchStore *store, QObject *parent = nullptr);
     QVariantList items() const;
@@ -66,9 +68,12 @@ public:
     Q_INVOKABLE QVariantList people() const;
     Q_INVOKABLE bool followingPerson(const QString &id) const;
     Q_INVOKABLE void followPerson(const QVariantMap &person, bool on);
-    // Researchers by that name (Semantic Scholar's author search), the longest records first: answered by
+    // Researchers by that name (one Semantic Scholar search), up to five closest names: answered by
     // peopleFound(name, [{id, name, detail, papers}], error). Sends only the name.
     Q_INVOKABLE void findPeople(const QString &name);
+    // Up to five spelling suggestions, not verified identities. Only the chosen spelling is queried.
+    Q_INVOKABLE QStringList peopleSearchSuggestions(const QString &name) const;
+    int peopleRetrySeconds() const;
     // Identity details for an existing follow, loaded only when expanded. Cached for this session.
     Q_INVOKABLE void personDetails(const QString &id);
     // Where the papers shown came from: [{key, name, count}].
@@ -103,6 +108,7 @@ signals:
     void previewFailed(const QString &id, const QString &why);
     void webRequested(const QUrl &url);
     void peopleFound(const QString &name, const QVariantList &people, const QString &error);
+    void peopleSearchStateChanged();
     void personDetailsFound(const QString &id, const QVariantMap &person, const QString &error);
 
 private:
@@ -134,11 +140,21 @@ private:
     QDateTime since() const;
     QString graphBase() const;
     void cachePerson(const QString &key, const QVariantMap &person);
+    void limitPeopleRequests(QNetworkReply *reply);
     ResearchStore *m_store;
     QNetworkAccessManager *m_network = nullptr;
     QHash<QString, QVariantMap> m_personDetails;
     QSet<QString> m_loadingPeople;
     int m_peopleRequest = 0;
+    QPointer<QNetworkReply> m_peopleReply;
+    QString m_peopleName;
+    QDateTime m_peopleRetryUntil;
+    QTimer *m_peopleRetryTimer = nullptr;
+    struct PeopleSearchCache {
+        QDateTime expires;
+        QVariantList rows;
+    };
+    QHash<QString, PeopleSearchCache> m_peopleSearchCache;
     QTimer *m_daily = nullptr;
     QTimer *m_libraryCheck = nullptr;
     QVariantList m_items;

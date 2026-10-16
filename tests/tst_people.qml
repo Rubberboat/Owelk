@@ -18,10 +18,11 @@ Item {
     Component { id: settingsComponent; App.SettingsForYou { width: 500 } }
     SignalSpy { id: links; signalName: "linkRequested" }
     SignalSpy { id: follows; signalName: "followRequested" }
+    SignalSpy { id: searches; target: researchStore.forYou; signalName: "peopleFound" }
     TestCase {
         name: "People"
         when: windowShown
-        function init() { mockPeople.requests = []; links.clear(); follows.clear() }
+        function init() { mockPeople.requests = []; links.clear(); follows.clear(); searches.clear() }
         function row(person) {
             const item = createTemporaryObject(rowComponent, scene, {person: person})
             verify(item !== null)
@@ -139,6 +140,65 @@ Item {
                 tryVerify(function() { return !forYou.followingPerson("77") })
             } finally {
                 forYou.followPerson({id: "77"}, false)
+                researchStore.setSetting("forYou.graphBaseUrl", previousBase)
+            }
+        }
+        function test_spellingChoicesStayLocalAndLateTranslationDoesNotRestartSearch() {
+            const previousBase = researchStore.setting("forYou.graphBaseUrl")
+            researchStore.setSetting("forYou.graphBaseUrl", testInput.webFixture("/graph/v1").toString())
+            const page = createTemporaryObject(settingsComponent, scene)
+            verify(page !== null)
+            try {
+                findChild(page, "forYouPersonName").text = "김주현"
+                compare(page.peopleSuggestions.length, 5)
+                compare(page.peopleSuggestions[0], "Juhyun Kim")
+                compare(searches.count, 0)
+                verify(findChild(page, "forYouSpelling-4") !== null)
+                findChild(page, "forYouFindPeople").clicked()
+                tryCompare(page, "findingPeople", false)
+                compare(searches.count, 1)
+                researchStore.searchText.changed("김주현")
+                wait(100)
+                compare(searches.count, 1)
+                findChild(page, "forYouSpelling-1").clicked()
+                tryCompare(page, "findingPeople", false)
+                compare(searches.count, 2)
+                compare(page.peopleLookup, page.peopleSuggestions[1])
+                compare(findChild(page, "forYouPersonName").text, "김주현")
+            } finally {
+                researchStore.setSetting("forYou.graphBaseUrl", previousBase)
+            }
+        }
+        function test_rateLimitKeepsAlternativesAndRetryRecovers() {
+            const previousBase = researchStore.setting("forYou.graphBaseUrl")
+            researchStore.setSetting("forYou.graphBaseUrl", testInput.webFixture("/limited-graph").toString())
+            const page = createTemporaryObject(settingsComponent, scene)
+            verify(page !== null)
+            try {
+                findChild(page, "forYouPersonName").text = "김주현"
+                const find = findChild(page, "forYouFindPeople")
+                find.clicked()
+                tryVerify(function() { return !page.findingPeople && page.peopleRetrySeconds > 0 })
+                verify(page.peopleStatus.indexOf("not a spelling error") >= 0)
+                verify(!find.enabled)
+                verify(!findChild(page, "forYouSpelling-0").enabled)
+                compare(page.peopleSuggestions.length, 5)
+                for (const id of ["forYouPeopleSemanticWeb", "forYouPeopleScholarWeb"]) {
+                    const link = findChild(page, id)
+                    verify(link.visible && link.enabled)
+                    verify(link.width <= page.width)
+                }
+                verify(decodeURIComponent(page.peopleWebUrl(false)).indexOf("Juhyun Kim") >= 0)
+                verify(page.peopleWebUrl(true).indexOf("https://scholar.google.com/") === 0)
+                page.findPeople()
+                compare(searches.count, 1)
+                researchStore.setSetting("forYou.graphBaseUrl", testInput.webFixture("/graph/v1").toString())
+                tryCompare(page, "peopleRetrySeconds", 0, 4000)
+                verify(find.enabled)
+                find.clicked()
+                tryVerify(function() { return !page.findingPeople && page.foundPeople.length > 0 })
+                compare(searches.count, 2)
+            } finally {
                 researchStore.setSetting("forYou.graphBaseUrl", previousBase)
             }
         }
