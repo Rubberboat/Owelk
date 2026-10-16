@@ -36,6 +36,7 @@ public:
     // Called on the UI thread when a file is indexed; returns the library's ID for it so both
     // databases name a paper the same way. Without one the index assigns its own IDs.
     void setDocumentResolver(std::function<QString(const QUrl &)> resolver) { m_resolver = std::move(resolver); }
+    void setSearchExpander(std::function<QStringList(const QString &)> expander) { m_expand = std::move(expander); }
     QVariantList documents() const;
     QString progress() const { return m_progress; }
     bool paused() const { return m_paused; }
@@ -94,5 +95,6 @@ private:
     Ocr m_ocr;
     int m_request = 0;
     std::shared_ptr<std::atomic_bool> m_cancel = std::make_shared<std::atomic_bool>(false);
+    std::function<QStringList(const QString &)> m_expand;
     std::shared_ptr<std::atomic_bool> m_readerBusy = std::make_shared<std::atomic_bool>(false);
 };

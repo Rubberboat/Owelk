@@ -1,3 +1,4 @@
+#include "SearchText.h"
 #include "ForYou.h"
 
 #include "FileFingerprint.h"
@@ -52,8 +53,9 @@ QString arxivQuery(const QString &words, const QString &categories, const QDateT
     const auto group
         = [](const QStringList &terms) { return terms.size() > 1 ? "(" + terms.join(" OR ") + ")" : terms.value(0); };
     QStringList phrases, cats, parts;
-    for (auto phrase : listOf(words, ","))
-        phrases << (phrase.remove('"').contains(' ') ? "all:\"" + phrase + "\"" : "all:" + phrase);
+    for (const auto &term : listOf(words, ","))
+        for (auto phrase : SearchText::localVariants(term))
+            phrases << (phrase.remove('"').contains(' ') ? "all:\"" + phrase + "\"" : "all:" + phrase);
     for (const auto &category : listOf(categories, "[,\\s]+")) cats << "cat:" + category;
     if (!phrases.isEmpty()) parts << group(phrases);
     if (!cats.isEmpty()) parts << group(cats);
@@ -521,43 +523,81 @@ QString ForYou::graphBase() const
 }
 void ForYou::findPeople(const QString &name)
 {
-    // Semantic Scholar finds no one for hyphenated words: spaces instead.
-    const auto words = QString(name).replace('-', ' ').simplified();
-    if (words.isEmpty()) {
-        QMetaObject::invokeMethod(this, [this, name] { emit peopleFound(name, {}, {}); }, Qt::QueuedConnection);
-        return;
+    const int generation = ++m_peopleRequest;
+    struct Search {
+        QStringList queries;
+        QVariantList results;
+        QSet<QString> ids;
+        int next = 0;
+    };
+    auto state = std::make_shared<Search>();
+    QSet<QString> spellings;
+    for (auto query : QStringList{name} + SearchText::personNames(name)
+            + qobject_cast<SearchText *>(m_store->searchText())->variants(name)) {
+        query = query.replace('-', ' ').normalized(QString::NormalizationForm_KC).simplified();
+        auto words = query.toCaseFolded().split(' ', Qt::SkipEmptyParts);
+        words.sort();
+        const auto spelling = words.join(' ');
+        if (!query.isEmpty() && !spellings.contains(spelling) && state->queries.size() < 6) {
+            state->queries << query;
+            spellings.insert(spelling);
+        }
     }
     if (!m_network) m_network = new QNetworkAccessManager(this);
-    QUrl url(graphBase() + "/author/search");
-    QUrlQuery query;
-    query.addQueryItem("query", words);
-    query.addQueryItem("fields", personFields);
-    query.addQueryItem("limit", "12");
-    url.setQuery(query);
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
-    request.setTransferTimeout(30000);
-    auto *reply = m_network->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, name, base = graphBase()] {
-        reply->deleteLater();
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        if (reply->error() != QNetworkReply::NoError || status >= 400) {
-            emit peopleFound(name, {},
-                status == 429 ? ui("Semantic Scholar is busy. Try again in a minute.")
-                              : ui("Semantic Scholar did not answer."));
-            return;
-        }
-        // Most papers first: the person meant is usually the one with the longer record.
-        auto list = ForYouParse::people(reply->readAll());
-        for (const auto &value : list) {
-            const auto record = value.toMap();
-            cachePerson(base + '/' + record.value("id").toString(), record);
-        }
-        std::stable_sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
+    auto next = std::make_shared<std::function<void()>>();
+    const std::weak_ptr<std::function<void()>> weakNext = next;
+    const auto finish = [this, state, name](const QString &error) {
+        std::stable_sort(state->results.begin(), state->results.end(), [](const auto &a, const auto &b) {
             return a.toMap().value("papers").toInt() > b.toMap().value("papers").toInt();
         });
-        emit peopleFound(name, list, {});
-    });
+        emit peopleFound(name, state->results, error);
+    };
+    *next = [this, state, weakNext, name, generation, finish, base = graphBase()] {
+        if (generation != m_peopleRequest) return;
+        if (state->next >= state->queries.size()) {
+            finish({});
+            return;
+        }
+        QUrl url(base + "/author/search");
+        QUrlQuery query;
+        query.addQueryItem("query", state->queries[state->next++]);
+        query.addQueryItem("fields", personFields);
+        query.addQueryItem("limit", "12");
+        url.setQuery(query);
+        QNetworkRequest request(url);
+        request.setHeader(QNetworkRequest::UserAgentHeader, "Owelk/0.1 (local research reader)");
+        request.setTransferTimeout(15000);
+        auto *reply = m_network->get(request);
+        connect(reply, &QNetworkReply::finished, this,
+            [this, state, next = weakNext.lock(), reply, generation, finish, base] {
+                reply->deleteLater();
+                if (generation != m_peopleRequest) return;
+                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                if (reply->error() != QNetworkReply::NoError || status >= 400) {
+                    finish(status == 429 ? ui("Semantic Scholar is busy. Some spellings may not have been checked; try "
+                                              "again in a minute.")
+                                         : ui("Semantic Scholar did not answer for every spelling."));
+                    return;
+                }
+                for (const auto &value : ForYouParse::people(reply->readAll())) {
+                    const auto record = value.toMap();
+                    const auto id = record.value("id").toString();
+                    cachePerson(base + '/' + id, record);
+                    if (!state->ids.contains(id)) {
+                        state->ids.insert(id);
+                        state->results << record;
+                    }
+                }
+                if (state->next >= state->queries.size()) {
+                    finish({});
+                    return;
+                }
+                QTimer::singleShot(qMax(10, m_store->setting("forYou.delayMs", "1100").toInt()), this, [next] {
+                    if (next) (*next)();
+                });
+            });
+    };
+    QMetaObject::invokeMethod(this, [next] { (*next)(); }, Qt::QueuedConnection);
 }
 
 void ForYou::cachePerson(const QString &key, const QVariantMap &person)

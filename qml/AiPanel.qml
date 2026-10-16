@@ -1194,9 +1194,10 @@ Item {
         onOpened: pickerFilter.forceActiveFocus()
         readonly property string needle: pickerFilter.text.trim()
         readonly property var rows: {
+            researchStore.searchText.revision
             if (!visible || !root.c) return []
             const words = needle.toLowerCase()
-            const match = function(name) { return !words.length || name.toLowerCase().indexOf(words) >= 0 }
+            const match = function(name) { return researchStore.searchText.matches(name, words) }
             if (mode === "collection")
                 return researchStore.collections().filter(function(c) { return match(c.name) })
                     .map(function(c) { return {type: "collection", id: c.id, name: c.name, count: c.count} })
@@ -1224,6 +1225,7 @@ Item {
                 implicitHeight: Theme.controlHeight
                 font.pixelSize: Theme.fontSmall
                 placeholderText: picker.mode === "papers" ? "Search papers" : "Search collections"
+                onTextChanged: if (picker.visible) researchStore.searchText.prepare(text)
                 Keys.onEscapePressed: picker.close()
                 Keys.onReturnPressed: {
                     if (picker.mode === "papers") picker.attach()
@@ -1320,6 +1322,7 @@ Item {
                 implicitHeight: Theme.controlHeight
                 font.pixelSize: Theme.fontSmall
                 placeholderText: "Search models"
+                onTextChanged: if (modelMenu.visible) researchStore.searchText.prepare(text)
                 Keys.onEscapePressed: modelMenu.close()
             }
             Flickable {
@@ -1337,9 +1340,9 @@ Item {
                             id: providerSection
                             required property var modelData
                             readonly property string needle: modelFilter.text.trim().toLowerCase()
-                            readonly property var list: (root.c.models[modelData.id] || []).filter(function(m) {
-                                return !needle.length || (m.name + " " + m.id + " " + providerSection.modelData.name).toLowerCase().indexOf(needle) >= 0
-                            })
+                            readonly property var list: (researchStore.searchText.revision, (root.c.models[modelData.id] || []).filter(function(m) {
+                                return researchStore.searchText.matches(m.name + " " + m.id + " " + providerSection.modelData.name, needle)
+                            }))
                             visible: !needle.length || list.length > 0
                             Layout.fillWidth: true
                             spacing: 1

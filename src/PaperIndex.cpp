@@ -1,3 +1,4 @@
+#include "SearchText.h"
 #include "PdfAccess.h"
 #include "PaperIndex.h"
 #include "FileFingerprint.h"
@@ -44,14 +45,19 @@ QString normalize(QString text)
     text.replace(brokenWord, "\\1");
     return text.normalized(QString::NormalizationForm_KC).simplified();
 }
-QString matchQuery(const QString &input)
+QString matchQuery(const QString &input, const QStringList &expanded = {})
 {
-    // Never pass user input as FTS syntax. All terms are literal tokens, combined with AND.
+    // Never pass user or model output as FTS syntax. Each alternative is a literal AND group.
     static const QRegularExpression word("[\\p{L}\\p{N}]+");
-    auto matches = word.globalMatch(input.left(512).normalized(QString::NormalizationForm_KC));
-    QStringList parts;
-    while (matches.hasNext() && parts.size() < 12) parts << '"' + matches.next().captured() + "\"*";
-    return parts.join(" AND ");
+    QStringList groups;
+    const auto variants = expanded.isEmpty() ? SearchText::localVariants(input) : expanded;
+    for (const auto &variant : variants) {
+        auto matches = word.globalMatch(variant.left(512).normalized(QString::NormalizationForm_KC));
+        QStringList parts;
+        while (matches.hasNext() && parts.size() < 12) parts << '\"' + matches.next().captured() + "\"*";
+        if (!parts.isEmpty()) groups << '(' + parts.join(" AND ") + ')';
+    }
+    return groups.join(" OR ");
 }
 // Text for a page without a text layer (a scan), read by the installed Tesseract. Empty on failure.
 QString recognize(
@@ -276,11 +282,11 @@ QString libraryBoosts(const QString &searchPath, const QString &input)
     return QString::fromUtf8(QJsonDocument(boosts).toJson(QJsonDocument::Compact));
 }
 // limit: when set, only these document IDs (library filters such as a collection or tag) are searched.
-SearchResult findGroupedText(
-    const QString &path, const QString &input, const QUrl &scope, int offset, const std::optional<QStringList> &limit)
+SearchResult findGroupedText(const QString &path, const QString &input, const QUrl &scope, int offset,
+    const std::optional<QStringList> &limit, const QStringList &expanded = {})
 {
     if (limit && limit->isEmpty()) return {};
-    const auto match = matchQuery(input);
+    const auto match = matchQuery(input, expanded);
     if (match.isEmpty()) return {};
     Connection connection(path, true);
     if (!connection.db.isOpen()) return {{}, connection.db.lastError().text()};
@@ -420,9 +426,9 @@ SearchResult findRelated(const QString &path, const QString &document, int limit
     return result;
 }
 
-SearchResult findText(const QString &path, const QString &input)
+SearchResult findText(const QString &path, const QString &input, const QStringList &expanded = {})
 {
-    const auto match = matchQuery(input);
+    const auto match = matchQuery(input, expanded);
     if (match.isEmpty()) return {};
     Connection connection(path, true);
     if (!connection.db.isOpen()) return {{}, connection.db.lastError().text()};
@@ -729,7 +735,10 @@ int PaperIndex::search(const QString &text)
         watcher->deleteLater();
         emit searchFinished(request, result.rows, result.error);
     });
-    watcher->setFuture(QtConcurrent::run(&m_searchWorkers, [path = m_path, text] { return findText(path, text); }));
+    watcher->setFuture(QtConcurrent::run(&m_searchWorkers,
+        [path = m_path, text, expanded = m_expand ? m_expand(text) : SearchText::localVariants(text)] {
+            return findText(path, text, expanded);
+        }));
     return request;
 }
 int PaperIndex::searchGrouped(const QString &text, const QUrl &source, int offset, const QVariant &scopeIds)
@@ -744,7 +753,10 @@ int PaperIndex::searchGrouped(const QString &text, const QUrl &source, int offse
         emit searchFinished(request, result.rows, result.error);
     });
     watcher->setFuture(QtConcurrent::run(&m_searchWorkers,
-        [path = m_path, text, source, offset, limit] { return findGroupedText(path, text, source, offset, limit); }));
+        [path = m_path, text, source, offset, limit,
+            expanded = m_expand ? m_expand(text) : SearchText::localVariants(text)] {
+            return findGroupedText(path, text, source, offset, limit, expanded);
+        }));
     return request;
 }
 QString PaperIndex::openingText(const QString &documentId, int characters) const

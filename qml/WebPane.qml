@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtWebEngine
 import "WorkspaceTree.js" as Tree
+import "WebSearch.js" as WebSearch
 import Owelk.Ui
 
 // A web page inside a tab. PDFs reached here are downloaded through the page's own session
@@ -61,7 +62,7 @@ Rectangle {
         view.url = url
     }
     function go(text) {
-        const url = Tree.addressToUrl(text, researchStore.setting("searchEngine", "https://scholar.google.com/scholar?q=%s"))
+        const url = Tree.addressToUrl(WebSearch.input(researchStore, text), researchStore.setting("searchEngine", "https://scholar.google.com/scholar?q=%s"))
         if (url.length) { view.url = url; view.forceActiveFocus() }
     }
     function focusAddress() { address.forceActiveFocus(); address.selectAll() }
@@ -141,6 +142,7 @@ Rectangle {
                     text: activeFocus ? text : view.url.toString()
                     onActiveFocusChanged: if (activeFocus) { root.activated(); text = view.url.toString(); selectAll() }
                     onAccepted: root.go(text)
+                    onTextEdited: WebSearch.prepare(researchStore, text)
                     Keys.onEscapePressed: { text = view.url.toString(); view.forceActiveFocus() }
                 }
                 IconButton {

@@ -14,6 +14,25 @@ ColumnLayout {
     Component.onCompleted: refreshCount()
     Connections { target: root.semantic; function onChanged() { root.refreshCount() } }
     Connections { target: researchStore; function onOcrChanged() { root.ocr = researchStore.ocrStatus() } }
+    property int searchRevision: 0
+    Connections { target: researchStore; function onSettingsChanged() { root.searchRevision++ } }
+    Connections { target: researchStore.ai; function onProvidersChanged() { root.searchRevision++ } }
+    SettingsGroup {
+        title: "Korean search"
+        note: "Korean names and common academic terms are matched locally, including spelling and name-order variants. "
+            + "Names can belong to more than one person; check their affiliation and profile before following."
+        SettingsRow {
+            label: "Translate search terms with AI"
+            detail: "Automatically sends only the typed search words to your chosen AI after a pause. No paper text is sent. "
+                + "Provider charges may apply. Set up and consent to a provider in Settings › AI first."
+            Switch {
+                objectName: "searchAiTranslation"
+                enabled: checked || (root.searchRevision, researchStore.ai.canSend())
+                checked: (root.searchRevision, researchStore.setting("search.aiTranslation", "1") === "1")
+                onToggled: researchStore.setSetting("search.aiTranslation", checked ? "1" : "0")
+            }
+        }
+    }
     // Meaning search: off by default; an engine embeds the library in the background.
     SettingsGroup {
         title: "PDF text index"

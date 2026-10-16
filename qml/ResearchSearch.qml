@@ -32,7 +32,10 @@ QtObject {
         const filter = {}, labels = []
         const pattern = /(^|\s)(tag|collection|state|year):("([^"]*)"|\S+)/gi
         const lookup = function(list, name) {
-            const hit = list.find(function(item) { return item.name.toLowerCase() === name.toLowerCase() })
+            const exact = list.find(function(item) { return item.name.toLowerCase() === name.toLowerCase() })
+            const variants = researchStore.searchText.variants(name)
+            const alternatives = list.filter(function(item) { return variants.some(function(v) { return item.name.toLowerCase() === v.toLowerCase() }) })
+            const hit = exact || (alternatives.length === 1 ? alternatives[0] : null)
             return hit ? hit.id : "\u0000missing" // No match narrows to nothing rather than ignoring the condition.
         }
         const needle = text.replace(pattern, function(all, lead, key, raw, quoted) {
@@ -66,7 +69,7 @@ QtObject {
         const source = c.key === "tag" ? researchStore.tags() : c.key === "collection" ? researchStore.collections()
             : [{name: "unread"}, {name: "reading"}, {name: "read"}]
         const partial = c.partial.toLowerCase()
-        const hits = source.filter(function(item) { return item.name.toLowerCase().indexOf(partial) >= 0 })
+        const hits = source.filter(function(item) { return researchStore.searchText.matches(item.name, partial) })
         // A finished condition (an exact name) needs no completion.
         if (hits.length === 1 && hits[0].name.toLowerCase() === partial) return []
         return hits.slice(0, 12).map(function(item) {
@@ -90,6 +93,13 @@ QtObject {
         const scoped = Object.keys(parseQuery(query).filter).length > 0
         webRow = withWeb && !sourceFilter.toString().length && !scoped && !completingOf(query)
             ? Tree.webIntent(query, webTemplate) : null
+        if (webRow) {
+            const expanded = WebSearch.input(researchStore, query)
+            if (expanded !== query) {
+                webRow.url = Tree.addressToUrl(expanded, webTemplate)
+                webRow.title += " · Korean + English"
+            }
+        }
     }
     onWithWebChanged: updateWebRow()
     onWebTemplateChanged: updateWebRow()
@@ -158,6 +168,7 @@ QtObject {
         const offered = completions()
         if (offered.length) { results = offered; return }
         const needle = parsed.needle
+        researchStore.searchText.prepare(needle)
         // Library filters narrow both searches to the same set of papers.
         const scope = libraryScoped ? researchStore.libraryDocuments(libraryFilter) : null
         if (needle.length && offset === 0) {
@@ -181,6 +192,11 @@ QtObject {
     onQueryChanged: { updateWebRow(); offset = 0; history = []; preferredIndex = 0; invalidate(); if (active) delay.restart() }
     onActiveChanged: { if (active) refresh(); else { delay.stop(); invalidate() } }
     property Timer delay: Timer { interval: 150; onTriggered: root.refresh() }
+    property Connections termUpdates: Connections {
+        target: researchStore.searchText
+        function onConfigurationChanged() { root.updateWebRow(); if (root.active) root.refresh() }
+        function onChanged(query) { if (root.active && query === root.parsed.needle) { root.updateWebRow(); root.refresh() } }
+    }
     property Connections storeUpdates: Connections {
         target: researchStore
         function onHomeChanged() { if (root.active) root.delay.restart() }

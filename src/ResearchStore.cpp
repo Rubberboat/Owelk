@@ -1,3 +1,4 @@
+#include "SearchText.h"
 #include "PdfAccess.h"
 #include "ResearchStore.h"
 #include "SemanticIndex.h"
@@ -85,6 +86,8 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
       m_lookup(new MetadataLookup(this)), m_ai(new AiService(this, this)), m_sync(new LibrarySync(directory, this)),
       m_forYou(new ForYou(this, this))
 {
+    m_searchText = new SearchText(this);
+    m_index->setSearchExpander([this](const QString &query) { return m_searchText->variants(query); });
     m_papers = defaultPapersFolder(directory);
     m_sync->setPapersFolder(m_papers);
     connect(m_sync, &LibrarySync::received, this, &ResearchStore::syncReceived);
@@ -98,6 +101,11 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     for (const auto signal :
         {&ResearchStore::recentDocumentsChanged, &ResearchStore::documentsChanged, &ResearchStore::homeChanged})
         connect(this, signal, this, [this] { m_recentLoaded = false; });
+}
+
+QObject *ResearchStore::searchText() const
+{
+    return m_searchText;
 }
 
 QObject *ResearchStore::semantic() const

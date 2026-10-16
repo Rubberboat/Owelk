@@ -15,6 +15,7 @@
 class LibrarySync;
 class ForYou;
 class PaperIndex;
+class SearchText;
 class ReferenceFinder;
 class QNetworkAccessManager;
 class QPdfDocument;
@@ -29,6 +30,7 @@ class ResearchStore final : public QObject {
     Q_PROPERTY(int historyRevision READ historyRevision NOTIFY historyChanged)
     Q_PROPERTY(QString dataDirectory READ dataDirectory CONSTANT)
     Q_PROPERTY(QVariantMap continueReading READ continueReading NOTIFY homeChanged)
+    Q_PROPERTY(QObject *searchText READ searchText CONSTANT)
     Q_PROPERTY(QObject *paperIndex READ paperIndex CONSTANT)
     // Where "[12]", "Fig. 3" and the like point, for papers without working links (ReferenceFinder).
     Q_PROPERTY(QObject *references READ references CONSTANT)
@@ -66,6 +68,7 @@ public:
     bool busy() const { return m_pending > 0; }
     bool printing() const { return m_printing; }
     QString dataDirectory() const { return m_directory; }
+    QObject *searchText() const;
     QObject *paperIndex() const;
     QObject *references() const;
     QObject *metadataLookup() const { return m_lookup; }
@@ -563,6 +566,7 @@ private:
     int m_citationRequest = 0;
     QVariantMap withLibraryMatches(QVariantMap result) const;
     QObject *m_lookup;
+    SearchText *m_searchText = nullptr;
     QObject *m_ai;
     class SemanticIndex *m_semantic = nullptr;
     LibrarySync *m_sync;

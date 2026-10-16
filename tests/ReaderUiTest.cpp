@@ -82,6 +82,13 @@ public:
         writeFixture(path, "Unique Paper " + QUuid::createUuid().toString(QUuid::Id128).left(12));
         return QUrl::fromLocalFile(path);
     }
+    Q_INVOKABLE QUrl koreanSearchFixture()
+    {
+        const auto path = m_directory.filePath("korean-search.pdf");
+        if (!QFileInfo::exists(path))
+            writeTextFixture(path, {"Radar odometry by Juhyun Kim.", "Machine learning by Kim Ju-hyun."});
+        return QUrl::fromLocalFile(path);
+    }
     // A web profile's cookie file as Chromium keeps it, with a Google sign-in or without: what WebAccounts
     // reads from it at the start.
     Q_INVOKABLE bool keptGoogleSignIn(bool signedIn)

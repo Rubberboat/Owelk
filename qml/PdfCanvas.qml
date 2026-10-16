@@ -671,13 +671,13 @@ Item {
         onPasswordRequired: if (!root.tryKnownPassword()) passwordDialog.open()
     }
 
-    PdfSearchModel {
+    ExpandedPdfSearch {
         id: search
         document: pdfDocument
         currentPage: root.currentPage
         onCurrentResultChanged: {
             if (currentResult >= 0 && root.matchCount > 0) {
-                const link = currentResultLink
+                const link = results[currentResult]
                 const size = pdfDocument.pagePointSize(link.page)
                 root.jump(link.page, Math.max(0, link.location.y / size.height - 0.1), 0)
             }
@@ -690,8 +690,6 @@ Item {
             root.matchCount = search.rowCount()
             if (root.matchCount > 0 && search.currentResult < 0) search.currentResult = 0
         }
-        function onRowsInserted() { updateCount() }
-        function onRowsRemoved() { updateCount() }
         function onModelReset() { updateCount() }
     }
 

@@ -1,3 +1,4 @@
+#include "SearchText.h"
 #include "ResearchStore.h"
 #include "PaperIndex.h"
 #include "WorkerConnection.h"
@@ -38,8 +39,9 @@ struct Query {
     bool matches(const QStringList &fields) const
     {
         return std::all_of(terms.cbegin(), terms.cend(), [&](const QString &term) {
-            return std::any_of(fields.cbegin(), fields.cend(),
-                [&](const QString &field) { return field.contains(term, Qt::CaseInsensitive); });
+            return std::any_of(fields.cbegin(), fields.cend(), [&](const QString &field) {
+                return field.normalized(QString::NormalizationForm_KC).contains(term, Qt::CaseInsensitive);
+            });
         });
     }
     static int termScore(const QString &text, const QString &term, int whole, int prefix, int part)
@@ -236,6 +238,28 @@ QVariantList findKnowledge(const QSqlDatabase &db, const QList<QUrl> &indexed, c
     return results;
 }
 
+QVariantList findExpandedKnowledge(const QSqlDatabase &db, const QList<QUrl> &indexed, const QStringList &queries,
+    const QUrl &scope, const QString &target, const std::optional<QSet<QString>> &allowed)
+{
+    QVariantList rows;
+    QSet<QString> seen;
+    for (const auto &query : queries) {
+        for (const auto &value : findKnowledge(db, indexed, query, scope, target, allowed)) {
+            auto row = value.toMap();
+            const auto key = row.value("kind").toString() + '|'
+                + (row.contains("id") ? row.value("id").toString() : row.value("source").toUrl().toString());
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            if (query != queries.first()) row["score"] = row.value("score").toInt() - 3;
+            rows << row;
+        }
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+        return a.toMap().value("score").toInt() > b.toMap().value("score").toInt();
+    });
+    return rows.mid(0, 80);
+}
+
 QList<QUrl> indexedSources(const QSqlDatabase &db)
 {
     QList<QUrl> sources;
@@ -261,13 +285,15 @@ QVariantList ResearchStore::searchKnowledge(
 {
     QList<QUrl> indexed;
     for (const auto &entry : m_index->documents()) indexed.append(entry.toMap().value("source").toUrl());
-    return findKnowledge(m_database, indexed, queryText, scope, target, allowedUrls(scopeUrls));
+    return findExpandedKnowledge(
+        m_database, indexed, m_searchText->variants(queryText), scope, target, allowedUrls(scopeUrls));
 }
 
 int ResearchStore::searchKnowledgeAsync(
     const QString &queryText, const QUrl &scope, const QString &target, const QVariant &scopeUrls)
 {
     const auto allowed = allowedUrls(scopeUrls);
+    const auto queries = m_searchText->variants(queryText);
     const int request = ++m_knowledgeRequest;
     auto *watcher = new QFutureWatcher<QVariantList>(this);
     connect(watcher, &QFutureWatcher<QVariantList>::finished, this, [this, watcher, request] {
@@ -275,12 +301,12 @@ int ResearchStore::searchKnowledgeAsync(
         watcher->deleteLater();
         emit knowledgeFound(request, rows);
     });
-    watcher->setFuture(QtConcurrent::run(&m_verifiers, [directory = m_directory, queryText, scope, target, allowed] {
+    watcher->setFuture(QtConcurrent::run(&m_verifiers, [directory = m_directory, queries, scope, target, allowed] {
         WorkerConnection store(directory + "/owelk.sqlite3", true);
         WorkerConnection search(directory + "/search.sqlite3", true);
         if (!store.db.isOpen()) return QVariantList();
-        return findKnowledge(store.db, search.db.isOpen() ? indexedSources(search.db) : QList<QUrl>(), queryText, scope,
-            target, allowed);
+        return findExpandedKnowledge(
+            store.db, search.db.isOpen() ? indexedSources(search.db) : QList<QUrl>(), queries, scope, target, allowed);
     }));
     return request;
 }

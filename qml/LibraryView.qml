@@ -238,6 +238,7 @@ Rectangle {
     signal documentChosen(url source, var position)
     signal filterEdited(var filter)
     function refresh() {
+        if (showingPapers) researchStore.searchText.prepare(query)
         const f = Object.assign({}, filter)
         if (query.trim().length) f.text = query.trim()
         f.sort = sort
@@ -263,6 +264,11 @@ Rectangle {
     }
     function setFilter(next) { filter = next; selection = []; selectionAnchor = -1; filterEdited(next); refresh() }
     function selected(key, value) { return key === "all" ? Object.keys(filter).length === 0 : filter[key] === value }
+    Connections {
+        target: researchStore.searchText
+        function onConfigurationChanged() { root.refresh() }
+        function onChanged(query) { if (query === root.query.trim().replace(/\s+/g, " ")) root.refresh() }
+    }
     onQueryChanged: refreshTimer.restart()
     onFilterChanged: {
         if (filter.collection) researchStore.markOpened("collection", filter.collection)

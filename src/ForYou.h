@@ -138,6 +138,7 @@ private:
     QNetworkAccessManager *m_network = nullptr;
     QHash<QString, QVariantMap> m_personDetails;
     QSet<QString> m_loadingPeople;
+    int m_peopleRequest = 0;
     QTimer *m_daily = nullptr;
     QTimer *m_libraryCheck = nullptr;
     QVariantList m_items;

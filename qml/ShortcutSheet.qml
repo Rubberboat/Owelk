@@ -62,12 +62,12 @@ Popup {
     ]
     // Rows matching the filter, with their group's title on the first one.
     readonly property var rows: {
-        const terms = filter.text.trim().toLowerCase().split(/\s+/).filter(function(t) { return t.length })
+        researchStore.searchText.revision
         const list = []
         groups.forEach(function(group) {
             const shown = group.rows.filter(function(row) {
                 const text = (group.title + " " + row.name + " " + row.keys.map(function(k) { return k + " " + Platform.keys(k) }).join(" ")).toLowerCase()
-                return terms.every(function(t) { return text.indexOf(t) >= 0 })
+                return researchStore.searchText.matches(text, filter.text)
             })
             shown.forEach(function(row, i) { list.push(Object.assign({group: i === 0 ? group.title : ""}, row)) })
         })
@@ -93,6 +93,7 @@ Popup {
             implicitHeight: Theme.controlHeight + 4
             placeholderText: "Search shortcuts"
             selectByMouse: true
+            onTextChanged: if (root.visible) researchStore.searchText.prepare(text)
             Keys.onEscapePressed: root.close()
         }
         ListView {

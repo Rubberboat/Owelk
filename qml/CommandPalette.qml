@@ -49,7 +49,7 @@ Popup {
         {command: "/shortcuts", title: "Help: Keyboard Shortcuts", keywords: "/shortcuts /list /keys list keys help ?", enabled: true}
     ]
     // The title, and a few other words some commands answer to (/list for the shortcuts).
-    readonly property var results: commands.filter(function(c) { return Match.matches(c.title + (c.keywords ? " " + c.keywords : ""), query.text) })
+    readonly property var results: (researchStore.searchText.revision, commands.filter(function(c) { return researchStore.searchText.matches(c.title + (c.keywords ? " " + c.keywords : ""), query.text) }))
     signal commandChosen(string command)
     function move(direction) {
         if (!results.length) return
@@ -73,6 +73,7 @@ Popup {
             Layout.fillWidth: true
             placeholderText: "Search commands"
             selectByMouse: true
+            onTextChanged: if (root.visible) researchStore.searchText.prepare(text)
             onAccepted: root.choose(list.currentIndex)
             Keys.onDownPressed: root.move(1)
             Keys.onUpPressed: root.move(-1)

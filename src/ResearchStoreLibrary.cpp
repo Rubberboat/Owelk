@@ -1,3 +1,4 @@
+#include "SearchText.h"
 #include "ResearchStore.h"
 #include "PaperIndex.h"
 #include "FileFingerprint.h"
@@ -34,7 +35,9 @@ QVariantList ResearchStore::libraryDocuments(const QVariantMap &filter) const
     QStringList where{"d.url LIKE 'file:%'", "d.removed_at IS NULL"};
     QVariantList args;
     const auto text = filter.value("text").toString().trimmed();
-    if (!text.isEmpty()) {
+    const auto queries = m_searchText->variants(text);
+    const bool expanded = queries.size() > 1;
+    if (!text.isEmpty() && !expanded) {
         where << "(instr(lower(d.title),lower(?))>0 OR instr(lower(d.authors),lower(?))>0 OR "
                  "instr(lower(d.url),lower(?))>0 OR d.year=? OR instr(lower(d.doi),lower(?))>0 OR d.arxiv=?)";
         for (int i = 0; i < 6; ++i) args << text;
@@ -69,19 +72,27 @@ QVariantList ResearchStore::libraryDocuments(const QVariantMap &filter) const
         : sort == "added"                 ? "d.added_at DESC"
                                           : "r.opened_at IS NULL, r.opened_at DESC, d.added_at DESC";
     QSqlQuery query(m_database);
-    query.prepare("SELECT d.id,d.url,d.authors,d.year,d.reading_state,d.favorite,d.excluded_from_index,d.sha256,"
-                  "(SELECT group_concat(t.name, ', ') FROM document_tags dt JOIN tags t ON t.id=dt.tag_id "
-                  "WHERE dt.document_id=d.id),"
-                  "(d.sha256<>'' AND EXISTS(SELECT 1 FROM documents o WHERE o.sha256=d.sha256 AND o.id<>d.id)) "
-                  "FROM documents d LEFT JOIN recent_documents r ON r.document_id=d.id WHERE "
+    query.prepare(
+        "SELECT d.id,d.url,d.authors,d.year,d.reading_state,d.favorite,d.excluded_from_index,d.sha256,"
+        "(SELECT group_concat(t.name, ', ') FROM document_tags dt JOIN tags t ON t.id=dt.tag_id "
+        "WHERE dt.document_id=d.id),"
+        "(d.sha256<>'' AND EXISTS(SELECT 1 FROM documents o WHERE o.sha256=d.sha256 AND o.id<>d.id)),d.doi,d.arxiv "
+        "FROM documents d LEFT JOIN recent_documents r ON r.document_id=d.id WHERE "
         + where.join(" AND ") + " ORDER BY " + order
-        + (filter.contains("limit") ? QStringLiteral(" LIMIT %1").arg(qMax(1, filter.value("limit").toInt()))
-                                    : QString()));
+        + (filter.contains("limit") && !expanded
+                ? QStringLiteral(" LIMIT %1").arg(qMax(1, filter.value("limit").toInt()))
+                : QString()));
     for (const auto &arg : args) query.addBindValue(arg);
     QVariantList rows;
     if (!query.exec()) return rows;
     while (query.next()) {
         const QUrl url(query.value(1).toString());
+        if (expanded
+            && !SearchText::matchesAny(displayName(url) + ' ' + fileName(url) + ' ' + query.value(2).toString() + ' '
+                    + query.value(3).toString() + ' ' + query.value(10).toString() + ' ' + query.value(11).toString(),
+                queries))
+            continue;
+        if (expanded && filter.contains("limit") && rows.size() >= qMax(1, filter.value("limit").toInt())) break;
         rows.append(QVariantMap{{"id", query.value(0)}, {"url", url}, {"name", displayName(url)},
             {"fileName", fileName(url)}, {"authors", query.value(2)}, {"year", query.value(3)},
             {"readingState", query.value(4)}, {"favorite", query.value(5).toBool()},

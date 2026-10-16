@@ -119,3 +119,21 @@ function remove(store, template) {
     if (store.setting("searchEngine", "") === template) setDefault(store, Tree.searchEngines[0].template)
     custom(store)
 }
+
+// Extract only search words; addresses and arXiv identifiers are never sent to AI.
+function words(store, text) {
+    const value = String(text || "").trim()
+    const intent = Tree.webIntent(value, template(store))
+    if (!intent || intent.title.indexOf("Open ") === 0) return ""
+    const named = /^([a-z]+):\s*(\S[\s\S]*)$/i.exec(value)
+    if (named && Tree.searchEngines.some(function(e) { return e.prefix === named[1].toLowerCase() }))
+        return named[2]
+    return value
+}
+function prepare(store, text) { store.searchText.prepare(words(store, text)) }
+function input(store, text) {
+    const query = words(store, text)
+    if (!query.length) return text
+    const value = String(text || "").trim()
+    return value.slice(0, value.length - query.length) + store.searchText.webQuery(query)
+}

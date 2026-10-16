@@ -31,6 +31,7 @@ ColumnLayout {
         const name = personName.text.trim()
         if (!name.length) return
         findingPeople = true; peopleStatus = "Looking…"; foundPeople = []
+        researchStore.searchText.prepare(name)
         forYou.findPeople(name)
     }
     // Followed: the search is done (its list goes after this click, whose row it holds).
@@ -45,6 +46,12 @@ ColumnLayout {
             root.findingPeople = false
             root.foundPeople = people
             root.peopleStatus = error.length ? error : people.length ? "" : "No one by that name on Semantic Scholar."
+        }
+    }
+    Connections {
+        target: researchStore.searchText
+        function onChanged(query) {
+            if (query === personName.text.trim().replace(/\s+/g, " ")) root.findPeople()
         }
     }
     function addTopic() {
@@ -107,7 +114,7 @@ ColumnLayout {
     SettingsGroup {
         objectName: "settingsGroup-people"
         title: "People"
-        note: "New papers by researchers you follow, such as the people you follow on Google Scholar. Find one by name and choose the right person (Semantic Scholar's author records); only the name is sent to look, then their author ID."
+        note: "New papers by researchers you follow, such as the people you follow on Google Scholar. Find one by name and choose the right person (Semantic Scholar's author records); Korean names also try English spellings. Check affiliations and profiles to distinguish people with the same name. Only search names and author IDs are sent."
         Repeater {
             model: root.people
             delegate: PersonRow {
