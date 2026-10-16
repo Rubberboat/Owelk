@@ -145,6 +145,7 @@ Item {
     onReadyChanged: { refreshHighlights(); loadSymbols() }
     onSourceChanged: {
         savedHighlights = []; highlightRequest = -1; highlightError = ""; pendingHighlightSelection = null; documentFingerprint = ""; tool = ""
+        referenceNavigation.close(); referenceNavigation.destination = null
         backStack = []; forwardStack = []; selectedMarkId = ""; markEdit = null
         closeLinkPreview(); hoveredLink = null; restSpot = null
         // PdfDocument may become Ready synchronously before this handler resets the request.
@@ -1205,7 +1206,7 @@ Item {
                             root.activated()
                             if (link.page >= 0) {
                                 const size = pdfDocument.pagePointSize(link.page)
-                                root.jumpRemembering(link.page, link.location.y / size.height, 0)
+                                root.requestReferenceJump(link.page, link.location.y / size.height, 0)
                             } else if (/^https?:\/\//i.test(url.toString())) {
                                 root.externalLinkRequested(url)
                             }
@@ -1405,8 +1406,29 @@ Item {
     }
     function goToEntry(entry) {
         const page = entry.page, top = Math.max(0, entry.top - .03)
-        closeLinkPreview()
-        jumpRemembering(page, top, 0)
+        requestReferenceJump(page, top, 0)
+    }
+    ConfirmDialog {
+        id: referenceNavigation
+        objectName: "referenceNavigationConfirm"
+        property var destination: null
+        title: "Go to source?"
+        message: "Open page " + (destination ? destination.page + 1 : "") + "? Use Back to return to where you were reading."
+        actionText: "Go to Source"
+        destructive: false
+        onConfirmed: {
+            const target = destination
+            destination = null
+            if (!target || !root.ready || target.source !== root.source.toString()) return
+            root.closeLinkPreview()
+            root.jumpRemembering(target.page, target.y, target.x)
+        }
+        onRejected: destination = null
+    }
+    function requestReferenceJump(page, y, x) {
+        if (!ready) return
+        referenceNavigation.destination = {source: source.toString(), page: page, y: y, x: x || 0}
+        referenceNavigation.open()
     }
     // --- Adjusting a mark (text box, picture, pen stroke, spot comment) ---------------------------
     property string selectedMarkId: ""

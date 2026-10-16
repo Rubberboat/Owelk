@@ -390,7 +390,27 @@ Flickable {
         ids.forEach(function(id) { root.closeTab(id) })
     }
     // owelk://<kind>/<id> links from notes and backlink lists.
+    ConfirmDialog {
+        id: sourceNavigation
+        objectName: "sourceNavigationConfirm"
+        property string pendingLink: ""
+        title: "Go to source?"
+        message: "Leave this view to see the original passage? Use Back to return to where you were reading."
+        actionText: "Go to Source"
+        destructive: false
+        onConfirmed: { const link = pendingLink; pendingLink = ""; root.followLink(link) }
+        onRejected: pendingLink = ""
+    }
     function openLink(link) {
+        const address = link.toString()
+        if (/^owelk:\/\/(document|highlight)\//.test(address)) {
+            sourceNavigation.pendingLink = address
+            sourceNavigation.open()
+            return true
+        }
+        return followLink(address)
+    }
+    function followLink(link) {
         const match = /^owelk:\/\/(note|highlight|document|ai)\/([A-Za-z0-9-]+)/.exec(link.toString())
         // A source in an AI answer: that paper at that page, and the quoted words lit up once found.
         const page = /#page=(\d+)/.exec(link.toString())

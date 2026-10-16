@@ -107,3 +107,12 @@ C++ 테스트(저장·마이그레이션·색인·재연결·주석·인쇄·주
 ## 다음 단계
 
 **실사용 확인(Mac↔Ubuntu 동기화, Linux·Windows CI 결과, 의미 검색·OCR 실제 엔진, 백업 복원) → iPad 검토.** 세부 항목은 [NEXT.md](NEXT.md)에 있습니다.
+
+## 2026-10-16: 원문 이동 전 확인
+
+- AI 답변·노트의 원문/하이라이트 링크, PDF 내부 링크·참조 미리보기를 누르면 `Go to source?` 확인창을 표시합니다. `Cancel` 또는 Esc는 현재 위치와 이동 기록을 유지하고, `Go to Source`만 실제 이동합니다.
+- 같은 PDF의 참조·AI 인용 이동은 기존 `Back to p. …`/뒤로 가기를 유지합니다. 일반 페이지 넘김·목차·검색에는 확인창을 추가하지 않습니다.
+- 변경 전: 링크 클릭 즉시 이동. 변경 후: 링크 클릭 → 확인 → 이동 또는 현재 화면 유지.
+
+- 검증: 빌드 성공. 리더 확인/취소/미리보기/복귀 4개와 작업공간 인용/노트 이동 2개 테스트 통과. store_and_pdf, paper_index, source_relink, ai_providers, semantic_search 통과.
+- 전체 검증 한계: annotations 실행이 완료되지 않아 중단. Main을 만드는 UI 테스트는 테스트 시작 전 SIGSEGV로 종료되며, 변경 전 커밋의 QML에서도 동일하게 재현됨. 이번 기능은 Main 대신 DocumentWorkspace를 직접 사용하는 별도 offscreen 테스트로 확인.

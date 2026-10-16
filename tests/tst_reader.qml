@@ -159,6 +159,10 @@ Item {
             verify(!pill.visible)
             const link = tryFindLink()
             mouseClick(link, link.width / 2, link.height / 2)
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, 0)
+            mouseClick(findChild(confirm, "confirmAction"))
             tryCompare(canvas, "currentPage", 2)
             // The spot left is offered; Back returns to it, Forward goes again.
             tryCompare(pill, "visible", true)
@@ -179,11 +183,29 @@ Item {
             tryCompare(pill, "visible", false)
             verify(!canvas.goBack())
         }
+        function test_referenceNavigationCancelKeepsPositionAndHistory() {
+            const before = canvas.position()
+            const history = JSON.stringify(canvas.backStack)
+            canvas.goToEntry({page: 2, top: .25})
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, before.page)
+            confirm.reject()
+            tryCompare(confirm, "visible", false)
+            compare(canvas.position().page, before.page)
+            fuzzyCompare(canvas.position().y, before.y, .01)
+            compare(JSON.stringify(canvas.backStack), history)
+            compare(confirm.destination, null)
+        }
         function test_internalLinkJumps() {
             canvas.openFile(linkSource, {page: 0, y: 0, x: 0, zoom: 1})
             tryCompare(canvas, "ready", true, 10000); tryCompare(canvas, "restoring", false, 10000)
             const link = tryFindLink()
             mouseClick(link, link.width / 2, link.height / 2)
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, 0)
+            mouseClick(findChild(confirm, "confirmAction"))
             tryCompare(canvas, "currentPage", 2)
         }
         function test_hoveringAReferencePreviewsItsTarget() {
@@ -196,8 +218,12 @@ Item {
             tryCompare(card, "visible", true, 3000)
             compare(findChild(card, "linkPreviewPage").currentFrame, 2)
             compare(canvas.currentPage, 0)
-            // Clicking the preview goes there.
+            // Clicking the preview asks before leaving the current reading position.
             mouseClick(card, card.width / 2, card.height / 2)
+            const confirm = findChild(canvas, "referenceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(canvas.currentPage, 0)
+            mouseClick(findChild(confirm, "confirmAction"))
             tryCompare(canvas, "currentPage", 2)
             verify(!card.visible)
             // Leaving the reference without entering the preview hides it.

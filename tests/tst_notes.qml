@@ -51,6 +51,10 @@ Item {
             compare(Tree.leaves(workspace.documents.tree)[0].tabs.length, tabCount)
             // Links in a note open their source.
             verify(workspace.documents.openLink("owelk://document/" + paper))
+            const confirm = findChild(workspace.documents, "sourceNavigationConfirm")
+            tryCompare(confirm, "opened", true)
+            compare(activeTab().kind, "note")
+            mouseClick(findChild(confirm, "confirmAction"))
             tryVerify(function() { return activeTab().kind === undefined && researchStore.sameSource(activeTab().source, fixtureSource) })
             // The Document panel's Annotations view lists notes linking to the paper.
             workspace.navigationMode = 1
