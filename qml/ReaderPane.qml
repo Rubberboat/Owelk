@@ -11,6 +11,7 @@ Rectangle {
     property int paneIndex: 0
     property bool isActive: false
     property bool managed: false
+    property bool readingFocus: false
     property alias source: canvas.source
     property alias pdfDocument: canvas.document
     property alias pdfCanvas: canvas
@@ -321,7 +322,7 @@ Rectangle {
         }
 
         Rectangle {
-            visible: canvas.ready
+            visible: canvas.ready && !root.readingFocus
             Layout.fillWidth: true
             id: readerToolbar
             objectName: "readerToolbar"
@@ -345,6 +346,8 @@ Rectangle {
                         id: fitMenu
                         objectName: "fitMenu"
                         MenuItem { objectName: "fitWidthItem"; text: "Fit Width"; checkable: true; checked: canvas.fitMode === "width"; onTriggered: canvas.fitWidth() }
+                        MenuItem { text: "Fit Left Column"; onTriggered: canvas.fitColumn("left") }
+                        MenuItem { text: "Fit Right Column"; onTriggered: canvas.fitColumn("right") }
                         MenuItem { objectName: "fitPageItem"; text: "Fit Page"; checkable: true; checked: canvas.fitMode === "page"; onTriggered: canvas.fitPage() }
                     }
                 }
@@ -417,6 +420,7 @@ Rectangle {
                     Menu {
                         id: moreMenu
                         objectName: "readerMoreMenu"
+                        MenuItem { text: "Reading Bar"; checkable: true; checked: canvas.readingBar; onTriggered: canvas.readingBar = !canvas.readingBar }
                         MenuItem { objectName: "paperGuideAction"; text: "Paper Guide with AI"; onTriggered: root.paperGuide() }
                         MenuSeparator {}
                         // Narrow panes: the annotation tools move here.

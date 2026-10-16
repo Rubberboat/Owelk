@@ -181,7 +181,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: root.stripHeight
-            visible: !Theme.verticalTabs
+            visible: !Theme.verticalTabs && !root.controller.readingFocus
             spacing: 0
         ListView {
             id: tabs
@@ -437,6 +437,7 @@ Rectangle {
         }
         ReaderPane {
             id: pane
+            readingFocus: root.controller.readingFocus
             visible: !root.isHome && !root.isWeb && !root.isLibrary && !root.isNote
             Layout.fillWidth: true
             Layout.fillHeight: true

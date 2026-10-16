@@ -29,6 +29,7 @@ const actions = [
     {id: "documentPanel", group: "Panels", name: "Document Panel", mac: "Ctrl+Shift+O", other: "Ctrl+Shift+O"},
     {id: "annotations", group: "Panels", name: "Annotations", mac: "Ctrl+Shift+M", other: "Ctrl+Shift+M"},
     {id: "aiPanel", group: "Panels", name: "AI Chat", mac: "Ctrl+Shift+I", other: "Ctrl+Shift+I"},
+    {id: "readingFocus", group: "Reading", name: "Reading Focus", mac: "F8", other: "F8"},
     {id: "previousPage", group: "Reading", name: "Previous Page", mac: "Ctrl+[", other: "Ctrl+["},
     {id: "nextPage", group: "Reading", name: "Next Page", mac: "Ctrl+]", other: "Ctrl+]"},
     {id: "fitWidth", group: "Reading", name: "Fit Width", mac: "Ctrl+0", other: "Ctrl+0"},

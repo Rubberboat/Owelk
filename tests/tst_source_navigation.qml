@@ -16,6 +16,35 @@ Item {
             tryCompare(canvas(), "restoring", false)
         }
         function canvas() { return findChild(workspace.currentReader, "pdfCanvas0") }
+        function test_columnViewportKeepsPageAndSource() {
+            const c = canvas(), source = c.source.toString(), page = c.currentPage
+            c.fitColumn("left")
+            tryCompare(c, "restoring", false)
+            verify(c.zoomFactor > 1)
+            const left = c.position().x
+            c.fitColumn("right")
+            tryCompare(c, "restoring", false)
+            verify(c.position().x > left)
+            compare(c.currentPage, page)
+            compare(c.source.toString(), source)
+            c.fitWidth()
+            tryCompare(c, "restoring", false)
+            compare(c.zoomFactor, 1)
+        }
+        function test_focusKeepsReadingPositionAndRestoresToolbar() {
+            const reader = workspace.currentReader, c = canvas()
+            const toolbar = findChild(reader, "readerToolbar")
+            const before = c.position()
+            verify(toolbar.visible)
+            workspace.readingFocus = true
+            tryCompare(toolbar, "visible", false)
+            tryCompare(c, "restoring", false)
+            compare(c.currentPage, before.page)
+            workspace.readingFocus = false
+            tryCompare(toolbar, "visible", true)
+            tryCompare(c, "restoring", false)
+            compare(c.currentPage, before.page)
+        }
         function test_citationCancelConfirmAndReturn() {
             const c = canvas(), before = c.position()
             c.backStack = []

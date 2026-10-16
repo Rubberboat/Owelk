@@ -39,6 +39,10 @@ ApplicationWindow {
     palette.toolTipText: Theme.text
     palette.brightText: Theme.onAccent
     // Vertical tabs (Settings → Appearance): the list beside the window is open or a thin rail.
+    // Hide chrome without changing the saved panel layout; toggling off restores it exactly.
+    property bool readingFocus: false
+    readonly property bool focusedReading: readingFocus && !homeVisible
+    function toggleReadingFocus() { readingFocus = !readingFocus }
     property bool tabsPanelOpen: researchStore.setting("tabs.panelOpen", "1") === "1"
     function setTabsPanel(open) { tabsPanelOpen = open; researchStore.setSetting("tabs.panelOpen", open ? "1" : "0") }
     property bool filesVisible: true
@@ -87,7 +91,7 @@ ApplicationWindow {
         dockPanels.forEach(function(other) { if (other !== panel && panelShown(other) && panelSide(other) === side) setPanelShown(other, false) })
     }
     // Reader actions bring the AI panel forward and start a thread there.
-    function showAi() { setPanelShown("ai", true); closeOthers("ai") }
+    function showAi() { readingFocus = false; setPanelShown("ai", true); closeOthers("ai") }
     function askAi(spec) { showAi(); aiController.begin(spec) }
     // Ask AI (shortcut): about the selection in the paper in front, or a new chat about that paper.
     function askAiNow() {
@@ -122,6 +126,7 @@ ApplicationWindow {
         return aiVisible && dock.activePanel === "ai" && aiController.conversationOpen && aiController.threadId === id
     }
     function togglePanel(panel) {
+        readingFocus = false
         const shown = panelShown(panel)
         setPanelShown(panel, !shown)
         if (!shown) closeOthers(panel)
@@ -548,6 +553,7 @@ ApplicationWindow {
         }
         Menu {
             title: "View"
+            Action { objectName: "readingFocusAction"; text: window.readingFocus ? "Exit Reading Focus" : "Reading Focus"; shortcut: window.keys("readingFocus"); checkable: true; checked: window.readingFocus; onTriggered: window.toggleReadingFocus() }
             Action { text: "Home"; shortcut: window.keys("home"); onTriggered: window.showHome() }
             Action { objectName: "libraryAction"; text: "Library"; shortcut: window.keys("library"); enabled: !window.restoreFailed; onTriggered: documents.openLibrary({}) }
             Action { objectName: "tabsPanelAction"; text: window.tabsPanelOpen ? "Hide Vertical Tabs" : "Show Vertical Tabs"; shortcut: window.keys("tabsPanel"); enabled: Theme.verticalTabs; onTriggered: window.setTabsPanel(!window.tabsPanelOpen) }
@@ -791,7 +797,7 @@ ApplicationWindow {
         spacing: 0
         TabsPanel {
             id: tabsPanel
-            visible: Theme.verticalTabs && !window.restoreFailed
+            visible: Theme.verticalTabs && !window.restoreFailed && !window.focusedReading
             controller: documents
             open: window.tabsPanelOpen
             openWidth: Number(researchStore.setting("tabs.panelWidth", "240")) || 240
@@ -812,7 +818,7 @@ ApplicationWindow {
             onLinkActivated: function(link) { if (!window.restoreFailed) documents.openLink(link) }
             onNewNoteRequested: function(source) { if (!window.restoreFailed) { if (source.toString().length) documents.newNoteFor(source); else documents.newNote() } }
             onAiRequested: function(spec) { window.askAi(spec) }
-            visible: panels.length > 0
+            visible: panels.length > 0 && !window.focusedReading
             Layout.preferredWidth: window.dockWidth(window.leftDockWidth); Layout.fillHeight: true
             Layout.minimumWidth: Layout.preferredWidth; Layout.maximumWidth: Layout.preferredWidth
             onFolderChosen: function(folder) { window.paperFolder = folder }
@@ -846,6 +852,7 @@ ApplicationWindow {
         }
         DocumentWorkspace {
             id: documents
+            readingFocus: window.focusedReading
             visible: !window.homeVisible
             suspended: window.homeVisible
             enabled: !window.restoreFailed
@@ -883,7 +890,7 @@ ApplicationWindow {
             onLinkActivated: function(link) { if (!window.restoreFailed) documents.openLink(link) }
             onNewNoteRequested: function(source) { if (!window.restoreFailed) { if (source.toString().length) documents.newNoteFor(source); else documents.newNote() } }
             onAiRequested: function(spec) { window.askAi(spec) }
-            visible: panels.length > 0
+            visible: panels.length > 0 && !window.focusedReading
             Layout.preferredWidth: window.dockWidth(window.rightDockWidth); Layout.fillHeight: true
             Layout.minimumWidth: Layout.preferredWidth; Layout.maximumWidth: Layout.preferredWidth
             onFolderChosen: function(folder) { window.paperFolder = folder }
@@ -903,6 +910,14 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.leftMargin: 4; anchors.rightMargin: 4
             spacing: 2
+            ToolButton {
+                objectName: "readingFocusButton"
+                text: window.readingFocus ? "Exit Focus" : "Focus"
+                checkable: true; checked: window.readingFocus
+                onClicked: window.toggleReadingFocus()
+                ToolTip.visible: hovered
+                ToolTip.text: "Reading Focus · " + window.keys("readingFocus")
+            }
             // Back and forward, as in a browser: a web tab's pages and the reader's jumps, then Home and tabs.
             IconButton {
                 objectName: "statusBack"; icon.name: "back"

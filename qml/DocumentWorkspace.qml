@@ -15,6 +15,7 @@ Flickable {
     property int revision: 0
     property bool syncing: false
     property bool suspended: false
+    property bool readingFocus: false
     property string draggedTab: ""
     property var dropTarget: null
     // The dragged tab's title (for the tab that follows the pointer).

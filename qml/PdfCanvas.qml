@@ -343,6 +343,31 @@ Item {
         })
     }
 
+    // A manual column viewport: PDF geometry and annotation coordinates stay unchanged.
+    function fitColumn(side) {
+        if (!ready) return
+        const saved = position(), size = pdfDocument.pagePointSize(saved.page)
+        fitMode = ""
+        restoring = true
+        const baseScale = Math.max(.1, (layoutWidth - 56) / Math.max(1, firstPageWidth))
+        zoomFactor = Math.max(.5, Math.min(4, (width - 32) / Math.max(1, size.width * .48) / baseScale))
+        holdForRedraw()
+        Qt.callLater(function() {
+            const left = side === "right" ? .5 : .02
+            const inset = (pages.contentWidth - size.width * root.pageScale) / 2
+            root.jump(saved.page, saved.y, Math.max(0, inset + left * size.width * root.pageScale - 16) / Math.max(1, pages.contentWidth))
+        })
+    }
+    property bool readingBar: false
+    HoverHandler { id: readingPointer; enabled: root.readingBar }
+    Rectangle {
+        objectName: "readingBar"
+        visible: root.readingBar && root.ready && readingPointer.hovered && !root.overPreview
+        z: 20
+        x: 0; y: readingPointer.point.position.y - height / 2
+        width: parent.width; height: Theme.fontBody * 1.6
+        color: Theme.accent; opacity: .12
+    }
     function zoom(multiplier) {
         if (!ready) return
         if (pinching) endPinch()
