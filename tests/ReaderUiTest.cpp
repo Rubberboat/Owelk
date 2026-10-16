@@ -3,6 +3,7 @@
 #include "MathImageProvider.h"
 #include "SelectionGeometry.h"
 #include "Theme.h"
+#include "WebAccounts.h"
 #include "AppInstance.h"
 #include <QFileOpenEvent>
 #include "PdfFixture.h"
@@ -22,6 +23,11 @@
 #include <QDir>
 #include <QFile>
 #include <QUuid>
+#include <QNetworkCookie>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QWebEngineCookieStore>
+#include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QRegularExpression>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -76,6 +82,44 @@ public:
         QFile::remove(path);
         writeFixture(path, "Unique Paper " + QUuid::createUuid().toString(QUuid::Id128).left(12));
         return QUrl::fromLocalFile(path);
+    }
+    // A web profile's cookie file as Chromium keeps it, with a Google sign-in or without: what WebAccounts
+    // reads from it at the start.
+    Q_INVOKABLE bool keptGoogleSignIn(bool signedIn)
+    {
+        const auto folder = m_directory.filePath(signedIn ? "cookies-in" : "cookies-out");
+        QDir().mkpath(folder);
+        const auto file = folder + "/Cookies";
+        QFile::remove(file);
+        {
+            auto db = QSqlDatabase::addDatabase("QSQLITE", "test-cookies");
+            db.setDatabaseName(file);
+            if (!db.open()) return false;
+            QSqlQuery query(db);
+            query.exec("CREATE TABLE cookies(host_key TEXT,name TEXT,path TEXT,expires_utc INTEGER)");
+            // Chromium's time: microseconds since 1601.
+            const qint64 later = (QDateTime::currentMSecsSinceEpoch() + 86400000LL + 11644473600000LL) * 1000;
+            query.exec(QStringLiteral("INSERT INTO cookies VALUES('.youtube.com','LOGIN_INFO','/',%1)").arg(later));
+            query.exec(QStringLiteral("INSERT INTO cookies VALUES('example.org','SID','/',%1)").arg(later));
+            if (signedIn) query.exec(QStringLiteral("INSERT INTO cookies VALUES('.google.com','SID','/',%1)").arg(later));
+            else query.exec("INSERT INTO cookies VALUES('.google.com','SID','/',13000000000000000)"); // Long expired.
+            db.close();
+        }
+        QSqlDatabase::removeDatabase("test-cookies");
+        const auto cookies = WebAccounts::googleCookiesIn(file);
+        return cookies.size() == 2 && WebAccounts::signedIn(cookies);
+    }
+    // A cookie in the web tabs' profile, as a site would set it (Google's sign-in, for Settings › Web).
+    Q_INVOKABLE void setWebCookie(QObject *profile, const QString &name, const QString &domain, const QUrl &origin)
+    {
+        auto *quick = qobject_cast<QQuickWebEngineProfile *>(profile);
+        if (!quick) return;
+        QNetworkCookie cookie(name.toUtf8(), "test");
+        cookie.setDomain(domain);
+        cookie.setPath("/");
+        cookie.setSecure(true);
+        cookie.setExpirationDate(QDateTime::currentDateTimeUtc().addDays(1));
+        quick->cookieStore()->setCookie(cookie, origin);
     }
     Q_INVOKABLE bool removeFile(const QUrl &url) const { return QFile::remove(url.toLocalFile()); }
     Q_INVOKABLE QVariantMap relinkFixture(bool specialPath = false)
@@ -175,6 +219,8 @@ public slots:
             QGuiApplication::instance()->installEventFilter(m_instance);
         }
         engine->rootContext()->setContextProperty("appInstance", m_instance);
+        if (!m_webAccounts) m_webAccounts = new WebAccounts(this);
+        engine->rootContext()->setContextProperty("webAccounts", m_webAccounts);
         engine->rootContext()->setContextProperty(
             "fixtureSource", QUrl::fromLocalFile(m_directory.filePath("fixture.pdf")));
         engine->rootContext()->setContextProperty(
@@ -436,6 +482,7 @@ private:
     QTemporaryDir m_directory;
     ResearchStore *m_store = nullptr;
     AppInstance *m_instance = nullptr;
+    WebAccounts *m_webAccounts = nullptr;
     Theme *m_theme = nullptr;
 };
 

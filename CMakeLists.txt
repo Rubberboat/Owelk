@@ -82,7 +82,7 @@ if(APPLE)
 elseif(WIN32)
     set(owelk_icon_sources resources/app/owelk.rc)
 endif()
-qt_add_executable(owelk MACOSX_BUNDLE src/main.cpp ${owelk_icon_sources})
+qt_add_executable(owelk MACOSX_BUNDLE src/main.cpp src/ui/WebAccounts.cpp ${owelk_icon_sources})
 qt_add_qml_module(owelk
     URI Owelk VERSION 1.0
     QML_FILES qml/SearchFilters.qml qml/AnnotationColors.qml qml/AnnotationEditor.qml
@@ -167,7 +167,7 @@ if(BUILD_TESTING)
     set_tests_properties(semantic_search PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(owelk_fixtures tests/fixtures.cpp)
     target_link_libraries(owelk_fixtures PRIVATE Qt6::Gui)
-    qt_add_executable(owelk_ui_tests tests/ReaderUiTest.cpp)
+    qt_add_executable(owelk_ui_tests tests/ReaderUiTest.cpp src/ui/WebAccounts.cpp)
     target_link_libraries(owelk_ui_tests PRIVATE owelk_core owelk_styleplugin Qt6::QuickTest Qt6::QuickControls2 Qt6::PdfQuick Qt6::WebEngineQuick Qt6::Network)
     target_compile_definitions(owelk_ui_tests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
     add_test(NAME reader_interactions COMMAND owelk_ui_tests)

@@ -149,6 +149,55 @@ ColumnLayout {
             }
         }
     }
+    // One Google sign-in for every web tab (Scholar, YouTube, Google), kept like a browser keeps it (WebAccounts.h).
+    SettingsGroup {
+        id: googleGroup
+        objectName: "googleAccountGroup"
+        title: "Google account"
+        readonly property bool known: typeof webAccounts !== "undefined"
+        readonly property bool signedIn: known && webAccounts.googleSignedIn
+        function openWeb(address) { const w = ApplicationWindow.window; if (w && w.openWebPage) w.openWebPage(address) }
+        note: "Sign in once and Scholar, YouTube and Google know you in every web tab, also after Owelk restarts. "
+            + "You type your password on Google's own page; Owelk never sees it."
+            + (root.tor.enabled ? " Through Tor, Google often refuses to sign in: turn Tor off for it." : "")
+        SettingsRow {
+            objectName: "settingsRow-googleAccount"
+            label: googleGroup.signedIn ? "Signed in to Google" : "Not signed in"
+            detail: googleGroup.signedIn ? "Scholar shows your library, alerts and the people you follow" : "Scholar, YouTube and Google see a guest"
+            Button {
+                objectName: "googleSignIn"
+                visible: !googleGroup.signedIn
+                enabled: googleGroup.known
+                highlighted: true
+                text: "Sign In…"
+                onClicked: googleGroup.openWeb(webAccounts.googleSignInUrl())
+            }
+            Button {
+                objectName: "googleAccountPage"
+                visible: googleGroup.signedIn
+                flat: true
+                text: "Account…"
+                onClicked: googleGroup.openWeb("https://myaccount.google.com/")
+            }
+            Button {
+                objectName: "googleSignOut"
+                visible: googleGroup.signedIn
+                text: "Sign Out"
+                onClicked: webAccounts.signOutOfGoogle()
+            }
+        }
+        SettingsRow {
+            objectName: "settingsRow-googleFirefox"
+            label: "Sign in as Firefox"
+            detail: "Google turns away browsers it takes for embedded ones, so its sign-in pages are asked for as Firefox. If signing in still fails, try with this off."
+            Switch {
+                objectName: "googleFirefoxSwitch"
+                checked: googleGroup.known ? webAccounts.firefoxForGoogle : true
+                enabled: googleGroup.known
+                onToggled: { researchStore.setSetting("web.googleAsFirefox", checked ? "1" : "0"); webAccounts.firefoxForGoogle = checked }
+            }
+        }
+    }
     // Off unless turned on here; each computer's reader decides (TorNetwork.h).
     SettingsGroup {
         title: "Tor"

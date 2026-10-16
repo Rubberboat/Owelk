@@ -220,6 +220,7 @@ Flickable {
     // Qt 6.11 suggests WebEngineProfilePrototype, but instance() hung page loads in offscreen tests;
     // revisit when the plain profile type is actually deprecated.
     readonly property WebEngineProfile webProfile: WebEngineProfile {
+        id: profile
         storageName: "owelk"
         offTheRecord: false
         persistentStoragePath: researchStore.dataDirectory + "/web"
@@ -228,7 +229,14 @@ Flickable {
         persistentCookiesPolicy: WebEngineProfile.AllowPersistentCookies
         // Present as plain Chrome: publisher sites (IEEE and the like) slow down or challenge browsers
         // whose name carries "QtWebEngine".
-        Component.onCompleted: httpUserAgent = httpUserAgent.replace(/\s*QtWebEngine\/[\d.]+/, "")
+        Component.onCompleted: {
+            httpUserAgent = httpUserAgent.replace(/\s*QtWebEngine\/[\d.]+/, "")
+            // The accounts signed in here (Google), and Google's sign-in pages asked for as Firefox (WebAccounts.h).
+            if (typeof webAccounts !== "undefined") {
+                webAccounts.firefoxForGoogle = researchStore.setting("web.googleAsFirefox", "1") === "1"
+                webAccounts.watch(profile)
+            }
+        }
     }
     // Tor turned on or off, or a new identity (TorNetwork.h): Chromium takes a changed proxy in only when
     // the next request comes, and lets that request go the old way. So a hidden page on this computer

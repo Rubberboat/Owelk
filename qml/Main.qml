@@ -97,6 +97,13 @@ ApplicationWindow {
     }
     function openAiThread(id) { if (aiController.openThread(id)) showAi() }
     // A For You paper's page (no PDF to fetch, or one that did not come), in a web tab of its own.
+    // A page from Settings (signing in to Google): Settings closes and it opens in a web tab of its own.
+    function openWebPage(address) {
+        if (window.restoreFailed || !address || !address.toString().length) return
+        settingsDialog.close()
+        homeVisible = false
+        documents.openWeb(address.toString(), true)
+    }
     function openForYouPage(address) {
         if (window.restoreFailed || !address || !address.toString().length) return
         homeVisible = false

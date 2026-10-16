@@ -35,6 +35,51 @@ Item {
             tryVerify(function() { const v = workspace.documents.groupView(workspace.documents.activeGroup); pane = v ? v.webPane : null; return pane !== null }, 5000)
             return pane
         }
+        function visibleChild(item, name) {
+            if (!item || !item.visible) return null
+            if (item.objectName === name) return item
+            for (let i = 0; i < item.children.length; ++i) { const f = visibleChild(item.children[i], name); if (f) return f }
+            return null
+        }
+        function test_googleAccountSignInAndOut() {
+            const d = workspace.documents
+            compare(webAccounts.googleSignedIn, false)
+            compare(webAccounts.googleSignInUrl().toString().indexOf("https://accounts.google.com/"), 0)
+            const settings = findChild(workspace, "settingsDialog")
+            settings.openPage("web"); tryCompare(settings, "opened", true)
+            tryVerify(function() { return visibleChild(settings.contentItem, "googleSignIn") !== null })
+            verify(visibleChild(settings.contentItem, "googleSignOut") === null)
+            // Google's sign-in pages go as Firefox unless turned off (kept as a setting).
+            const firefox = visibleChild(settings.contentItem, "googleFirefoxSwitch")
+            verify(firefox.checked && webAccounts.firefoxForGoogle)
+            firefox.toggle(); firefox.toggled()
+            verify(!webAccounts.firefoxForGoogle)
+            compare(researchStore.setting("web.googleAsFirefox"), "0")
+            firefox.toggle(); firefox.toggled()
+            verify(webAccounts.firefoxForGoogle)
+            // What was kept from before is read from the profile's cookie file (the engine tells only once a
+            // page has loaded).
+            verify(testInput.keptGoogleSignIn(true))
+            verify(!testInput.keptGoogleSignIn(false))
+            // Signed in in a web tab (Google's cookie arrives in the profile): Signed in, with Sign Out.
+            verify(d.openWeb(testInput.webFixture("/page.html").toString(), true))
+            tryCompare(activeTab(), "title", "Owelk Test Page", 15000)
+            d.closeTab(activeTab().id)
+            testInput.setWebCookie(d.webProfile, "SID", ".google.com", "https://accounts.google.com/")
+            testInput.setWebCookie(d.webProfile, "LOGIN_INFO", ".youtube.com", "https://www.youtube.com/")
+            tryCompare(webAccounts, "googleSignedIn", true, 10000)
+            let signOut = null
+            tryVerify(function() { signOut = visibleChild(settings.contentItem, "googleSignOut"); return signOut !== null })
+            compare(visibleChild(settings.contentItem, "settingsRow-googleAccount").label, "Signed in to Google")
+            signOut.clicked()
+            tryCompare(webAccounts, "googleSignedIn", false, 10000)
+            tryVerify(function() { return visibleChild(settings.contentItem, "googleSignIn") !== null })
+            // A page from Settings opens in a web tab of its own, and Settings closes.
+            workspace.openWebPage(testInput.webFixture("/page.html"))
+            tryCompare(settings, "opened", false)
+            tryVerify(function() { return activeTab().kind === "web" })
+            d.closeTab(activeTab().id)
+        }
         function test_routerAndHelpers() {
             verify(Tree.validate({kind: "group", id: "g", activeTab: "t", tabs: [Tree.webTab("https://arxiv.org/abs/1")].map(function(t) { t.id = "t"; return t })}, {}, 0))
             verify(!Tree.validate({kind: "group", id: "g", activeTab: "t", tabs: [{id: "t", kind: "web", source: "javascript:alert(1)", position: {page: 0}}]}, {}, 0))

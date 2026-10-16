@@ -4,6 +4,7 @@
 #include "MathImageProvider.h"
 #include "SelectionGeometry.h"
 #include "Theme.h"
+#include "WebAccounts.h"
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFileInfo>
@@ -63,6 +64,9 @@ int main(int argc, char *argv[])
     // Read before the window exists, so the first frame already has the chosen theme.
     Theme theme(&store);
     qmlRegisterSingletonInstance("Owelk.Ui", 1, 0, "Theme", &theme);
+    // The web tabs' accounts (Google), read from their profile once the window makes it; made before the
+    // engine, so it outlives the profile that asks it about requests.
+    WebAccounts webAccounts;
     QQmlApplicationEngine engine;
     engine.addImageProvider("annotation", new AnnotationImageProvider);
     engine.addImageProvider("math", new MathImageProvider);
@@ -70,6 +74,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("researchStore", &store);
     engine.rootContext()->setContextProperty("initialFiles", initialFiles);
     engine.rootContext()->setContextProperty("appInstance", &instance);
+    engine.rootContext()->setContextProperty("webAccounts", &webAccounts);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); },
         Qt::QueuedConnection);
