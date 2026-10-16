@@ -418,7 +418,7 @@ bool ResearchStore::choosePapersFolder(const QUrl &folder)
         if (old == defaultPapersFolder(m_directory) && QDir().rmdir(old)) QDir().rmdir(QFileInfo(old).absolutePath());
         loadDocumentNames();
         announceDocumentsChanged();
-        emit highlightsChanged();
+        notifyHighlightsChanged();
         m_copyingPdfs = false;
         emit copyingPdfsChanged();
         finishTask("movePdfs");
@@ -518,7 +518,7 @@ void ResearchStore::copyPdfsIntoLibrary()
         }
         loadDocumentNames();
         announceDocumentsChanged();
-        emit highlightsChanged();
+        notifyHighlightsChanged();
         m_copyingPdfs = false;
         emit copyingPdfsChanged();
         finishTask("copyPdfs");
@@ -658,7 +658,7 @@ int ResearchStore::purgePapers(const QVariantList &sources)
         if (used.exec() && !used.next()) QFile::remove(m_directory + "/annotations/" + image);
     }
     announceDocumentsChanged();
-    emit highlightsChanged();
+    notifyHighlightsChanged();
     emit linksChanged();
     return purged;
 }

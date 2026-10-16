@@ -24,6 +24,12 @@ QString fingerprint(const QUrl &source)
 }
 }
 
+void ResearchStore::notifyHighlightsChanged(const QString &document)
+{
+    emit highlightsChanged();
+    emit readerHighlightsChanged(document);
+}
+
 int ResearchStore::loadHighlights(const QUrl &source)
 {
     const int request = ++m_highlightRequest;
@@ -125,7 +131,7 @@ QVariantMap ResearchStore::adoptAnnotations(const QUrl &source, bool removeMisfi
         m_database.rollback();
         return {{"error", "Cannot update the annotations."}};
     }
-    emit highlightsChanged();
+    notifyHighlightsChanged(document);
     emit homeChanged();
     if (!misfit.isEmpty())
         emit message(QString("Deleted %1 annotation%2 that did not fit this copy.")
@@ -148,7 +154,7 @@ bool ResearchStore::updateHighlight(const QString &id, const QString &color, con
         return false;
     }
     recordAnnotation(id, before, "");
-    emit highlightsChanged();
+    notifyHighlightsChanged(before.value("document").toString());
     emit homeChanged();
     return true;
 }
@@ -287,7 +293,7 @@ void ResearchStore::saveAnnotation(const QUrl &source, int page, const QVariantM
             return;
         }
         recordAnnotation(id, before, "");
-        emit highlightsChanged();
+        notifyHighlightsChanged(document);
         emit homeChanged();
         emit annotationFinished(true, id);
     });
@@ -338,7 +344,7 @@ bool ResearchStore::removeHighlight(const QString &id)
         return false;
     }
     recordAnnotation(id, before, "Remove " + before.value("kind").toString());
-    emit highlightsChanged();
+    notifyHighlightsChanged(before.value("document").toString());
     emit homeChanged();
     emit message("Highlight removed. The source PDF was kept.");
     return true;

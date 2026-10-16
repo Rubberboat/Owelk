@@ -121,7 +121,7 @@ void ResearchStore::relinkSource(const QUrl &input, const QUrl &candidate)
             emit sourceRelinked(source, candidate);
             loadDocumentNames(); // Titles are cached by URL.
             announceDocumentsChanged();
-            emit highlightsChanged();
+            notifyHighlightsChanged();
             emit recentDocumentsChanged();
             emit homeChanged();
         }

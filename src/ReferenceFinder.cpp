@@ -1,4 +1,5 @@
 #include "ReferenceFinder.h"
+#include "FileFingerprint.h"
 #include "PdfAccess.h"
 #include "SelectionGeometry.h"
 
@@ -324,10 +325,10 @@ QVariantMap ReferenceFinder::find(const QString &path, int page, const QPointF &
     // The character under the pointer.
     const int index = charAt(pdf, page, point, 3);
     if (index < 0) return {};
+    const auto reference = referenceAt(pdf.getAllText(page).text(), index);
+    if (reference.isEmpty() || request < m_latest) return {};
     const auto texts = pageTexts(pdf, path, request);
     if (page >= texts.size()) return {};
-    const auto reference = referenceAt(texts[page], index);
-    if (reference.isEmpty()) return {};
     auto found = describe(pdf, texts, locate(texts, reference, page, reference["start"].toLongLong()));
     if (found.isEmpty()) return {};
     // Figures and tables: the whole float with its caption, not just the caption's first line.
@@ -384,9 +385,9 @@ QVariantMap ReferenceFinder::describe(QPdfDocument &pdf, const QStringList &text
         {"height", box.height()}, {"top", box.y() / size.height()}};
 }
 
-QStringList ReferenceFinder::pageTexts(QPdfDocument &pdf, const QString &path, int)
+QStringList ReferenceFinder::pageTexts(QPdfDocument &pdf, const QString &path, int request)
 {
-    const auto modified = QFileInfo(path).lastModified();
+    const auto modified = FileFingerprint::stamp(path).toString();
     {
         QMutexLocker lock(&m_mutex);
         const auto cached = m_texts.constFind(path);
@@ -396,8 +397,10 @@ QStringList ReferenceFinder::pageTexts(QPdfDocument &pdf, const QString &path, i
     for (int page = 0; page < pdf.pageCount(); ++page) {
         // Reading comes first: the viewer draws with the same PDF library.
         for (int waited = 0; m_readerBusy && m_readerBusy->load() && waited < 100; ++waited) QThread::msleep(20);
+        if (request < m_latest) return {};
         pages << pdf.getAllText(page).text();
     }
+    if (request < m_latest || FileFingerprint::stamp(path).toString() != modified) return {};
     QMutexLocker lock(&m_mutex);
     m_texts.insert(path, {modified, pages});
     m_order.removeAll(path);

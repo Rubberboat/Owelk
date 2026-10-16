@@ -95,8 +95,8 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     m_fileWorkers.setMaxThreadCount(2);
     connect(m_index, &PaperIndex::message, this, &ResearchStore::message);
     // Connected before any view, so the list is read again when they ask.
-    for (const auto signal : {&ResearchStore::recentDocumentsChanged, &ResearchStore::documentsChanged,
-             &ResearchStore::homeChanged})
+    for (const auto signal :
+        {&ResearchStore::recentDocumentsChanged, &ResearchStore::documentsChanged, &ResearchStore::homeChanged})
         connect(this, signal, this, [this] { m_recentLoaded = false; });
 }
 
@@ -603,13 +603,14 @@ void ResearchStore::syncReceived(const QSet<QString> &tables, const QStringList 
     const auto touched = [&](std::initializer_list<const char *> names) {
         return std::any_of(names.begin(), names.end(), [&](const char *name) { return tables.contains(name); });
     };
-    if (touched({"highlights"})) emit highlightsChanged();
+    if (touched({"highlights"})) notifyHighlightsChanged();
     if (touched({"notes", "links"})) {
         emit notesChanged();
         emit linksChanged();
     }
     if (touched({"ai_topics", "ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
-    if (touched({"foryou_topics", "foryou_follows", "foryou_people", "foryou_items", "foryou_meta"})) m_forYou->reload();
+    if (touched({"foryou_topics", "foryou_follows", "foryou_people", "foryou_items", "foryou_meta"}))
+        m_forYou->reload();
     // Papers removed or deleted on another computer leave this computer's text index too.
     if (touched({"documents"})) pruneIndex();
 }
@@ -791,7 +792,7 @@ void ResearchStore::saveTextSelection(const QUrl &source, int page, const QPoint
             mark.addBindValue(value);
         if (!mark.exec()) return fail("Cannot save annotation. Check storage and permissions.");
         recordAnnotation(result.id, {}, "");
-        emit highlightsChanged();
+        notifyHighlightsChanged(document);
         emit homeChanged();
         emit highlightSaved(result.id, result.source);
         emit annotationFinished(true, result.id);

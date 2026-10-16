@@ -139,9 +139,11 @@ Item {
     property string removingHighlight: ""
     property var pendingHighlightSelection: null
     function refreshHighlights() {
-        savedHighlights = []; highlightError = ""
+        highlightError = ""
+        if (!ready) savedHighlights = []
         highlightRequest = ready ? researchStore.loadHighlights(source) : -1
     }
+    Timer { id: highlightsLater; interval: 30; onTriggered: root.refreshHighlights() }
     onReadyChanged: { refreshHighlights(); loadSymbols() }
     onSourceChanged: {
         savedHighlights = []; highlightRequest = -1; highlightError = ""; pendingHighlightSelection = null; documentFingerprint = ""; tool = ""
@@ -154,7 +156,9 @@ Item {
     }
     Connections {
         target: researchStore
-        function onHighlightsChanged() { root.refreshHighlights() }
+        function onReaderHighlightsChanged(document) {
+            if (!document || document === researchStore.documentLinkId(root.source)) highlightsLater.restart()
+        }
         function onHighlightsLoaded(request, source, highlights, error, fingerprint, hidden) {
             if (request !== root.highlightRequest || !researchStore.sameSource(root.source, source)) return
             root.savedHighlights = highlights; root.highlightError = error; root.documentFingerprint = fingerprint

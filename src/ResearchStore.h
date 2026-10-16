@@ -404,6 +404,7 @@ public:
 
 signals:
     void highlightsChanged();
+    void readerHighlightsChanged(const QString &document);
     void documentsChanged();
     void settingsChanged();
     void notesChanged();
@@ -447,6 +448,7 @@ signals:
     void relinkFinished(bool success, const QString &detail);
 
 private:
+    void notifyHighlightsChanged(const QString &document = {});
     friend class ForYou; // Its tables live in the library.
     void saveTextSelection(const QUrl &source, int page, const QPointF &from, const QPointF &to,
         const QString &expectedText, const QString &color, const QString &kind = "highlight",

@@ -44,7 +44,7 @@ bool ResearchStore::applyAnnotationState(const QString &id, const QVariantMap &s
     query.addBindValue(deleted.isEmpty() ? QVariant(QMetaType(QMetaType::QString)) : QVariant(deleted));
     query.addBindValue(id);
     if (!query.exec() || query.numRowsAffected() != 1) return false;
-    emit highlightsChanged();
+    notifyHighlightsChanged(state.value("document").toString());
     emit homeChanged();
     return true;
 }

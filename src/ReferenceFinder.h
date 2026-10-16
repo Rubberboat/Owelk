@@ -70,7 +70,7 @@ private:
     QMutex m_mutex;
     // Page texts of the last two documents, dropped when the file changes.
     struct Texts {
-        QDateTime modified;
+        QString modified;
         QStringList pages;
     };
     QHash<QString, Texts> m_texts;
