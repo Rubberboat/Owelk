@@ -47,6 +47,7 @@ public:
     // text and the sentences around it are sent. Streams delta(request, text) and ends with
     // finished(request, text, {model}) or failed.
     Q_INVOKABLE int gloss(const QVariantMap &spec);
+    Q_INVOKABLE QString glossCacheKey(const QVariantMap &spec) const;
     // What Gloss uses with a provider (Settings → AI, or the Gloss popup): a model, or "auto" for a fast one
     // (Claude Haiku; elsewhere the chat model), and a reasoning effort (default low).
     Q_INVOKABLE QString glossModel(const QString &provider) const;

@@ -108,6 +108,33 @@ private slots:
         qputenv("OWELK_KEYCHAIN_SERVICE",
             ("org.owelk.tests." + QUuid::createUuid().toString(QUuid::WithoutBraces)).toUtf8());
     }
+    void glossCacheSeparatesContextAndSettings()
+    {
+        QTemporaryDir dir;
+        ResearchStore store(dir.path());
+        QString error;
+        QVERIFY(store.initialize(&error));
+        auto *ai = qobject_cast<AiService *>(store.ai());
+        QVariantMap spec{{"source", QUrl::fromLocalFile(dir.filePath("paper.pdf"))}, {"page", 0}, {"text", "state"},
+            {"from", QPointF(10, 20)}, {"to", QPointF(40, 20)}};
+        const auto original = ai->glossCacheKey(spec);
+        QCOMPARE(ai->glossCacheKey(spec), original);
+        spec["from"] = QPointF(10, 200);
+        QVERIFY(ai->glossCacheKey(spec) != original);
+        spec["from"] = QPointF(10, 20);
+        spec["page"] = 1;
+        QVERIFY(ai->glossCacheKey(spec) != original);
+        spec["page"] = 0;
+        store.setSetting("aiLanguage", "en");
+        QVERIFY(ai->glossCacheKey(spec) != original);
+        store.setSetting("aiLanguage", "ko");
+        QCOMPARE(ai->glossCacheKey(spec), original);
+        QFile file(dir.filePath("paper.pdf"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("new version");
+        file.close();
+        QVERIFY(ai->glossCacheKey(spec) != original);
+    }
     void promptCarriesTaskLanguageAndBudget()
     {
         AiMaterials materials;
@@ -855,8 +882,9 @@ private slots:
         QVERIFY(kept[1].toMap()["context"].toMap()["stopped"].toBool());
         // A follow-up there sends only the turns that were answered.
         server.keepOpen = false;
-        server.chunks = {MockServer::sse("content_block_delta",
-                             {{"type", "content_block_delta"}, {"delta", QJsonObject{{"type", "text_delta"}, {"text", "Done."}}}}),
+        server.chunks = {
+            MockServer::sse("content_block_delta",
+                {{"type", "content_block_delta"}, {"delta", QJsonObject{{"type", "text_delta"}, {"text", "Done."}}}}),
             MockServer::sse("message_stop", {{"type", "message_stop"}})};
         ai->ask({{"provider", "claude"}, {"model", "claude-opus-5-5"}, {"action", "ask"}, {"question", "Again"},
             {"threadId", waiting}});

@@ -116,3 +116,7 @@ C++ 테스트(저장·마이그레이션·색인·재연결·주석·인쇄·주
 
 - 검증: 빌드 성공. 리더 확인/취소/미리보기/복귀 4개와 작업공간 인용/노트 이동 2개 테스트 통과. store_and_pdf, paper_index, source_relink, ai_providers, semantic_search 통과.
 - 전체 검증 한계: annotations 실행이 완료되지 않아 중단. Main을 만드는 UI 테스트는 테스트 시작 전 SIGSEGV로 종료되며, 변경 전 커밋의 QML에서도 동일하게 재현됨. 이번 기능은 Main 대신 DocumentWorkspace를 직접 사용하는 별도 offscreen 테스트로 확인.
+
+## 2026-10-16: 읽기 보조 개선
+- Gloss: 선택 좌표·쪽·파일 스탬프·제공자·모델·추론 강도·언어별 캐시. 실제 선택 위치에서 문맥을 추출하고, 닫힌 요청의 늦은 답변은 무시합니다.
+- 검증: 빌드, Gloss 캐시 분리 및 모의 AI 응답 테스트 통과.

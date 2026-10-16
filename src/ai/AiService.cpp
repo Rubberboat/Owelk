@@ -520,7 +520,8 @@ void AiService::run(int request, const QString &id, const QVariantMap &spec, con
             const auto message = messages[i].toMap();
             if (message.value("role").toString() != "user") continue;
             const auto answer = i + 1 < messages.size() ? messages[i + 1].toMap() : QVariantMap();
-            if (answer.value("role").toString() != "assistant" || answer.value("content").toString().trimmed().isEmpty())
+            if (answer.value("role").toString() != "assistant"
+                || answer.value("content").toString().trimmed().isEmpty())
                 continue;
             history.append({"user", message.value("content").toString()});
             history.append({"assistant", answer.value("content").toString()});
@@ -666,8 +667,8 @@ void AiService::run(int request, const QString &id, const QVariantMap &spec, con
     connect(provider, &AiProvider::finished, this,
         [store](const QString &answer, const QString &used) { store(answer, used, false); });
     connect(provider, &AiProvider::failed, this,
-        [this, request, done, store, provider, id, spec, prepared, threadId, symbols,
-            summary = call.thinkingSummary](const QString &message) {
+        [this, request, done, store, provider, id, spec, prepared, threadId, symbols, summary = call.thinkingSummary](
+            const QString &message) {
             // Stopped part-way: the text so far is kept as the answer, with Copy and Save as Note.
             if (message == "Stopped." && !provider->partialText().trimmed().isEmpty()) {
                 store(provider->partialText(), QString(), true);
@@ -689,8 +690,9 @@ void AiService::run(int request, const QString &id, const QVariantMap &spec, con
             if (!symbols)
                 m_store->appendAiMessage(threadId,
                     {{"role", "assistant"}, {"content", QString()}, {"provider", id},
-                        {"context", message == "Stopped." ? QVariantMap{{"stopped", true}}
-                                                          : QVariantMap{{"failed", message.left(400)}}}});
+                        {"context",
+                            message == "Stopped." ? QVariantMap{{"stopped", true}}
+                                                  : QVariantMap{{"failed", message.left(400)}}}});
             emit failed(request, message);
         });
     emit started(request, threadId, id, call.model, prompt.truncated);
@@ -722,6 +724,19 @@ void AiService::setGloss(const QString &provider, const QString &model, const QS
     static const QRegularExpression level("^[a-z_-]{1,16}$");
     if (level.match(effort).hasMatch()) m_store->setSetting("ai.glossEffort." + provider, effort);
     emit providersChanged();
+}
+
+QString AiService::glossCacheKey(const QVariantMap &spec) const
+{
+    const auto source = m_store->resolvedSource(spec.value("source").toUrl());
+    const auto id = provider();
+    const auto from = spec.value("from").toPointF(), to = spec.value("to").toPointF();
+    const QVariantList identity{source.toString(), FileFingerprint::stamp(source.toLocalFile()).toString(),
+        spec.value("page"), spec.value("text"), from.x(), from.y(), to.x(), to.y(), id, glossModel(id), glossEffort(id),
+        m_store->setting("aiLanguage", "ko")};
+    return QString::fromLatin1(QCryptographicHash::hash(
+        QJsonDocument::fromVariant(identity).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256)
+            .toHex());
 }
 
 int AiService::gloss(const QVariantMap &spec)
@@ -793,13 +808,17 @@ int AiService::gloss(const QVariantMap &spec)
         provider->start(call);
     });
     // The sentences around the selection, from its page: enough to tell which sense a word has.
-    watcher->setFuture(QtConcurrent::run([url, page, text] {
+    watcher->setFuture(QtConcurrent::run([url, page, text, spec] {
         QPdfDocument pdf;
         if (!url.isLocalFile() || PdfAccess::load(pdf, url.toLocalFile()) != QPdfDocument::Error::None || page < 0
             || page >= pdf.pageCount())
             return QString();
-        const auto all = pdf.getAllText(page).text().simplified();
-        const auto at = all.indexOf(text.left(60));
+        const auto all = pdf.getAllText(page).text();
+        qsizetype at = all.indexOf(text.left(60));
+        if (spec.contains("from") && spec.contains("to")) {
+            const auto selection = pdf.getSelection(page, spec.value("from").toPointF(), spec.value("to").toPointF());
+            if (!selection.text().isEmpty()) at = selection.startIndex();
+        }
         if (at < 0) return QString();
         const auto from = std::max<qsizetype>(0, at - 400);
         return all.mid(from, at + text.size() + 400 - from);
@@ -1100,7 +1119,8 @@ int AiService::rankPapers(const QVariantList &papers, const QString &interests)
                     {"why", entry.value("why").toString().simplified().left(300)}});
             }
         }
-        emit papersRanked(request, ranking, ranking.isEmpty() ? QStringLiteral("The AI did not rank the papers.") : QString());
+        emit papersRanked(
+            request, ranking, ranking.isEmpty() ? QStringLiteral("The AI did not rank the papers.") : QString());
     });
     connect(provider, &AiProvider::failed, this, [this, request, done](const QString &message) {
         done();

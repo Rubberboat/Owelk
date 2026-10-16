@@ -126,7 +126,8 @@ Rectangle {
         activated()
         const end = canvas.selectedAnchor
         gloss.anchor = {page: end.page, x: end.to.x, y: end.to.y}
-        gloss.show({source: source, page: selectionPage(), text: canvas.selectedText})
+        const first = end.segments ? end.segments[0] : end
+        gloss.show({source: source, page: selectionPage(), text: canvas.selectedText, from: first.from, to: first.to})
     }
     function askAboutSelection() {
         if (!canvas.selectedText.length) return

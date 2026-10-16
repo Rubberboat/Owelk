@@ -15,12 +15,13 @@ Popup {
     property bool streaming: false
     property string answer: ""
     property string error: ""
-    // source|text → answer, the most recent last.
+    // Selection position, file version, provider, model and language → answer.
     property var recent: ({})
     property var recentKeys: []
     readonly property var providerInfo: ai.providers.find(function(p) { return p.id === ai.provider }) || ({})
     readonly property bool needsConsent: (ai.providers, !ai.consented(ai.provider))
-    readonly property string key: (spec.source || "").toString() + "|" + (spec.text || "")
+    property string key: ""
+    property string requestKey: ""
     // Gloss's own model and effort for this provider (also in Settings → AI): chosen from the chip below.
     property var models: []
     readonly property string choice: (ai.providers, ai.glossChoice(ai.provider))
@@ -38,22 +39,22 @@ Popup {
     function choose(model, level) {
         ai.setGloss(ai.provider, model, level)
         if (!opened) return
-        const next = Object.assign({}, recent)
-        delete next[key]
-        recent = next
+        key = ai.glossCacheKey(spec)
         answer = ""
+        if (recent[key] !== undefined) { answer = recent[key]; return }
         start()
     }
     width: Math.min(380, parent ? parent.width - 16 : 380)
     height: Math.min(content.implicitHeight + topPadding + bottomPadding, 300)
     padding: 10
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    onClosed: if (streaming) { ai.cancel(request); streaming = false }
+    onClosed: if (streaming) { const old = request; request = -1; streaming = false; ai.cancel(old) }
 
     // spec: source, page, text. Where it shows is the reader's (it follows the selected words).
     function show(next) {
-        if (streaming) { ai.cancel(request); streaming = false }
+        if (streaming) { const old = request; request = -1; streaming = false; ai.cancel(old) }
         spec = next
+        key = ai.glossCacheKey(spec)
         answer = ""; error = ""
         open()
         if (!models.length) ai.listModels(ai.provider)
@@ -68,12 +69,13 @@ Popup {
         }
         if (needsConsent) return
         streaming = true
+        requestKey = key
         request = ai.gloss(spec)
     }
     function remember(text) {
         const next = Object.assign({}, recent)
-        next[key] = text
-        recentKeys = recentKeys.filter(function(k) { return k !== key }).concat([key])
+        next[requestKey] = text
+        recentKeys = recentKeys.filter(function(k) { return k !== requestKey }).concat([requestKey])
         while (recentKeys.length > 50) { delete next[recentKeys[0]]; recentKeys = recentKeys.slice(1) }
         recent = next
     }
