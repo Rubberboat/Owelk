@@ -2,7 +2,6 @@
 #include "Keychain.h"
 #include "PaperIndex.h"
 #include "ResearchStore.h"
-#include "TorNetwork.h"
 #include "WorkerConnection.h"
 
 #include <QCryptographicHash>
@@ -422,10 +421,7 @@ void SemanticIndex::finishSync(const QString &error)
 void SemanticIndex::embed(
     const QStringList &texts, std::function<void(const QList<QList<float>> &, const QString &)> done)
 {
-    if (!m_network) {
-        m_network = new QNetworkAccessManager(this);
-        TorNetwork::keepDirect(m_network);
-    }
+    if (!m_network) m_network = new QNetworkAccessManager(this);
     const bool openai = engine() == "openai";
     auto base = m_store->setting(openai ? "semantic.baseUrl.openai" : "semantic.baseUrl.ollama");
     if (base.isEmpty())

@@ -6,8 +6,7 @@
 #   tools/install-local.sh --clean    start the build from scratch
 #   tools/install-local.sh --yes      do not ask before installing system packages (Linux)
 #
-# macOS: uses Homebrew's Qt (brew install qt qpdf cmake ninja) and installs ~/Applications/Owelk.app;
-# it also offers Tor (brew install tor) for Settings › Web › Browse through Tor, which stays off until turned on.
+# macOS: uses Homebrew's Qt (brew install qt qpdf cmake ninja) and installs ~/Applications/Owelk.app.
 # Linux (Ubuntu 24.04 and similar): installs the build tools with apt (after asking), puts the
 # official Qt 6.11 in ~/Qt (the system Qt is too old), and installs to ~/.local with a menu entry.
 # Nothing is bundled: the app uses that Qt, so it stays small.
@@ -22,7 +21,7 @@ for arg in "$@"; do
     case "$arg" in
         --clean) rm -rf "$BUILD" ;;
         --yes) ASSUME_YES=1 ;;
-        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -63,16 +62,6 @@ install_macos() {
         say "Homebrew packages needed: ${missing[*]}"
         ask "Run: brew install ${missing[*]} ?" || fail "Install them and run this again."
         brew install "${missing[@]}"
-    fi
-    # Optional, asked once: Tor for Settings › Web › Browse through Tor.
-    if ! brew list --versions tor >/dev/null 2>&1 && [ ! -e "$BUILD/.no-tor" ]; then
-        if ask "Also install Tor (optional, for Settings › Web › Browse through Tor)? brew install tor"; then
-            if brew install tor; then report_size "Tor" "" "$(size_kb "$(brew --cellar tor)")"
-            else echo "(Tor could not be installed; Owelk works without it.)"; fi
-        else
-            mkdir -p "$BUILD" && touch "$BUILD/.no-tor"
-            echo "(Skipped. To add it later: brew install tor)"
-        fi
     fi
     local qt
     qt="$(brew --prefix qt)"

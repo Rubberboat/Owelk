@@ -14,7 +14,6 @@
 
 class LibrarySync;
 class ForYou;
-class TorNetwork;
 class PaperIndex;
 class ReferenceFinder;
 class QNetworkAccessManager;
@@ -41,8 +40,6 @@ class ResearchStore final : public QObject {
     Q_PROPERTY(QObject *sync READ sync CONSTANT)
     // New papers in the fields the reader follows (ForYou.h).
     Q_PROPERTY(QObject *forYou READ forYou CONSTANT)
-    // Settings › Web › Browse through Tor: web tabs only, off unless turned on (TorNetwork.h).
-    Q_PROPERTY(QObject *tor READ tor CONSTANT)
     Q_PROPERTY(bool backingUp READ backingUp NOTIFY backingUpChanged)
     Q_PROPERTY(bool recoveredFromCrash READ recoveredFromCrash CONSTANT)
     Q_PROPERTY(QString startupMessage READ startupMessage CONSTANT)
@@ -85,7 +82,6 @@ public:
     // The paper a just-added file became: the file itself, or the paper with the same bytes.
     QUrl paperWithFile(const QUrl &file, const QString &sha256) const;
     LibrarySync *librarySync() const { return m_sync; }
-    QObject *tor() const;
     bool relinking() const { return m_relinking; }
     bool copyingPdfs() const { return m_copyingPdfs; }
     // "Keep PDFs in Owelk" (setting library.keepPdfs, on by default): PDFs that are opened, added or
@@ -566,7 +562,6 @@ private:
     QObject *m_ai;
     class SemanticIndex *m_semantic = nullptr;
     LibrarySync *m_sync;
-    TorNetwork *m_tor;
     ForYou *m_forYou = nullptr;
     void syncReceived(const QSet<QString> &tables, const QStringList &sources);
 };

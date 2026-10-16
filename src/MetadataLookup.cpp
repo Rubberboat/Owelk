@@ -1,5 +1,4 @@
 #include "MetadataLookup.h"
-#include "TorNetwork.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -76,10 +75,7 @@ QVariantMap crossrefWork(const QByteArray &json)
 }
 }
 
-MetadataLookup::MetadataLookup(QObject *parent) : QObject(parent), m_network(new QNetworkAccessManager(this))
-{
-    TorNetwork::keepDirect(m_network);
-}
+MetadataLookup::MetadataLookup(QObject *parent) : QObject(parent), m_network(new QNetworkAccessManager(this)) { }
 
 int MetadataLookup::lookup(const QVariantMap &details)
 {

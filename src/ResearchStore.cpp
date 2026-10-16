@@ -9,7 +9,6 @@
 #include "AiService.h"
 #include "SelectionGeometry.h"
 #include "LibrarySync.h"
-#include "TorNetwork.h"
 #include "ForYou.h"
 
 #include <QClipboard>
@@ -84,7 +83,7 @@ ResearchStore::ResearchStore(const QString &directory, QObject *parent)
     : QObject(parent), m_directory(directory), m_connection(QUuid::createUuid().toString()),
       m_index(new PaperIndex(directory, this)), m_references(new ReferenceFinder(m_index->readerBusyFlag(), this)),
       m_lookup(new MetadataLookup(this)), m_ai(new AiService(this, this)), m_sync(new LibrarySync(directory, this)),
-      m_tor(new TorNetwork(this, this)), m_forYou(new ForYou(this, this))
+      m_forYou(new ForYou(this, this))
 {
     m_papers = defaultPapersFolder(directory);
     m_sync->setPapersFolder(m_papers);
@@ -114,11 +113,6 @@ QObject *ResearchStore::sync() const
 QObject *ResearchStore::forYou() const
 {
     return m_forYou;
-}
-
-QObject *ResearchStore::tor() const
-{
-    return m_tor;
 }
 
 QObject *ResearchStore::paperIndex() const
@@ -457,7 +451,6 @@ bool ResearchStore::initialize(QString *error)
     markRunning();
     scheduleAutomaticBackup();
     m_sync->start();
-    m_tor->apply();
     m_forYou->start();
     // Papers past their days in the Trash go a little after start, not while the window opens.
     QTimer::singleShot(20000, this, &ResearchStore::purgeExpired);

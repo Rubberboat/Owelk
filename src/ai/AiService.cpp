@@ -5,7 +5,6 @@
 #include "AiProviders.h"
 #include "Keychain.h"
 #include "ResearchStore.h"
-#include "TorNetwork.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -57,8 +56,6 @@ QString pdfText(QPdfDocument &pdf, int page)
 AiService::AiService(ResearchStore *store, QObject *parent)
     : QObject(parent), m_store(store), m_network(new QNetworkAccessManager(this)), m_codex(new CodexBridge(this))
 {
-    // AI services are reached directly, also while web tabs go through Tor.
-    TorNetwork::keepDirect(m_network);
     connect(m_codex, &CodexBridge::notification, this, [this](const QString &method, const QJsonObject &params) {
         if (method == "account/login/completed") {
             if (!params.value("success").toBool())

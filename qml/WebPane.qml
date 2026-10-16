@@ -18,23 +18,6 @@ Rectangle {
     // The address this tab was opened with; a PDF fetched from it replaces the tab instead of opening beside it.
     property string openedUrl: ""
     readonly property alias view: view
-    // Settings › Web › Browse through Tor: the chip in the toolbar and the notice while it is not connected.
-    readonly property var tor: researchStore.tor
-    property bool loadFailed: false
-    // A page asked for while Tor's route is changing waits until the new route is in place.
-    property url heldUrl: ""
-    Connections {
-        target: root.tor
-        function onRoutePendingChanged() {
-            if (root.tor.routePending || !root.heldUrl.toString().length) return
-            const url = root.heldUrl
-            root.heldUrl = ""
-            view.url = url
-        }
-        // Pages that failed while Tor was connecting try again; New Identity reloads what is in view.
-        function onReady() { if (root.loadFailed) view.reload() }
-        function onIdentityChanged() { if (root.visible) view.reload() }
-    }
     // PDFs from the web open in the reader (downloaded first) unless this tab shows them in place.
     property bool browserPdf: researchStore.setting("webPdfMode", "reader") === "browser"
     // One-off: download the PDF shown in this tab and open it in the reader.
@@ -148,26 +131,6 @@ Rectangle {
                     description: view.loading ? "Stop" : "Reload"
                     onClicked: view.loading ? view.stop() : view.reload()
                 }
-                Chip {
-                    id: torChip
-                    objectName: "webTorChip"
-                    visible: root.tor.enabled
-                    focusPolicy: Qt.NoFocus
-                    checked: root.tor.state === "ready"
-                    text: root.tor.state === "starting" ? "Tor " + root.tor.progress + "%" : "Tor"
-                    ToolTip.text: root.tor.summary
-                    onClicked: torMenu.popup(torChip, 0, torChip.height + 2)
-                    Menu {
-                        id: torMenu
-                        MenuItem {
-                            objectName: "webTorNewIdentity"
-                            text: "New Identity"
-                            enabled: root.tor.state === "ready"
-                            onTriggered: root.tor.newIdentity()
-                        }
-                        MenuItem { objectName: "webTorMenuOff"; text: "Turn Off Tor"; onTriggered: root.tor.setEnabled(false) }
-                    }
-                }
                 TextField {
                     id: address
                     objectName: "webAddress"
@@ -199,32 +162,6 @@ Rectangle {
                 height: 2; width: parent.width * view.loadProgress / 100
                 visible: view.loading
                 color: Theme.accent
-            }
-        }
-        // Tor is on but not connected (starting, not installed, stopped): pages wait instead of going out
-        // directly.
-        Rectangle {
-            objectName: "webTorNotice"
-            Layout.fillWidth: true
-            Layout.preferredHeight: Theme.barHeight
-            visible: root.tor.enabled && root.tor.state !== "ready"
-            color: Theme.sidebar
-            RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 4
-                spacing: 6
-                BusyIndicator { visible: root.tor.state === "starting"; running: visible; implicitWidth: 16; implicitHeight: 16 }
-                Label {
-                    objectName: "webTorNoticeText"
-                    Layout.fillWidth: true; Layout.minimumWidth: 0
-                    elide: Text.ElideRight; font.pixelSize: Theme.fontSmall; color: Theme.text; textFormat: Text.PlainText
-                    text: root.tor.summary
-                }
-                Button {
-                    objectName: "webTorTurnOff"
-                    text: "Turn Off Tor"
-                    implicitHeight: Theme.controlHeight
-                    onClicked: root.tor.setEnabled(false)
-                }
             }
         }
         // A page that shows a PDF: choose where to read it.
@@ -323,24 +260,16 @@ Rectangle {
                 if (root.tabId.length) root.controller.updateWebTab(root.tabId, url.toString(), title)
                 // Google turned the sign-in away ("This browser or app may not be secure"): what to try.
                 if (typeof webAccounts !== "undefined" && webAccounts.refusedPage(url))
-                    researchStore.notify(researchStore.tor.enabled
-                        ? "Google refused to sign in through Tor. Turn Tor off (Settings \u203a Web) and sign in again."
-                        : webAccounts.firefoxForGoogle
+                    researchStore.notify(webAccounts.firefoxForGoogle
                         ? "Google refused this sign-in. Try again with Sign in as Firefox off (Settings \u203a Web \u203a Google account)."
                         : "Google refused this sign-in. Try again with Sign in as Firefox on (Settings \u203a Web \u203a Google account).")
             }
             onTitleChanged: if (root.tabId.length) root.controller.updateWebTab(root.tabId, url.toString(), title)
             onNewWindowRequested: function(request) { root.controller.openWeb(request.requestedUrl.toString(), true) }
-            onNavigationRequested: function(request) {
-                if (!root.tor.routePending) return
-                if (request.isMainFrame) root.heldUrl = request.url
-                request.reject()
-            }
             onActiveFocusChanged: if (activeFocus) root.activated()
             onLoadingChanged: function(request) {
                 if (request.status === WebEngineView.LoadStartedStatus) root.embeddedPdf = ""
-                else if (request.status === WebEngineView.LoadSucceededStatus) { root.loadFailed = false; root.detectEmbeddedPdf() }
-                else if (request.status === WebEngineView.LoadFailedStatus) root.loadFailed = true
+                else if (request.status === WebEngineView.LoadSucceededStatus) root.detectEmbeddedPdf()
             }
             MouseArea {
                 id: captureArea

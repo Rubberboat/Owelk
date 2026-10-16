@@ -32,7 +32,6 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonArray>
-#include <QNetworkProxy>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -451,26 +450,6 @@ public slots:
     {
         QDir().mkpath(m_directory.filePath(name));
         return m_directory.filePath(name);
-    }
-
-    // Tor tests: the stand-in tor (tests/fake_tor.py) or none at all, what it saw, and where web tabs connect.
-    Q_INVOKABLE void useFakeTor(bool installed)
-    {
-        qputenv("OWELK_TOR",
-            installed ? QByteArray(QUICK_TEST_SOURCE_DIR) + "/fake_tor.py" : m_directory.filePath("no-tor").toUtf8());
-        qputenv("OWELK_FAKE_TOR_LOG", m_directory.filePath("fake-tor.log").toUtf8());
-    }
-    Q_INVOKABLE QString fakeTorLog() const
-    {
-        QFile file(m_directory.filePath("fake-tor.log"));
-        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
-    }
-    Q_INVOKABLE QString webProxy() const
-    {
-        const auto proxy = QNetworkProxy::applicationProxy();
-        return proxy.type() == QNetworkProxy::Socks5Proxy
-            ? QStringLiteral("socks5 %1:%2").arg(proxy.hostName()).arg(proxy.port())
-            : QStringLiteral("direct");
     }
 
 private:

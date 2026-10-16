@@ -20,9 +20,7 @@ tools/install-local.sh --clean  # rebuild from scratch
 - Your library, notes and settings live in the app data folder, so reinstalling keeps them.
 
 Nice to have: [Tesseract](https://github.com/tesseract-ocr/tesseract) for scanned PDFs,
-[Ollama](https://ollama.com) for search by meaning, an API key or a ChatGPT account for AI,
-[Tor](https://www.torproject.org) for web tabs from another country's address (Settings › Web, off until
-turned on; the install scripts offer it, `-Tor` on Windows).
+[Ollama](https://ollama.com) for search by meaning, an API key or a ChatGPT account for AI.
 
 ## Develop
 
