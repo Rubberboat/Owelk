@@ -119,6 +119,20 @@ AiPrompt buildAiPrompt(
             = QStringLiteral("Translate the selected passage into %1. Give only the translation, faithful and natural; "
                              "keep equations, symbols and citation markers unchanged.")
                   .arg(into);
+    else if (action == "guide")
+        task = "Create a compact paper reading guide in the response language, using exactly these five "
+               "sections in this order: Research question; Core method; Main results; Limitations; "
+               "Figures and tables to inspect. Use at most two short bullets per section, except Limitations. "
+               "Every paper-based bullet must include a page citation with a short exact quote in the "
+               "citation format described above, so the reader can open its source. For figures and tables, "
+               "include their printed label, what to check, and a citation quoting their caption on its page. "
+               "Never invent a figure, page, quote, result or limitation. If the supplied text does not show "
+               "something, write 'Not found in the provided material' in the response language. "
+               "Under Limitations, keep two explicitly labelled subsections: Author-stated limitations "
+               "(only explicit statements, with citations) and AI-inferred caveats (clearly labelled "
+               "inference, with cited premises when available; never attribute them to the authors). "
+               "Do not describe all possible generic caveats. This guide helps navigate the paper; "
+               "keep it concise and do not add a separate summary.";
     else if (action == "library")
         task = "Answer from the passages of the reader's library above. Put the source marker, such as [2], right "
                "after each claim it supports; combine sources where they agree and say where they differ. If the "

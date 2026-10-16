@@ -135,6 +135,20 @@ private slots:
         file.close();
         QVERIFY(ai->glossCacheKey(spec) != original);
     }
+    void guideSeparatesEvidenceFromInference()
+    {
+        AiMaterials materials;
+        materials.paperText = "[Page 1] Research question and methods. [Page 2] Figure 1. Results.";
+        const auto prompt = buildAiPrompt("guide", "ko", {}, materials, 10000);
+        QVERIFY(prompt.system.contains("Korean"));
+        QVERIFY(prompt.system.contains("[p. N:"));
+        QVERIFY(prompt.text.contains("Author-stated limitations"));
+        QVERIFY(prompt.text.contains("AI-inferred caveats"));
+        QVERIFY(prompt.text.contains("Never invent"));
+        QVERIFY(prompt.text.contains("caption on its page"));
+        QVERIFY(prompt.text.indexOf("Research question;") < prompt.text.indexOf("Core method;"));
+        QCOMPARE(prompt.truncated, false);
+    }
     void promptCarriesTaskLanguageAndBudget()
     {
         AiMaterials materials;

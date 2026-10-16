@@ -210,7 +210,9 @@ int AiService::ask(const QVariantMap &input)
         && (spec.value("threadId").toString().isEmpty()
             || m_store->aiThread(spec.value("threadId").toString()).isEmpty())) {
         const auto question = spec.value("question").toString().simplified();
-        auto title = spec.value("action").toString() == "translate" ? QStringLiteral("Translate") : QString();
+        auto title = spec.value("action").toString() == "guide" ? QStringLiteral("Paper Guide")
+            : spec.value("action").toString() == "translate"    ? QStringLiteral("Translate")
+                                                                : QString();
         const auto source = spec.value("source").toUrl();
         if (title.isEmpty())
             title = question.left(80);

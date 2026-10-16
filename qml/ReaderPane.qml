@@ -110,6 +110,11 @@ Rectangle {
     // AI help: a page translated, or something attached to the AI conversation to ask about (the one open
     // in the AI panel, else a new one about this paper). The composer is shared app-wide.
     signal aiRequested(var spec)
+    function paperGuide() {
+        if (!canvas.ready) return
+        activated()
+        aiRequested({action: "guide", scope: "paper", source: source, fresh: true, label: "Paper Guide"})
+    }
     function translatePage() {
         activated()
         const page = canvas.currentPage
@@ -262,6 +267,7 @@ Rectangle {
     Menu {
         id: pageMenu
         objectName: "pageContextMenu"
+        MenuItem { objectName: "menuPaperGuide"; text: "Paper Guide with AI"; onTriggered: root.paperGuide() }
         MenuItem { objectName: "menuTranslatePage"; text: "Translate This Page with AI"; onTriggered: root.translatePage() }
         MenuSeparator {}
         MenuItem { text: "Select All on Page"; onTriggered: canvas.selectPage(root.contextPage) }
@@ -411,6 +417,8 @@ Rectangle {
                     Menu {
                         id: moreMenu
                         objectName: "readerMoreMenu"
+                        MenuItem { objectName: "paperGuideAction"; text: "Paper Guide with AI"; onTriggered: root.paperGuide() }
+                        MenuSeparator {}
                         // Narrow panes: the annotation tools move here.
                         MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Draw";onTriggered:root.setTool("draw") }
                         MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Highlight";onTriggered:root.useHighlight() }
