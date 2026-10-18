@@ -394,7 +394,7 @@ ApplicationWindow {
     function persist() {
         if (!initialized || restoreFailed) return false
         const state = documents.snapshot()
-        Object.assign(state, {width: width, height: height, panels: {filesVisible: filesVisible, filesSide: filesSide,
+        Object.assign(state, {width: focusController.sessionWidth, height: focusController.sessionHeight, panels: {filesVisible: filesVisible, filesSide: filesSide,
                 documentVisible: documentVisible, documentSide: documentSide, aiVisible: aiVisible, aiSide: aiSide, navigationMode: navigationMode,
                 folder: paperFolder.toString(), leftActive: leftDock.activePanel, rightActive: rightDock.activePanel,
                 leftWidth: leftDockWidth, rightWidth: rightDockWidth}})

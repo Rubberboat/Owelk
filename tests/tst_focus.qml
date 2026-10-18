@@ -9,8 +9,10 @@ Item {
     QtObject {
         id: fakeWindow
         property int visibility: Window.Windowed
-        function showFullScreen() { visibility = Window.FullScreen }
-        function showNormal() { visibility = Window.Windowed }
+        property real width: 1200
+        property real height: 800
+        function showFullScreen() { width = 1920; height = 1080; visibility = Window.FullScreen }
+        function showNormal() { width = 1200; height = 800; visibility = Window.Windowed }
         function showMaximized() { visibility = Window.Maximized }
     }
     App.ReadingFocus { id: controller; targetWindow: fakeWindow }
@@ -24,6 +26,7 @@ Item {
             controller.active = false
             controller.useFullScreen = true
             fakeWindow.visibility = Window.Windowed
+            fakeWindow.width = 1200; fakeWindow.height = 800
             bar.active = false
             bar.tabs = [{id: "one", title: "First paper", current: true}, {id: "two", title: "Second paper"}]
             tabSpy.clear(); exitSpy.clear()
@@ -51,6 +54,19 @@ Item {
             fakeWindow.visibility = Window.FullScreen
             fakeWindow.visibility = Window.Windowed
             verify(!controller.active)
+        }
+        function test_sessionSizeAndExistingFullscreenNativeExit() {
+            controller.active = true
+            compare(fakeWindow.width, 1920)
+            compare(controller.sessionWidth, 1200)
+            compare(controller.sessionHeight, 800)
+            controller.active = false
+            compare(controller.sessionWidth, fakeWindow.width)
+            fakeWindow.showFullScreen()
+            controller.active = true
+            fakeWindow.showNormal()
+            verify(!controller.active)
+            compare(fakeWindow.visibility, Window.Windowed)
         }
         function test_autoHidePeekTabAndExit() {
             bar.active = true
