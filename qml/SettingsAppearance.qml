@@ -8,6 +8,18 @@ import "Platform.js" as Platform
 ColumnLayout {
     id: root
     spacing: 22
+    SettingsGroup {
+        title: "Reading Focus"
+        SettingsRow {
+            label: "Enter full screen"
+            detail: "F8 or Command/Ctrl+Shift+F hides panels, tabs and tools. Move to the top edge to switch tabs or exit. Leaving restores the previous layout."
+            Switch {
+                objectName: "focusFullscreenSwitch"
+                checked: researchStore.setting("reading.focusFullscreen", "1") === "1"
+                onToggled: researchStore.setSetting("reading.focusFullscreen", checked ? "1" : "0")
+            }
+        }
+    }
     // The custom theme's seeds, edited one color at a time.
     property var custom: Theme.seeds("custom")
     readonly property var seedNames: [{key: "window", name: "Window, title bar and toolbars"}, {key: "sidebar", name: "Sidebars"},

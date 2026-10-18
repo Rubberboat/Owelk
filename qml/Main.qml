@@ -40,9 +40,52 @@ ApplicationWindow {
     palette.brightText: Theme.onAccent
     // Vertical tabs (Settings → Appearance): the list beside the window is open or a thin rail.
     // Hide chrome without changing the saved panel layout; toggling off restores it exactly.
-    property bool readingFocus: false
+    property alias readingFocus: focusController.active
     readonly property bool focusedReading: readingFocus && !homeVisible
-    function toggleReadingFocus() { readingFocus = !readingFocus }
+    function toggleReadingFocus() { if (!homeVisible && !restoreFailed) readingFocus = !readingFocus }
+    ReadingFocus {
+        id: focusController
+        targetWindow: window
+        useFullScreen: researchStore.setting("reading.focusFullscreen", "1") === "1"
+        Connections {
+            target: researchStore
+            function onSettingsChanged() { focusController.useFullScreen = researchStore.setting("reading.focusFullscreen", "1") === "1" }
+        }
+    }
+    ReadingFocusBar {
+        parent: window.contentItem
+        z: 90
+        width: parent.width
+        active: window.focusedReading
+        shortcut: Platform.keys(window.keys("readingFocus"))
+        canSwitchTabs: window.canSwitchTabs
+        canGoBack: window.canGoBack
+        canGoForward: window.canGoForward
+        tabs: {
+            const revision = documents.revision
+            const rows = []
+            Tree.leaves(documents.tree).forEach(function(group) {
+                group.tabs.forEach(function(tab) {
+                    rows.push({id: tab.id, title: Tree.tabTitle(tab, function(source) { return researchStore.displayName(source) }),
+                        current: group.id === documents.activeGroup && group.activeTab === tab.id})
+                })
+            })
+            return rows
+        }
+        title: { const tab = tabs.find(function(t) { return t.current }); return tab ? tab.title : "Open tabs" }
+        onExitRequested: window.readingFocus = false
+        onTabRequested: function(id) { if (window.canSwitchTabs) documents.activateTab(id) }
+        onPanelRequested: function(panel) { window.togglePanel(panel) }
+        onBackRequested: window.goBack()
+        onForwardRequested: window.goForward()
+        onSearchRequested: { commandPalette.close(); searchPalette.open() }
+    }
+    // The upstream shortcut, alongside the existing customizable F8 default.
+    Shortcut {
+        sequence: "Ctrl+Shift+F"
+        enabled: window.keys("readingFocus") === "F8" && !Object.keys(window.shortcutOverrides).some(function(k) { return window.shortcutOverrides[k] === "Ctrl+Shift+F" })
+        onActivated: window.toggleReadingFocus()
+    }
     property bool tabsPanelOpen: researchStore.setting("tabs.panelOpen", "1") === "1"
     function setTabsPanel(open) { tabsPanelOpen = open; researchStore.setSetting("tabs.panelOpen", open ? "1" : "0") }
     property bool filesVisible: true
@@ -215,7 +258,7 @@ ApplicationWindow {
         places = places.slice(0, placeIndex + 1).concat([key]).slice(-60)
         placeIndex = places.length - 1
     }
-    onHomeVisibleChanged: Qt.callLater(recordPlace)
+    onHomeVisibleChanged: { if (homeVisible) readingFocus = false; Qt.callLater(recordPlace) }
     Connections { target: documents; function onCurrentTabChanged() { Qt.callLater(window.recordPlace) } }
     function placeExists(key) { return key === "home" || Tree.leaves(documents.tree).some(function(g) { return g.tabs.some(function(t) { return "tab:" + t.id === key }) }) }
     function placeStep(step) {
@@ -540,6 +583,7 @@ ApplicationWindow {
         onResultChosen: function(result) { window.openSearchResult(result) }
     }
     menuBar: MenuBar {
+        visible: Qt.platform.os === "osx" || !window.focusedReading
         Menu {
             title: "File"
             Action { text: "Open PDF…"; shortcut: StandardKey.Open; onTriggered: window.chooseFile() }
@@ -556,7 +600,7 @@ ApplicationWindow {
         }
         Menu {
             title: "View"
-            Action { objectName: "readingFocusAction"; text: window.readingFocus ? "Exit Reading Focus" : "Reading Focus"; shortcut: window.keys("readingFocus"); checkable: true; checked: window.readingFocus; onTriggered: window.toggleReadingFocus() }
+            Action { objectName: "readingFocusAction"; enabled: !window.homeVisible && !window.restoreFailed; text: window.readingFocus ? "Exit Reading Focus" : "Reading Focus"; shortcut: window.keys("readingFocus"); checkable: true; checked: window.readingFocus; onTriggered: window.toggleReadingFocus() }
             Action { text: "Home"; shortcut: window.keys("home"); onTriggered: window.showHome() }
             Action { objectName: "libraryAction"; text: "Library"; shortcut: window.keys("library"); enabled: !window.restoreFailed; onTriggered: documents.openLibrary({}) }
             Action { objectName: "tabsPanelAction"; text: window.tabsPanelOpen ? "Hide Vertical Tabs" : "Show Vertical Tabs"; shortcut: window.keys("tabsPanel"); enabled: Theme.verticalTabs; onTriggered: window.setTabsPanel(!window.tabsPanelOpen) }
@@ -905,6 +949,7 @@ ApplicationWindow {
     }
     footer: Rectangle {
         id: statusBar
+        visible: !window.focusedReading
         objectName: "statusBar"
         height: 29
         color: Theme.sidebar
@@ -915,6 +960,7 @@ ApplicationWindow {
             spacing: 2
             ToolButton {
                 objectName: "readingFocusButton"
+                enabled: !window.homeVisible && !window.restoreFailed
                 text: window.readingFocus ? "Exit Focus" : "Focus"
                 checkable: true; checked: window.readingFocus
                 onClicked: window.toggleReadingFocus()
