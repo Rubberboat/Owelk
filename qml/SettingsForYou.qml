@@ -120,9 +120,10 @@ ColumnLayout {
             }
         }
     }
+    OpenAlexFollowing {}
     SettingsGroup {
         objectName: "settingsGroup-people"
-        title: "People"
+        title: "People · Semantic Scholar"
         note: "Find researchers by name and check their affiliation and profile before following. Korean names offer English spellings; Find queries one spelling and shows up to five closest author records. Only search names and author IDs are sent."
         Repeater {
             model: root.people
@@ -264,7 +265,7 @@ ColumnLayout {
         objectName: "settingsGroup-forYouChecking"
         title: "Checking"
         note: root.forYou.problem.length ? root.forYou.problem
-            : "Papers found wait in Home and in Library › For You until you add or dismiss them. Only the words, categories, author IDs and arXiv IDs or DOIs above are sent."
+            : "Papers found wait in Home and in Library › For You until you add or dismiss them. Only the words, categories, author/institution IDs and arXiv IDs or DOIs above are sent."
         noteColor: root.forYou.problem.length ? Theme.danger : Theme.textTertiary
         SettingsRow {
             objectName: "settingsRow-forYouDaily"
@@ -324,7 +325,7 @@ ColumnLayout {
         }
         SettingsRow {
             objectName: "settingsRow-forYouCount"
-            label: "At most, per topic, person or collection"
+            label: "At most, per topic, researcher, institution or collection"
             ComboBox {
                 objectName: "forYouCount"
                 Layout.preferredWidth: 140

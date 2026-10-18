@@ -1,6 +1,16 @@
 # 기획서 대비 구현 현황
 
 
+## 추가 단계 (2026-10-18): 연구자·기관 팔로우
+
+- Settings › For You › Researchers and institutions에서 Researcher/Institution을 선택해 OpenAlex 검색 → 소속·국가·도시·논문 수를 확인 → Follow. 펼치기에는 제공된 기관 홈페이지, ORCID(연구자), OpenAlex 프로필·Paper List와 홈페이지/Scholar 검색을 표시. 연구자 홈페이지를 이름으로 추측해 직접 링크하지 않음. 기존 People · Semantic Scholar의 팔로우·검색·대기 후 재시도는 유지.
+- 한글 연구자 이름은 기존 로컬 영문 후보를 사용하고, 한 번의 검색으로 최대 25개 기록을 받아 이름 유사도 순 상위 5개를 표시. 기관은 원래 이름으로 검색할 수 있고 설정된 AI가 준비한 번역 후보를 눌러 재검색할 수 있음. 후보만으로 동명이인을 확정하지 않음. 번역이 뒤늦게 와도 API 검색을 자동 재시작하지 않음.
+- 같은 조회는 세션 내 10분 캐시, 진행 중 중복 요청 방지, 오래된 응답 무시. HTTP 429의 Retry-After를 기다리고 웹 링크는 계속 사용 가능. 선택적인 OpenAlex 키는 기존 Keychain 저장소에 보관하며 DB/동기화에 포함하지 않음.
+- 팔로우한 연구자와 기관(하위 기관 포함)의 최근 article/preprint를 For You의 Check Now/기존 하루 한 번 검사로 수집. 기간·출처별 편수 제한을 지키고, DOI/arXiv/OpenAlex ID로 카드 중복을 제거. 한 논문이 여러 팔로우에 해당하면 카드 한 장을 유지하면서 각 출처 필터에 포함. 공개 PDF가 있으면 기존 Preview/Add 흐름 사용.
+- 스키마 20의 별도 foryou_entities 표를 추가해 이 포크의 스키마 19 Semantic Scholar ID와 충돌하지 않게 함. 팔로우·해제·프로필은 라이브러리 동기화 대상. 원본 x-or-b/Owelk의 OpenAlex 작품 파서·기간 필터를 현재 구조에 맞춰 반영.
+- 실제 공개 OpenAlex API로 연구자/기관 검색과 기관별 최근 논문 필터 HTTP 200 확인. 독립 C++ 팔로우 테스트 6개, OpenAlex UI 5개, 기존 People UI 10개, 원문 이동/읽기 보조 UI 8개 통과. 전체 빌드 성공. 전체 ctest 11묶음 중 9묶음 통과; 기존 macOS offscreen 인쇄 테스트 타임아웃과 전체 리더 WebEngine 초기화 SIGSEGV는 지속됨. 임시 데이터로 실제 앱 offscreen smoke도 같은 WebEngine 초기화 지점에서 종료되어 실제 데스크톱 창 동작은 수동 확인 필요.
+
+
 ## 추가 단계 (2026-10-18): 전체 화면 집중 읽기
 
 - F8 읽기 모드를 전체 화면으로 확장. 기본 단축키일 때 ⌘/Ctrl+Shift+F도 지원. 패널·탭·PDF 도구·상태 표시줄을 숨기고, 위쪽 가장자리에 포인터를 올리면 탭 전환·검색·뒤로/앞으로·패널 열기·Exit Focus가 나타남. 상단 바는 PDF 위에 겹쳐 나타나므로 페이지 크기와 좌표를 바꾸지 않음.

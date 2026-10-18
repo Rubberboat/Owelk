@@ -109,7 +109,7 @@ Rectangle {
         const age = Math.round((today - forYouDay(p)) / 86400000)
         return range === "today" ? age <= 0 : range === "week" ? age < 7 : age < 30
     }
-    readonly property var forYouFromSource: forYou.items.filter(function(p) { return !forYouSource.length || p.source === forYouSource })
+    readonly property var forYouFromSource: forYou.items.filter(function(p) { return !forYouSource.length || p.source === forYouSource || (p.sources || []).some(function(s) { return s.key === forYouSource }) })
     readonly property var forYouRows: forYouFromSource.filter(function(p) { return root.inForYouRange(p, root.forYouRange) })
     // "Lovelace et al." and "Today", "3 days ago": the details at a glance.
     function shortAuthors(authors) {

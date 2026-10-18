@@ -432,6 +432,10 @@ bool ResearchStore::initialize(QString *error)
         {19,
             {"CREATE TABLE IF NOT EXISTS foryou_people (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', "
              "detail TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0)"}},
+        // Separate provider namespace: schema 19 already stores Semantic Scholar authors in this fork.
+        {20,
+            {"CREATE TABLE IF NOT EXISTS foryou_entities (id TEXT PRIMARY KEY, kind TEXT NOT NULL, "
+             "name TEXT NOT NULL, profile TEXT NOT NULL DEFAULT '{}', position INTEGER NOT NULL DEFAULT 0)"}},
     };
     if (!migrateSchema(m_database, steps, error, m_directory + "/backups")) return false;
     loadDocumentNames();
@@ -617,7 +621,7 @@ void ResearchStore::syncReceived(const QSet<QString> &tables, const QStringList 
         emit linksChanged();
     }
     if (touched({"ai_topics", "ai_threads", "ai_messages", "ai_responses"})) emit aiThreadsChanged();
-    if (touched({"foryou_topics", "foryou_follows", "foryou_people", "foryou_items", "foryou_meta"}))
+    if (touched({"foryou_topics", "foryou_follows", "foryou_people", "foryou_entities", "foryou_items", "foryou_meta"}))
         m_forYou->reload();
     // Papers removed or deleted on another computer leave this computer's text index too.
     if (touched({"documents"})) pruneIndex();

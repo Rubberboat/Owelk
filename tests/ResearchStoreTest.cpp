@@ -1045,13 +1045,16 @@ private slots:
             WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", true);
             QSqlQuery version(db.db);
             QVERIFY(version.exec("PRAGMA user_version") && version.next());
-            QCOMPARE(version.value(0).toInt(), 19);
+            QCOMPARE(version.value(0).toInt(), 20);
         }
         auto *forYou = qobject_cast<ForYou *>(mac.forYou());
         const auto odometry = mac.createCollection("Odometry");
         QVERIFY(forYou->saveTopics({QVariantMap{{"words", "SLAM"}, {"categories", "cs.RO"}}}));
         forYou->follow(odometry, true);
         forYou->followPerson({{"id", "1741101"}, {"name", "Ada Lovelace"}, {"detail", "Analytical Engines"}}, true);
+        forYou->followEntity(
+            {{"id", "I123"}, {"kind", "institution"}, {"name", "Institute"}, {"homepage", "https://example.org"}},
+            true);
         {
             // A paper found earlier, already explained by the AI.
             WorkerConnection db(mac.dataDirectory() + "/owelk.sqlite3", false);
@@ -1083,6 +1086,9 @@ private slots:
         QVERIFY(other->following(odometry));
         QVERIFY(other->followingPerson("1741101"));
         QCOMPARE(other->people()[0].toMap()["name"].toString(), QString("Ada Lovelace"));
+        QVERIFY(other->followingEntity("I123"));
+        QCOMPARE(other->entities()[0].toMap()["homepage"].toString(), QString("https://example.org"));
+        other->followEntity(other->entities()[0].toMap(), false);
         QCOMPARE(other->items().size(), 1);
         QCOMPARE(other->items()[0].toMap()["why"].toString(), QString("On SLAM."));
         QCOMPARE(other->lastChecked(), forYou->lastChecked());
@@ -1090,6 +1096,7 @@ private slots:
         QVERIFY(laptop.librarySync()->syncBlocking().error.isEmpty());
         QVERIFY(mac.librarySync()->syncBlocking().error.isEmpty());
         QCOMPARE(forYou->items().size(), 0);
+        QVERIFY(!forYou->followingEntity("I123"));
     }
     void forYouFollowsPeople()
     {

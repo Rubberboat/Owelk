@@ -362,6 +362,14 @@ public slots:
                             });
                             return;
                         }
+                    } else if (head.contains("/openalex/authors")) {
+                        type = "application/json";
+                        body
+                            = R"({"results":[{"id":"https://openalex.org/A77","display_name":"Juhyun Kim","works_count":12,"orcid":"https://orcid.org/0000-0001","last_known_institutions":[{"display_name":"Example University"}]}]})";
+                    } else if (head.contains("/openalex/institutions")) {
+                        type = "application/json";
+                        body
+                            = R"({"results":[{"id":"https://openalex.org/I88","display_name":"Example University","works_count":500,"country_code":"KR","geo":{"city":"Seoul"},"homepage_url":"https://example.org/university"}]})";
                     } else if (head.contains("/limited-graph/author/search")) {
                         const QByteArray body = R"({"message":"Too Many Requests"})";
                         socket->write("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Type: "

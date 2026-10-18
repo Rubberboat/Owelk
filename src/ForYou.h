@@ -27,7 +27,7 @@ class ForYou final : public QObject {
     // The papers waiting, most relevant first: {id, title, authors, date, year, abstract, arxiv, doi, pdf,
     // hasPdf (a free PDF to fetch), url, source, sourceName, score, why}.
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
-    // Whether anything is followed (a topic turned on or a collection).
+    // Whether a topic, collection, Semantic Scholar author, or OpenAlex researcher/institution is followed.
     Q_PROPERTY(bool configured READ configured NOTIFY settingsChanged)
     Q_PROPERTY(bool checking READ checking NOTIFY checkingChanged)
     // When the last check finished (empty before the first), and what went wrong in it.
@@ -40,6 +40,8 @@ class ForYou final : public QObject {
     Q_PROPERTY(QString aiProblem READ aiProblem NOTIFY changed)
     // The paper whose PDF is coming for a preview (its id), or empty.
     Q_PROPERTY(QString previewing READ previewing NOTIFY previewingChanged)
+    Q_PROPERTY(bool hasOpenAlexKey READ hasOpenAlexKey NOTIFY settingsChanged)
+    Q_PROPERTY(int entityRetrySeconds READ entityRetrySeconds NOTIFY entitySearchStateChanged)
     Q_PROPERTY(int peopleRetrySeconds READ peopleRetrySeconds NOTIFY peopleSearchStateChanged)
 public:
     explicit ForYou(ResearchStore *store, QObject *parent = nullptr);
@@ -76,6 +78,15 @@ public:
     int peopleRetrySeconds() const;
     // Identity details for an existing follow, loaded only when expanded. Cached for this session.
     Q_INVOKABLE void personDetails(const QString &id);
+    // OpenAlex identities are separate from existing Semantic Scholar author IDs.
+    Q_INVOKABLE QVariantList entities() const;
+    Q_INVOKABLE bool followingEntity(const QString &id) const;
+    Q_INVOKABLE void followEntity(const QVariantMap &entity, bool on);
+    Q_INVOKABLE void findEntities(const QString &name, const QString &kind);
+    Q_INVOKABLE QStringList entitySearchSuggestions(const QString &name, const QString &kind) const;
+    bool hasOpenAlexKey() const;
+    Q_INVOKABLE bool setOpenAlexKey(const QString &key);
+    int entityRetrySeconds() const;
     // Where the papers shown came from: [{key, name, count}].
     Q_INVOKABLE QVariantList sources() const;
     Q_INVOKABLE void refresh();
@@ -107,6 +118,8 @@ signals:
     void previewReady(const QString &id, const QUrl &file);
     void previewFailed(const QString &id, const QString &why);
     void webRequested(const QUrl &url);
+    void entitiesFound(const QString &name, const QString &kind, const QVariantList &entities, const QString &error);
+    void entitySearchStateChanged();
     void peopleFound(const QString &name, const QVariantList &people, const QString &error);
     void peopleSearchStateChanged();
     void personDetailsFound(const QString &id, const QVariantMap &person, const QString &error);
@@ -141,6 +154,13 @@ private:
     QString graphBase() const;
     void cachePerson(const QString &key, const QVariantMap &person);
     void limitPeopleRequests(QNetworkReply *reply);
+    void appendOpenAlexJobs(const QDateTime &from, const QDateTime &to, int limit);
+    QString openAlexError(QNetworkReply *reply);
+    QDateTime m_entityRetryUntil;
+    QTimer *m_entityRetryTimer = nullptr;
+    int m_entityRequest = 0;
+    QPointer<QNetworkReply> m_entityReply;
+    QString m_entityLookup;
     ResearchStore *m_store;
     QNetworkAccessManager *m_network = nullptr;
     QHash<QString, QVariantMap> m_personDetails;
@@ -155,6 +175,7 @@ private:
         QVariantList rows;
     };
     QHash<QString, PeopleSearchCache> m_peopleSearchCache;
+    QHash<QString, PeopleSearchCache> m_entitySearchCache;
     QTimer *m_daily = nullptr;
     QTimer *m_libraryCheck = nullptr;
     QVariantList m_items;
@@ -185,11 +206,14 @@ QString arxivQuery(const QString &words, const QString &categories, const QDateT
 // Papers in an arXiv API answer (Atom) or a Semantic Scholar recommendations answer (JSON).
 QVariantList arxivEntries(const QByteArray &atom);
 QVariantList recommendations(const QByteArray &json);
+QVariantList openAlexWorks(const QByteArray &json);
+QVariantList openAlexEntities(const QByteArray &json, const QString &kind);
 // The papers of a Semantic Scholar paper batch (POST /paper/batch), unknown ones left out.
 QVariantList paperBatch(const QByteArray &json);
 // Researchers: {id, name, detail, papers, affiliation, homepage, profileLoaded}.
 QVariantList people(const QByteArray &json);
 QVariantMap person(const QByteArray &json);
+QVariantList closestPeople(QVariantList rows, const QString &name);
 // From an author's paper list, the papers dated on or after oldest, newest first, at most limit.
 QStringList recentPaperIds(const QByteArray &json, const QDate &oldest, int limit);
 // An address a PDF can be fetched from (not a DOI link, which leads to a publisher's page).

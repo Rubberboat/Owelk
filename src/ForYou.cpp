@@ -219,6 +219,18 @@ QVariantMap person(const QByteArray &json)
     return personRecord(QJsonDocument::fromJson(json).object());
 }
 
+QVariantList closestPeople(QVariantList results, const QString &queryName)
+{
+    const auto needle = personNameKey(queryName);
+    std::stable_sort(results.begin(), results.end(), [&](const auto &a, const auto &b) {
+        const auto left = a.toMap(), right = b.toMap();
+        const auto ld = nameDistance(needle, personNameKey(left.value("name").toString()));
+        const auto rd = nameDistance(needle, personNameKey(right.value("name").toString()));
+        return ld != rd ? ld < rd : left.value("papers").toInt() > right.value("papers").toInt();
+    });
+    return results.mid(0, 5);
+}
+
 QVariantList people(const QByteArray &json)
 {
     QVariantList list;
@@ -314,6 +326,11 @@ QString ForYou::interests() const
         const auto person = value.toMap();
         lines << "- Researcher: " + person.value("name").toString()
                 + (person.value("detail").toString().isEmpty() ? QString() : " (" + person.value("detail").toString() + ")");
+    }
+    for (const auto &value : entities()) {
+        const auto entity = value.toMap();
+        lines << "- " + QString(entity.value("kind") == "person" ? "Researcher: " : "Institution: ")
+                + entity.value("name").toString() + " (" + entity.value("detail").toString() + ")";
     }
     return lines.join('\n');
 }
@@ -672,14 +689,7 @@ void ForYou::findPeople(const QString &name)
             cachePerson(base + '/' + id, record);
             results << record;
         }
-        const auto needle = personNameKey(queryName);
-        std::stable_sort(results.begin(), results.end(), [&](const auto &a, const auto &b) {
-            const auto left = a.toMap(), right = b.toMap();
-            const auto ld = nameDistance(needle, personNameKey(left.value("name").toString()));
-            const auto rd = nameDistance(needle, personNameKey(right.value("name").toString()));
-            return ld != rd ? ld < rd : left.value("papers").toInt() > right.value("papers").toInt();
-        });
-        results = results.mid(0, 5);
+        results = ForYouParse::closestPeople(results, queryName);
         if (m_peopleSearchCache.size() >= 48) m_peopleSearchCache.erase(m_peopleSearchCache.begin());
         m_peopleSearchCache.insert(key, {QDateTime::currentDateTimeUtc().addSecs(600), results});
         emit peopleFound(name, results, {});
@@ -738,7 +748,8 @@ bool ForYou::configured() const
 {
     QSqlQuery query(m_store->m_database);
     return query.exec("SELECT 1 FROM foryou_topics WHERE enabled=1 UNION ALL SELECT 1 FROM foryou_follows f JOIN "
-                      "collections c ON c.id=f.collection_id UNION ALL SELECT 1 FROM foryou_people LIMIT 1")
+                      "collections c ON c.id=f.collection_id UNION ALL SELECT 1 FROM foryou_people UNION ALL SELECT 1 "
+                      "FROM foryou_entities LIMIT 1")
         && query.next();
 }
 QDateTime ForYou::since() const
@@ -753,9 +764,18 @@ QVariantList ForYou::sources() const
     QHash<QString, int> counts;
     for (const auto &value : items()) {
         const auto item = value.toMap();
-        const auto key = item.value("source").toString();
-        if (!counts.contains(key)) list.append(QVariantMap{{"key", key}, {"name", item.value("sourceName")}});
-        ++counts[key];
+        auto sources = item.value("sources").toList();
+        if (sources.isEmpty())
+            sources.append(QVariantMap{{"key", item.value("source")}, {"name", item.value("sourceName")}});
+        QSet<QString> counted;
+        for (const auto &value : sources) {
+            const auto source = value.toMap();
+            const auto key = source.value("key").toString();
+            if (key.isEmpty() || counted.contains(key)) continue;
+            counted.insert(key);
+            if (!counts.contains(key)) list.append(QVariantMap{{"key", key}, {"name", source.value("name")}});
+            ++counts[key];
+        }
     }
     for (auto &value : list) {
         auto source = value.toMap();
@@ -896,6 +916,7 @@ void ForYou::refresh()
                            });
                        }});
     }
+    appendOpenAlexJobs(from, to, limit);
     if (m_jobs.isEmpty()) {
         m_problem = m_problems.join(' ');
         emit changed();
@@ -926,23 +947,55 @@ void ForYou::runNext()
 
 void ForYou::found(const QVariantList &papers, const QString &source, const QString &sourceName)
 {
-    QStringList known = m_handled;
-    for (const auto &list : {m_items, m_found})
-        for (const auto &value : list) known << value.toMap().value("id").toString();
     const auto oldest = since().date();
+    const auto today = QDateTime::currentDateTimeUtc().date();
+    const auto addSource = [&](QVariantMap &paper) {
+        auto sources = paper.value("sources").toList();
+        if (sources.isEmpty() && !paper.value("source").toString().isEmpty())
+            sources.append(QVariantMap{{"key", paper.value("source")}, {"name", paper.value("sourceName")}});
+        for (const auto &value : sources)
+            if (value.toMap().value("key").toString() == source) return false;
+        sources.append(QVariantMap{{"key", source}, {"name", sourceName}});
+        paper.insert("sources", sources);
+        return true;
+    };
     for (const auto &value : papers) {
         auto paper = value.toMap();
         const auto arxiv = arxivId(paper.value("arxiv").toString()), doi = paper.value("doi").toString();
+        const auto alex = paper.value("openalex").toString(), s2 = paper.value("paperId").toString();
         const auto id = !arxiv.isEmpty() ? "arxiv:" + arxiv
             : !doi.isEmpty()             ? "doi:" + doi.toLower()
-                                         : "s2:" + paper.value("paperId").toString();
-        if (id == "s2:" || known.contains(id) || m_store->hasPaper(arxiv, doi)) continue;
-        // Recommendations come from any year; only recent ones are new (undated ones are kept).
+            : !alex.isEmpty()            ? "openalex:" + alex
+            : !s2.isEmpty()              ? "s2:" + s2
+                                         : QString();
+        if (id.isEmpty() || m_handled.contains(id) || m_store->hasPaper(arxiv, doi)) continue;
         const auto date = QDate::fromString(paper.value("date").toString(), Qt::ISODate);
-        if (date.isValid() && date < oldest) continue;
+        if (date.isValid() && (date < oldest || date > today)) continue;
+        // One paper may match both its author and institution. Keep one card with both filter memberships.
+        bool existing = false;
+        for (auto *list : {&m_found, &m_items}) {
+            for (auto &value : *list) {
+                auto saved = value.toMap();
+                if (saved.value("id").toString() != id) continue;
+                existing = true;
+                if (addSource(saved)) {
+                    value = saved;
+                    if (list == &m_items) {
+                        for (const auto &field : {"id", "foundAt", "hasPdf", "score", "why"}) saved.remove(field);
+                        exec("UPDATE foryou_items SET paper=? WHERE id=? AND state='new'",
+                            {QString::fromUtf8(
+                                 QJsonDocument(QJsonObject::fromVariantMap(saved)).toJson(QJsonDocument::Compact)),
+                                id});
+                    }
+                }
+                break;
+            }
+            if (existing) break;
+        }
+        if (existing) continue;
+        addSource(paper);
         paper.insert({{"id", id}, {"arxiv", arxiv}, {"source", source}, {"sourceName", sourceName}});
         m_found.append(paper);
-        known << id;
     }
 }
 void ForYou::finishCheck()
@@ -970,6 +1023,7 @@ void ForYou::finishCheck()
     exec("INSERT INTO foryou_meta(key,value) VALUES('checkedAt',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         {now});
     m_found.clear();
+    m_problems.removeDuplicates();
     m_problem = m_problems.join(' ');
     m_checking = false;
     load();
