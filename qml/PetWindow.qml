@@ -289,9 +289,11 @@ Window {
 
         PetTower {
             id: tower
-            // Beside the cat, on the side it leaps from; its top is where the cat stands up there.
+            objectName: "petTower"
+            // Beside the cat's floor spot, on the side it leaps from, and under it once it is up there (the
+            // window goes along with the cat); its top is where the cat stands up there.
             width: Math.round(pet.catW * .8); height: brain.towerHeight + 4
-            x: pet.catOffset + pet.catW / 2 + brain.towerSide * pet.catW * .95 - width / 2
+            x: pet.catOffset + pet.catW / 2 + brain.towerSide * pet.catW * .95 - (brain.catX - brain.floorX) - width / 2
             y: pet.feetY - brain.towerHeight
             opacity: brain.towerShown ? 1 : 0
             visible: opacity > 0

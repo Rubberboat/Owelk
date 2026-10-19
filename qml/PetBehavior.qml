@@ -235,9 +235,15 @@ Item {
         return [{wait: 1000}]
     }
 
+    // How a nap goes: lying on its side or with its back turned, one as likely as the other. chance gives a
+    // number from 0 to 1 (tests replace it).
+    property var chance: Math.random
+    function sleepPoseFor(roll) { return roll < .5 ? "sleep" : "sleepBack" }
     // The tower appears beside the cat, and it leaps up and sleeps.
     function nap() {
-        if (onTower) return [{call: function() { setPose("sleep", "asleep on the tower") }}, {wait: rand(300000, 1200000)}, {call: function() { setPose("sit", "opened its eyes") }}, {wait: 1400}]
+        const lying = sleepPoseFor(chance())
+        const asleep = lying === "sleep" ? "asleep on the tower" : "asleep on the tower, its back turned"
+        if (onTower) return [{call: function() { setPose(lying, asleep) }}, {wait: rand(300000, 1200000)}, {call: function() { setPose("sit", "opened its eyes") }}, {wait: 1400}]
         return [
             {call: function() {
                 setPose("sit", "a tower appears")
@@ -250,7 +256,7 @@ Item {
             {call: function() { onTower = true }},
             {jump: {x: function() { return catXOnTower }, lift: function() { return towerHeight }}},
             {call: function() { setPose("sit") }}, {wait: 600},
-            {call: function() { setPose("sleep", "asleep on the tower") }}, {wait: rand(300000, 1200000)},
+            {call: function() { setPose(lying, asleep) }}, {wait: rand(300000, 1200000)},
             {call: function() { setPose("sit", "opened its eyes") }}, {wait: 1400}
         ]
     }

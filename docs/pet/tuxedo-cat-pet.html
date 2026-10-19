@@ -116,9 +116,9 @@ h1 { font: 400 2.1rem/1.2 "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-se
 .ear-o { stroke: var(--fur); stroke-width: 3; stroke-linejoin: round; }
 .pose { display: none; }
 #cat[data-pose="sit"] .p-sit, #cat[data-pose="groom"] .p-groom, #cat[data-pose="knead"] .p-knead,
-#cat[data-pose="walk"] .p-walk, #cat[data-pose="run"] .p-run, #cat[data-pose="sleep"] .p-sleep,
+#cat[data-pose="walk"] .p-walk, #cat[data-pose="run"] .p-run, #cat[data-pose="sleep"] .p-sleep, #cat[data-pose="sleepBack"] .p-sleepBack,
 #cat[data-pose="belly"] .p-belly, #cat[data-pose="stretch"] .p-stretch, #cat[data-pose="arch"] .p-arch { display: inline; }
-.lg, .tail, .head-in, .eyes, .ears, .breathe, .wig, .raise, .body-bob { transform-box: fill-box; }
+.lg, .tail, .head-in, .eyes, .ears, .breathe, .wig, .raise, .body-bob, .ear-tw, .tail-tip { transform-box: fill-box; }
 .lg { transform-origin: 50% 0%; }
 .eyes { transform-origin: 50% 50%; transition: transform .07s; }
 #cat.blink .eyes { transform: scaleY(.08); }
@@ -183,6 +183,13 @@ h1 { font: 400 2.1rem/1.2 "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-se
 #cat.leap .p-run .hips { transform: translate(-10px, 0); }
 .p-sleep .breathe { transform-origin: 50% 100%; animation: breathe 3.8s ease-in-out infinite; }
 @keyframes breathe { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.045); } }
+/* asleep with its back turned: breathing, an ear that now and then twitches, a tail tip that now and then flicks */
+.p-sleepBack .breathe { transform-origin: 50% 100%; animation: breatheBack 4.4s ease-in-out infinite; }
+@keyframes breatheBack { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.045); } }
+.p-sleepBack .ear-tw { transform-origin: 50% 100%; animation: earTw 7.5s ease-in-out infinite; }
+@keyframes earTw { 0%,90% { transform: rotate(0); } 92.5% { transform: rotate(-16deg); } 95% { transform: rotate(5deg); } 97.5% { transform: rotate(-9deg); } 100% { transform: rotate(0); } }
+.p-sleepBack .tail-tip { transform-origin: 0% 100%; animation: tailTip 11s ease-in-out infinite; }
+@keyframes tailTip { 0%,70% { transform: rotate(0); } 76% { transform: rotate(-18deg); } 82% { transform: rotate(6deg); } 88%,100% { transform: rotate(0); } }
 .p-belly .wig { transform-origin: 50% 80%; animation: wig 2.6s ease-in-out infinite; }
 @keyframes wig { 0%,100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg); } }
 .p-groom .head-in { transform-origin: 50% 85%; transform: rotate(9deg); transition: transform .3s; }
@@ -233,7 +240,7 @@ legend { padding: 0; margin-bottom: 8px; font-size: .95rem; color: var(--muted);
   .app { width: 70%; left: 4%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .p-sit .tail, .p-walk .tail, .p-sleep .breathe, .p-belly .wig, .zzz span { animation: none !important; }
+  .p-sit .tail, .p-walk .tail, .p-sleep .breathe, .p-sleepBack .breathe, .p-sleepBack .ear-tw, .p-sleepBack .tail-tip, .p-belly .wig, .zzz span { animation: none !important; }
 }
 </style>
 </head>
@@ -266,6 +273,7 @@ legend { padding: 0; margin-bottom: 8px; font-size: .95rem; color: var(--muted);
         <button type="button" data-do="wander">어슬렁 걷기</button>
         <button type="button" data-do="zoomies">우다다</button>
         <button type="button" data-do="nap">캣타워에서 자기</button>
+        <button type="button" data-do="napBack">등 돌리고 자기</button>
         <button type="button" data-do="belly">배 보이며 뒹굴기</button>
         <button type="button" data-do="stretch">기지개 켜고 야옹</button>
       </div>
@@ -410,6 +418,24 @@ const POSES = {
     <path class="st" stroke-width="11" d="M54,150 C62,172 122,177 172,163"/>
     <ellipse class="w" cx="164" cy="164" rx="13" ry="6"/>`,
 
+  sleepBack: `
+    <g class="breathe">
+      <path class="f" d="M36,170 C28,130 58,98 98,96 C128,95 148,106 154,122 C162,138 178,148 180,170 Z"/>
+      <path fill="none" stroke="var(--fur-hi)" stroke-width="3" stroke-linecap="round" opacity=".9" d="M46,158 C46,128 70,108 100,106"/>
+      <path fill="none" stroke="var(--fur-hi)" stroke-width="2" stroke-linecap="round" opacity=".6" d="M98,104 C118,104 134,110 144,121"/>
+      <path fill="none" stroke="var(--fur-hi)" stroke-width="2" stroke-linecap="round" opacity=".5" d="M62,162 C68,146 82,134 98,130"/>
+      <g class="ear-tw"><path class="f ear-o" d="M138,106 L142,79 L157,99 Z"/><path fill="none" stroke="var(--fur-hi)" stroke-width="1.6" stroke-linecap="round" d="M142,83 L140,103"/></g>
+      <path class="f ear-o" d="M161,97 L174,77 L183,103 Z"/><path fill="none" stroke="var(--fur-hi)" stroke-width="1.6" stroke-linecap="round" d="M173,81 L176,100"/>
+      <ellipse class="f" cx="160" cy="117" rx="26" ry="22"/>
+      <path fill="none" stroke="var(--fur-hi)" stroke-width="2.5" stroke-linecap="round" opacity=".85" d="M138,110 C146,98 168,96 181,106"/>
+    </g>
+    <g class="whisk"><path d="M184,121 L201,116 M185,126 L203,126 M183,131 L200,136"/></g>
+    <ellipse class="w" cx="42" cy="167" rx="13" ry="6"/>
+    <ellipse class="w" cx="126" cy="171" rx="10" ry="4.5"/>
+    <path class="st" stroke-width="11" d="M40,168 C66,176 128,177 164,169"/>
+    <path fill="none" stroke="var(--fur-hi)" stroke-width="2" stroke-linecap="round" opacity=".75" d="M54,168 C82,172 128,173 160,166"/>
+    <g class="tail-tip"><path class="st" stroke-width="10" d="M162,170 C173,167 180,161 178,154"/></g>`,
+
   belly: `
     <g class="wig">
       <path class="st" stroke-width="10" d="M50,156 C32,166 16,164 8,152"/>
@@ -497,14 +523,14 @@ new ResizeObserver(layout).observe(stage);
 /* ---------- pose, bubble, status ---------- */
 const STATUS = {
   sit: "앉아서 꼬리를 살랑거려요", groom: "그루밍하는 중이에요", knead: "꾹꾹이 하는 중이에요", walk: "어슬렁어슬렁 걷고 있어요",
-  run: "우다다! 화면을 가로질러 달려요", sleep: "캣타워에서 자고 있어요", belly: "배를 보이며 뒹굴어요", stretch: "기지개를 켜요", arch: "깜짝 놀랐어요",
+  run: "우다다! 화면을 가로질러 달려요", sleep: "캣타워에서 자고 있어요", sleepBack: "캣타워에서 등 돌리고 자고 있어요", belly: "배를 보이며 뒹굴어요", stretch: "기지개를 켜요", arch: "깜짝 놀랐어요",
 };
 function pose(name, status) {
   S.pose = name;
   cat.dataset.pose = name;
   cat.classList.remove("wipe", "perk", "meow", "crouch", "leap");
   cat.classList.toggle("slow", slow.checked);
-  zzz.hidden = name !== "sleep";
+  zzz.hidden = name !== "sleep" && name !== "sleepBack";
   nowEl.textContent = status || STATUS[name];
 }
 let bubbleTimer = 0;
@@ -648,16 +674,18 @@ const B = {
     } finally { if (my === token) S.running = false; }
     pose("sit"); await wait(1400, my);
   },
-  async nap(my) {
+  // which: "sleep" (on its side) or "sleepBack" (back turned); without it one or the other, as likely
+  async nap(my, which) {
     if (!S.onTower) {
       pose("walk");
       await moveTo(Math.max(minX(), G.towerX - G.catW * .9), Math.max(55, G.W * .09), my);
       await jumpTo(towerSpot(), true, my);
     }
     pose("sit"); await wait(600, my);
-    pose("sleep"); await wait(rand(14000, 22000), my);
+    pose(which || (Math.random() < .5 ? "sleep" : "sleepBack")); await wait(rand(14000, 22000), my);
     pose("sit", "눈을 떴어요"); await wait(1400, my);
   },
+  async napBack(my) { await B.nap(my, "sleepBack"); },
   async belly(my) { await toFloor(my); pose("belly"); await wait(rand(5000, 7000), my); pose("sit"); await wait(800, my); },
   async stretch(my) {
     pose("stretch"); await wait(1300, my);

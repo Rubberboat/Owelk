@@ -316,6 +316,76 @@ Item {
         }
     }
 
+    // Asleep with its back turned: breathing, and now and then an ear twitch and a flick of the tail tip.
+    Loader {
+        active: cat.pose === "sleepBack"
+        sourceComponent: Pose {
+            id: back
+            objectName: "petSleepBack"
+            // Breathing is slow: a few steps a second are enough to look smooth.
+            tick: 100
+            // How far the ear twitch and the tail flick are (0..1; 1: at rest). Each moves once in a while,
+            // not on the page's cycle (7.5 s and 11 s): that would keep the window redrawn.
+            property real earMove: 1
+            property real tailMove: 1
+            // The ear: still for most of 7.5 s; in the last tenth -16, 5, -9, 0 degrees around its base.
+            readonly property real earAngle: P.keyframes([[0, 0], [.25, -16], [.5, 5], [.75, -9], [1, 0]], earMove, true)
+            // The tail tip: from 70 to 88 % of 11 s, -18, 6, 0 degrees around its left bottom.
+            readonly property real tailAngle: P.keyframes([[0, 0], [.3333, -18], [.6667, 6], [1, 0]], tailMove, true)
+            function twitchEar() { earAnimation.restart() }
+            function flickTail() { tailAnimation.restart() }
+            NumberAnimation { id: earAnimation; target: back; property: "earMove"; from: 0; to: 1; duration: 750 }
+            NumberAnimation { id: tailAnimation; target: back; property: "tailMove"; from: 0; to: 1; duration: 1980 }
+            Timer {
+                running: cat.alive
+                interval: cat.rest()
+                onTriggered: { back.twitchEar(); interval = cat.rest() }
+            }
+            Timer {
+                running: cat.alive
+                interval: cat.rest()
+                onTriggered: { back.flickTail(); interval = cat.rest() }
+            }
+            Item {
+                transform: Scale { origin.x: 110; origin.y: 170; yScale: P.keyframes([[0, 1], [.5, 1.045], [1, 1]], P.cycle(back.t, 4.4), true) }
+                PetShape {
+                    PetFill { d: "M36,170 C28,130 58,98 98,96 C128,95 148,106 154,122 C162,138 178,148 180,170 Z"; color: P.fur }
+                    PetLine { d: "M46,158 C46,128 70,108 100,106"; color: Qt.alpha(P.furHi, .9); width: 3 }
+                    PetLine { d: "M98,104 C118,104 134,110 144,121"; color: Qt.alpha(P.furHi, .6); width: 2 }
+                    PetLine { d: "M62,162 C68,146 82,134 98,130"; color: Qt.alpha(P.furHi, .5); width: 2 }
+                }
+                Item {
+                    transform: Rotation { origin.x: 147.5; origin.y: 106; angle: back.earAngle }
+                    PetShape {
+                        PetFill { d: "M138,106 L142,79 L157,99 Z"; color: P.fur; outline: 3 }
+                        PetLine { d: "M142,83 L140,103"; color: P.furHi; width: 1.6 }
+                    }
+                }
+                PetShape {
+                    PetFill { d: "M161,97 L174,77 L183,103 Z"; color: P.fur; outline: 3 }
+                    PetLine { d: "M173,81 L176,100"; color: P.furHi; width: 1.6 }
+                    PetFill { d: P.ellipse(160, 117, 26, 22); color: P.fur }
+                    PetLine { d: "M138,110 C146,98 168,96 181,106"; color: Qt.alpha(P.furHi, .85); width: 2.5 }
+                }
+            }
+            PetShape {
+                PetLine { d: "M184,121 L201,116 M185,126 L203,126 M183,131 L200,136"; color: Qt.alpha(P.white, .75); width: .75 }
+                PetFill { d: P.ellipse(42, 167, 13, 6); color: P.white }
+                PetFill { d: P.ellipse(126, 171, 10, 4.5); color: P.white }
+                PetLine { d: "M40,168 C66,176 128,177 164,169"; color: P.fur; width: 11 }
+                PetLine { d: "M54,168 C82,172 128,173 160,166"; color: Qt.alpha(P.furHi, .75); width: 2 }
+            }
+            Item {
+                transform: Rotation { origin.x: 162; origin.y: 170; angle: back.tailAngle }
+                PetShape { PetLine { d: "M162,170 C173,167 180,161 178,154"; color: P.fur; width: 10 } }
+            }
+            // Sleeping z's, still: nothing else moves.
+            Letter { x: 182; y: 67; font.pixelSize: 18 }
+            Letter { x: 196; y: 53; font.pixelSize: 15 }
+            Letter { x: 206; y: 41; font.pixelSize: 12 }
+        }
+    }
+
     Loader {
         active: cat.pose === "belly"
         sourceComponent: Pose {

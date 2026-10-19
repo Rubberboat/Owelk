@@ -29,6 +29,7 @@ Item {
             DesktopPet.dormant = false
             researchStore.setSetting("pet.position", "")
         }
+        function asleep(brain) { return brain.pose === "sleep" || brain.pose === "sleepBack" }
         // A pet that does nothing by itself: the test says what it does.
         function quietPet(props) {
             const pet = createTemporaryObject(petComponent, null, props || {})
@@ -253,17 +254,41 @@ Item {
             compare(brain.towerShown, false)
             brain.begin("nap")
             tryVerify(function() { return brain.towerShown }, 1000)
-            tryVerify(function() { return brain.pose === "sleep" }, 3000)
+            tryVerify(function() { return asleep(brain) }, 3000)
             verify(brain.onTower)
             compare(brain.lift, brain.towerHeight)
             compare(brain.catX, brain.catXOnTower)
             tryCompare(tower, "opacity", 1, 1000)
             // The nap is five to twenty minutes long (at pace 600: half a second to two).
             // Then it is down again and the tower goes.
-            tryVerify(function() { return brain.pose !== "sleep" }, 5000)
+            tryVerify(function() { return !asleep(brain) }, 5000)
             brain.begin("wander")
             tryVerify(function() { return !brain.onTower }, 2000)
             tryVerify(function() { return !brain.towerShown }, 4000)
+        }
+        function test_theTowerIsBesideTheCatAndThenUnderIt() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const tower = findChild(pet, "petTower")
+            const art = findChild(pet, "petCat")
+            brain.pace = 600
+            brain.catX = brain.screenLeft + brain.screenWidth * .3; brain.floorX = brain.catX
+            brain.begin("nap")
+            tryVerify(function() { return brain.towerShown }, 1000)
+            // Before the leap the tower stands to the right of the cat, touching its spot.
+            const catCenter = function() { return pet.catOffset + pet.catW / 2 }
+            verify(brain.pose === "sit" || brain.onTower)
+            tryVerify(function() { return brain.onTower }, 2000)
+            tryVerify(function() { return asleep(brain) }, 3000)
+            // Up there it is right under the cat (the window went along with it).
+            compare(Math.round(tower.x + tower.width / 2), Math.round(catCenter()))
+            compare(brain.lift, brain.towerHeight)
+            // The tower top is where its feet stand.
+            compare(Math.round(tower.y), Math.round(pet.headroom + brain.towerHeight + pet.catH * 172 / 180 - brain.towerHeight))
+            brain.stop()
+            // Standing on the floor it is beside it.
+            brain.onTower = false; brain.towerShown = true; brain.lift = 0; brain.catX = brain.floorX
+            compare(Math.round(tower.x + tower.width / 2 - catCenter()), Math.round(brain.towerSide * pet.catW * .95))
         }
         function test_theTowerStandsOnTheSideWithRoom() {
             const pet = quietPet()
@@ -284,7 +309,7 @@ Item {
             brain.pace = 600
             brain.catX = brain.screenLeft + brain.screenWidth * .3; brain.floorX = brain.catX
             brain.begin("nap")
-            tryVerify(function() { return brain.pose === "sleep" }, 3000)
+            tryVerify(function() { return asleep(brain) }, 3000)
             pet.dragging = true; brain.halt()
             pet.x = 300; pet.y = 250
             pet.dropped()
@@ -315,18 +340,82 @@ Item {
         function test_asleepTheLettersReadTheRightWayRound() {
             const pet = quietPet()
             const brain = findChild(pet, "petBrain")
-            brain.setPose("sleep")
             function letters(item, out) {
                 if (item.text === "z") out.push(item)
                 for (let i = 0; i < item.children.length; ++i) letters(item.children[i], out)
                 return out
             }
             const cat = findChild(pet, "petCat")
-            tryVerify(function() { return letters(cat, []).length === 3 })
-            // The cat is turned around (mirrored); each letter is turned back.
-            compare(letters(cat, []).map(function(z) { return z.transform[0].xScale }), [1, 1, 1])
+            for (const pose of ["sleep", "sleepBack"]) {
+                brain.facing = 1
+                brain.setPose(pose)
+                tryVerify(function() { return letters(cat, []).length === 3 })
+                // The cat is turned around (mirrored); each letter is turned back.
+                compare(letters(cat, []).map(function(z) { return z.transform[0].xScale }), [1, 1, 1])
+                brain.facing = -1
+                compare(letters(cat, []).map(function(z) { return z.transform[0].xScale }), [-1, -1, -1])
+            }
+        }
+        function test_aNapIsOnItsSideOrWithItsBackTurnedHalfAndHalf() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            compare(brain.sleepPoseFor(0), "sleep")
+            compare(brain.sleepPoseFor(.49), "sleep")
+            compare(brain.sleepPoseFor(.5), "sleepBack")
+            compare(brain.sleepPoseFor(.99), "sleepBack")
+            // And a nap asks the dice once, and lies down as they say.
+            brain.pace = 600
+            brain.catX = brain.screenLeft + brain.screenWidth * .3; brain.floorX = brain.catX
+            brain.chance = function() { return .9 }
+            brain.begin("nap")
+            tryVerify(function() { return brain.pose === "sleepBack" }, 3000)
+            verify(brain.onTower)
+            brain.stop()
+            const other = quietPet()
+            const again = findChild(other, "petBrain")
+            again.pace = 600
+            again.catX = again.screenLeft + again.screenWidth * .3; again.floorX = again.catX
+            again.chance = function() { return .1 }
+            again.begin("nap")
+            tryVerify(function() { return again.pose === "sleep" }, 3000)
+            again.stop()
+        }
+        function test_aBackTurnedSleeperBreathesAndOnlyNowAndThenMoves() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const cat = findChild(pet, "petCat")
+            // Nothing in it is on a short cycle: the ear and the tail tip wait tens of seconds.
+            cat.quietMin = 1000000; cat.quietMax = 1000000
+            brain.setPose("sleepBack")
+            tryVerify(function() { return findChild(cat, "petSleepBack") !== null })
+            const back = findChild(cat, "petSleepBack")
+            compare(back.earMove, 1); compare(back.tailMove, 1)
+            compare(back.earAngle, 0); compare(back.tailAngle, 0)
+            // Redrawn only as often as breathing needs.
+            wait(400)
+            frameSpy.target = pet; frameSpy.clear()
+            wait(1500)
+            verify(frameSpy.count > 0 && frameSpy.count <= 20, "back turned: " + frameSpy.count + " frames in 1.5 s")
+            // An ear twitch: -16, 5, -9 degrees and still again (the last tenth of 7.5 seconds).
+            let low = 0, high = 0
+            back.twitchEar()
+            for (let i = 0; i < 90; ++i) { wait(10); low = Math.min(low, back.earAngle); high = Math.max(high, back.earAngle) }
+            verify(low < -13 && low >= -16.5, "ear low " + low)
+            verify(high > 3 && high <= 5.5, "ear high " + high)
+            tryCompare(back, "earMove", 1, 2000)
+            compare(back.earAngle, 0)
+            compare(back.tailAngle, 0, "the tail tip stayed")
+            // A flick of the tail tip: -18, 6 degrees and still again (70 to 88 % of 11 seconds).
+            low = 0; high = 0
+            back.flickTail()
+            for (let i = 0; i < 220; ++i) { wait(10); low = Math.min(low, back.tailAngle); high = Math.max(high, back.tailAngle) }
+            verify(low < -15 && low >= -18.5, "tail low " + low)
+            verify(high > 4 && high <= 6.5, "tail high " + high)
+            tryCompare(back, "tailMove", 1, 2000)
+            compare(back.tailAngle, 0)
+            // Turned around, it keeps its look (mirrored whole).
             brain.facing = -1
-            compare(letters(cat, []).map(function(z) { return z.transform[0].xScale }), [-1, -1, -1])
+            compare(cat.facingLeft, true)
         }
         function test_aHeldPetKeepsStillAndLetGoItCarriesOn() {
             const pet = quietPet()
@@ -415,13 +504,13 @@ Item {
         }
         function test_everyPoseDraws() {
             const shots = testInput.petShotsFolder()
-            const poses = ["sit", "groom", "knead", "walk", "run", "sleep", "belly", "stretch", "arch"]
+            const poses = ["sit", "groom", "knead", "walk", "run", "sleep", "sleepBack", "belly", "stretch", "arch"]
             for (let i = 0; i < poses.length; ++i) {
                 // A pet for each pose, so no pose leaves anything behind in the next.
                 const pet = quietPet()
                 const brain = findChild(pet, "petBrain")
                 brain.setPose(poses[i], "")
-                if (poses[i] === "sleep") { brain.towerShown = true; brain.onTower = true; brain.towerSide = 1; brain.lift = brain.towerHeight; brain.catX = brain.catXOnTower }
+                if (poses[i] === "sleep" || poses[i] === "sleepBack") { brain.towerShown = true; brain.onTower = true; brain.towerSide = 1; brain.lift = brain.towerHeight; brain.catX = brain.catXOnTower }
                 tryVerify(function() { return findChild(pet, "petCat").children.length > 0 })
                 wait(450)
                 const cat = findChild(pet, "petContent")
