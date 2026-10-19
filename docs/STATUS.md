@@ -9,6 +9,16 @@
 - 로컬 테스트 서버·키 저장소 접근을 허용한 전체 ctest는 12묶음 중 10묶음 통과. 기존 macOS offscreen 인쇄 대화상자 타임아웃과 전체 reader_interactions의 WebEngine 초기화 SIGSEGV는 지속됨.
 
 
+## 추가 단계 (2026-10-19): 데스크톱 펫 알맹이 (Allmeng-E)
+
+- Settings › Appearance › Desktop pet에서 켜면(기본 꺼짐) 턱시도 고양이 알맹이가 다른 앱 위에 떠 있음. 크기(Small/Medium/Large)와 휴식 알림 간격(Off/25/50/90분) 설정. Wayland에서는 창 위치를 정할 수 없어 숨김.
+- 그림과 움직임은 [docs/pet/tuxedo-cat-pet.html](pet/tuxedo-cat-pet.html)이 기준: POSES 10개(sit·groom·knead·walk·run·sleep·sleepBack·belly·stretch·arch)와 head()/leg()/leg2()를 QML Shape + PathSvg로 옮김(WebEngine 미사용). 포즈별 화면은 [screenshots/poses-light.png](pet/screenshots/poses-light.png). 오른쪽 앞발 하얀 장갑·왼쪽 앞발 발가락만 흰색은 좌우로 뒤집어도 유지. 캣타워(쿠션·삼줄 기둥)는 잘 때만 옆에 나타남.
+- 혼자 하는 행동은 HTML의 next() 표 비율: 앉기(20~60초)·그루밍·걷기·캣타워에서 5~20분 낮잠(옆으로 눕기와 등 돌리고 자기 반반, Zzz 표시)·배 보이며 뒹굴기·기지개+야옹·우다다(한 시간에 한두 번). 사용자가 놓아 둔 높이의 가로선 위를 걷고, 끄는 동안·화면 잠금·Owelk 숨김(macOS) 중에는 멈춤.
+- 우다다: 0.85초 엎드려 씰룩 → 가속 → 한 걸음 0.27초 네 단계 걸음으로 화면 반대편 밖까지 → 30초~2분 뒤 반대쪽에서 걸어 들어옴. 엎드릴 때부터 돌아올 때까지 말풍선 없음, 그 사이 알림은 버림.
+- Owelk 반응: AI 답변 쓰는 중 꾹꾹이, 완료 깡충+말풍선, 실패 놀람+말풍선, For You 새 논문 귀 쫑긋+말풍선, 휴식 알림 기지개+말풍선(문구는 HTML 그대로).
+- 조용히: 앉아 있을 때는 꼬리 한 번·깜빡임을 25~60초에 한 번, 잘 때는 초당 10번 숨쉬기만 다시 그림(등 돌리고 잘 때의 귀 파르르·꼬리 끝 까딱도 수십 초에 한 번). 클릭은 투명한 부분을 통과하고(포즈가 바뀔 때 영역 재계산) macOS에서는 마우스 이동마다 판단.
+- 원본 x-or-b/Owelk의 8c4b564·aeb7218·777fc77에서 펫 창·서비스·설정만 가져옴(집중 모드·그림 테마·앱 아이콘은 제외). `OWELK_PET_PACE`(배속)·`OWELK_PET_FIRST`(첫 행동) 환경 변수와 tools/pet_cpu.sh로 직접 지켜보거나 CPU를 잴 수 있음.
+
 ## 추가 단계 (2026-10-18): 연구자·기관 팔로우
 
 - Settings › For You › Researchers and institutions에서 Researcher/Institution을 선택해 OpenAlex 검색 → 소속·국가·도시·논문 수를 확인 → Follow. 펼치기에는 제공된 기관 홈페이지, ORCID(연구자), OpenAlex 프로필·Paper List와 홈페이지/Scholar 검색을 표시. 연구자 홈페이지를 이름으로 추측해 직접 링크하지 않음. 기존 People · Semantic Scholar의 팔로우·검색·대기 후 재시도는 유지.
