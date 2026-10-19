@@ -145,7 +145,7 @@ Item {
     // window react) ends the old one's run of steps.
     property int generation: 0
     function stop() {
-        waitTimer.stop(); travelAnimation.stop(); jumpAnimation.stop()
+        waitTimer.stop(); turnTimer.stop(); travelAnimation.stop(); jumpAnimation.stop()
         steps = []; index = 0
         ++generation
     }
@@ -188,9 +188,13 @@ Item {
     }
     // To a place at a speed (points a second), taking accelMs to get there and decelMs to stop. A short way is
     // covered at a lower top speed, so it still starts and ends gently.
+    // It turns to face where it goes first (turning round takes 0.3 s), then sets off: no walking backwards.
+    Timer { id: turnTimer; onTriggered: travelAnimation.restart() }
     function travelTo(to, speed, accelMs, decelMs, stroll) {
         const distance = Math.abs(to - catX)
-        facing = to >= catX ? 1 : -1
+        const direction = to >= catX ? 1 : -1
+        const turning = distance >= 1 && direction !== facing
+        facing = direction
         if (distance < 1) { advance(); return }
         walking = stroll
         let ta = accelMs / 1000 / pace, td = decelMs / 1000 / pace, v = speed
@@ -203,7 +207,8 @@ Item {
         speedUp.to = catX + dir * da; speedUp.duration = ta * 1000
         steady.to = catX + dir * (da + cruise); steady.duration = cruise / v * 1000
         slowDown.to = to; slowDown.duration = td * 1000
-        travelAnimation.restart()
+        if (turning) { turnTimer.interval = Math.max(1, ms(340)); turnTimer.restart() }
+        else travelAnimation.restart()
     }
     // How the last move was planned (tests read it): distances in points, times in milliseconds.
     property var plan: ({})
@@ -258,7 +263,7 @@ Item {
     function toFloorSteps() {
         if (!onTower) return []
         return [
-            {call: function() { setPose("sit", "looks down", t(450)) }},
+            {call: function() { setPose("sit", "looks down", t(450)); facing = spotX() >= catX ? 1 : -1 }},
             {wait: t(600)},
             {call: function() {
                 landingX = spotX()

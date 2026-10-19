@@ -889,6 +889,24 @@ Item {
             brain.tempo = 2.1
             verify(brain.walkSpeed <= brain.catW * .25, "lazy stroll " + brain.walkSpeed)
         }
+        function test_itTurnsToFaceWhereItGoesBeforeItSetsOff() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const cat = findChild(pet, "petCat")
+            stand(brain, .6)
+            brain.facing = 1
+            tryCompare(cat, "flip", 1, 2000)
+            const at = brain.catX
+            brain.tempo = 1.25
+            brain.travelTo(at - 300, brain.walkSpeed, 700, 900, true)
+            compare(brain.facing, -1)
+            // Not a step while it is still turning (a walk backwards).
+            wait(150)
+            compare(brain.catX, at)
+            tryCompare(cat, "flip", -1, 2000)
+            tryVerify(function() { return brain.catX < at - 1 }, 3000)
+            brain.stop(); brain.walking = false
+        }
         function test_aLazyCatIsSlowerAtEverything() {
             const pet = quietPet()
             const brain = findChild(pet, "petBrain")

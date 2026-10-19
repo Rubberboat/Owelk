@@ -58,7 +58,7 @@ Item {
     property real flip: facingLeft ? -1 : 1
     Behavior on flip { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
     readonly property bool looksLeft: flip < 0
-    // How a cat that looks left is drawn: mirrored as one picture (a layer drawn the other way round), because
+    // How a cat that looks left is drawn: into one picture the right way round, which is then turned over, because
     // paths drawn under a mirroring transform come out wrong with the curve renderer on the GPU (a tail cut off,
     // jerky shapes). The software renderer has no layers and mirrors the paths.
     readonly property bool mirrorByLayer: GraphicsInfo.api !== GraphicsInfo.Software
@@ -124,17 +124,22 @@ Item {
         layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
         Loader { sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
     }
+    // The turn itself (a flat picture turned over is drawn right on every renderer) ...
     Item {
-        id: mirrorBox
+        id: flipBox
         width: 220; height: 180
-        transform: Scale { origin.x: 110; xScale: cat.mirrorByLayer ? Math.abs(cat.flip) : cat.flip }
-        layer.enabled: cat.mirrorByLayer && cat.looksLeft
-        layer.textureMirroring: ShaderEffectSource.MirrorHorizontally
-        layer.smooth: true
-        layer.sourceRect: Qt.rect(-50, -40, 320, 260)
-        layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
-        Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
-        Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+        transform: Scale { origin.x: 110; xScale: cat.flip }
+        // ... of the cat drawn the right way round into a picture while it looks left.
+        Item {
+            id: mirrorBox
+            width: 220; height: 180
+            layer.enabled: cat.mirrorByLayer && cat.looksLeft
+            layer.smooth: true
+            layer.sourceRect: Qt.rect(-50, -40, 320, 260)
+            layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
+            Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
+            Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+        }
     }
 
     onPerkChanged: {
