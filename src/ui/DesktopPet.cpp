@@ -63,6 +63,20 @@ void DesktopPet::setDormant(bool dormant)
     emit dormantChanged();
 }
 
+qreal DesktopPet::pace()
+{
+    bool ok = false;
+    const auto value = qEnvironmentVariable("OWELK_PET_PACE").toDouble(&ok);
+    return ok && value >= 1 && value <= 1000 ? value : 1;
+}
+
+QString DesktopPet::first()
+{
+    const auto name = qEnvironmentVariable("OWELK_PET_FIRST");
+    static const QStringList known{"sit", "groom", "wander", "zoomies", "nap", "belly", "stretch"};
+    return known.contains(name) ? name : QStringLiteral("sit");
+}
+
 int DesktopPet::height() const
 {
     return m_size == "small" ? 120 : m_size == "large" ? 220 : 160;
@@ -109,6 +123,12 @@ void DesktopPet::floatEverywhere(QWindow *window)
 #else
     Q_UNUSED(window)
 #endif
+}
+
+QRect DesktopPet::clickArea(QWindow *window) const
+{
+    if (!window) return {};
+    return window->mask().isEmpty() ? QRect(QPoint(), window->size()) : window->mask().boundingRect();
 }
 
 bool DesktopPet::leftButtonDown() const

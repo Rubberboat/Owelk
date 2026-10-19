@@ -232,6 +232,12 @@ ApplicationWindow {
         else if (homeVisible) homeVisible = false
         else documents.closeActiveTab()
     }
+    // Owelk's window in front (from Finder, another launch, the desktop pet).
+    function comeForward() {
+        if (!window.visible) window.show()
+        else if (window.visibility === Window.Minimized) window.showNormal()
+        window.raise(); window.requestActivate()
+    }
     function showHome() { persist(); homeVisible = true; Qt.callLater(function() { homeView.focusSearch() }) }
     // Cmd+L: the address bar of the current web tab, or a new web tab when a paper or Home is in front.
     function openWebAddress() {
@@ -474,12 +480,32 @@ ApplicationWindow {
         if (!restoreFailed && researchStore.startupMessage.length) notify(researchStore.startupMessage)
         else if (!restoreFailed && researchStore.recoveredFromCrash) notify("Owelk closed unexpectedly last time. Your tabs are back; unsaved notes are offered when you reopen them.")
     }
+    // The desktop pet (Settings › Appearance › Desktop pet), only while it is on.
+    Loader {
+        objectName: "petLoader"
+        active: DesktopPet.enabled && DesktopPet.supported
+        sourceComponent: PetWindow {
+            ai: researchStore.ai
+            forYou: researchStore.forYou
+            reading: Qt.application.state === Qt.ApplicationActive && !window.homeVisible
+            onOpenRequested: window.comeForward()
+            onThreadRequested: function(threadId) { window.comeForward(); window.openAiThread(threadId) }
+            onForYouRequested: { window.comeForward(); window.showHome() }
+            onPdfsDropped: function(urls) {
+                window.comeForward()
+                if (window.restoreFailed) return
+                urls.forEach(function(url) { window.openDocument(url) })
+                window.homeVisible = false
+            }
+            // Data for the AI, not interface text: the label is kept with the conversation like "Ask".
+            onExplainRequested: function(text) { window.comeForward(); window.askAi({action: "explain", selection: text, label: "Explain"}) }
+        }
+    }
     // PDFs opened from Finder or handed over by another launch while this window is open.
     Connections {
         target: typeof appInstance !== "undefined" ? appInstance : null
         function onFilesRequested(urls) {
-            if (!window.visible) window.show()
-            window.raise(); window.requestActivate()
+            window.comeForward()
             if (window.restoreFailed || !urls.length) return
             urls.forEach(function(url) { window.openDocument(url) })
             window.homeVisible = false

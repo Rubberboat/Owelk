@@ -3,6 +3,7 @@
 #include <QImage>
 #include <QObject>
 #include <QPoint>
+#include <QRect>
 #include <QRegion>
 #include <QSize>
 
@@ -13,6 +14,14 @@ class ResearchStore;
 // while Owelk runs. Its switch, size and place are kept with the settings.
 class DesktopPet : public QObject {
     Q_OBJECT
+    // The pet's name: 알맹이, Allmeng-E in English text.
+    Q_PROPERTY(QString name READ name CONSTANT)
+    Q_PROPERTY(QString englishName READ englishName CONSTANT)
+    // How much faster than real time the pet lives: 1, unless OWELK_PET_PACE says otherwise (to watch it all
+    // in a short time).
+    Q_PROPERTY(qreal pace READ pace CONSTANT)
+    // What it does first when it appears: sit, unless OWELK_PET_FIRST names another (nap, groom ...).
+    Q_PROPERTY(QString first READ first CONSTANT)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY changed)
     // "small", "medium" or "large"; height is the cat's height in points for it.
     Q_PROPERTY(QString size READ size WRITE setSize NOTIFY changed)
@@ -27,6 +36,10 @@ class DesktopPet : public QObject {
 public:
     explicit DesktopPet(ResearchStore *store = nullptr, QObject *parent = nullptr);
 
+    static QString name() { return QString::fromUtf8("\xec\x95\x8c\xeb\xa7\xb9\xec\x9d\xb4"); }
+    static QString englishName() { return QStringLiteral("Allmeng-E"); }
+    static qreal pace();
+    static QString first();
     bool enabled() const { return m_enabled; }
     void setEnabled(bool on);
     QString size() const { return m_size; }
@@ -55,6 +68,8 @@ public:
     // as far as it hops. Empty for an image with no transparency or nothing drawn (all of the window
     // takes them).
     static QRegion drawnRegion(const QImage &image, const QSize &area, int rise);
+    // The smallest rectangle of the window that takes clicks (the whole window when none is set).
+    Q_INVOKABLE QRect clickArea(QWindow *window) const;
     // Whether the left mouse button is down now, also while the system moves a window (a drag).
     Q_INVOKABLE bool leftButtonDown() const;
 

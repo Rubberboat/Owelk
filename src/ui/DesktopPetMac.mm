@@ -26,34 +26,43 @@ bool desktopPetLeftButtonDown()
     return ([NSEvent pressedMouseButtons] & 1) != 0;
 }
 
+namespace {
+// Why the pet is dormant; the notifications below set these, and the pet is told.
+QPointer<DesktopPet> dormancyTarget;
+bool appHidden = false, screenLocked = false, screensAsleep = false;
+void tellDormancy()
+{
+    if (dormancyTarget) dormancyTarget->setDormant(appHidden || screenLocked || screensAsleep);
+}
+void watchDormancy(NSNotificationCenter *center, NSString *name, bool *flag, bool value)
+{
+    // Built without ARC: the observers live as long as the program, so they are kept.
+    [[center addObserverForName:name
+                         object:nil
+                          queue:[NSOperationQueue mainQueue]
+                     usingBlock:^(NSNotification *) {
+                         *flag = value;
+                         tellDormancy();
+                     }] retain];
+}
+}
+
 // The screen locked or asleep, or Owelk hidden (Command+H): told once when that starts or ends, not polled.
 void desktopPetWatchDormancy(DesktopPet *pet)
 {
     if (!pet || QGuiApplication::platformName() != QLatin1String("cocoa")) return;
-    static bool hidden = false, locked = false, asleep = false;
-    const QPointer<DesktopPet> guard(pet);
-    auto tell = [guard] {
-        if (guard) guard->setDormant(hidden || locked || asleep);
-    };
-    // Built without ARC: the observers live as long as the program, so they are kept.
-    auto watch = [&](NSNotificationCenter *center, NSString *name, bool *flag, bool value) {
-        [[center addObserverForName:name
-                             object:nil
-                              queue:[NSOperationQueue mainQueue]
-                         usingBlock:^(NSNotification *) {
-                             *flag = value;
-                             tell();
-                         }] retain];
-    };
+    const bool first = dormancyTarget.isNull();
+    dormancyTarget = pet;
+    if (!first) return;
     NSNotificationCenter *app = [NSNotificationCenter defaultCenter];
     NSNotificationCenter *workspace = [[NSWorkspace sharedWorkspace] notificationCenter];
     NSNotificationCenter *distributed = [NSDistributedNotificationCenter defaultCenter];
-    watch(app, NSApplicationDidHideNotification, &hidden, true);
-    watch(app, NSApplicationDidUnhideNotification, &hidden, false);
-    watch(workspace, NSWorkspaceScreensDidSleepNotification, &asleep, true);
-    watch(workspace, NSWorkspaceScreensDidWakeNotification, &asleep, false);
-    watch(distributed, @"com.apple.screenIsLocked", &locked, true);
-    watch(distributed, @"com.apple.screenIsUnlocked", &locked, false);
+    watchDormancy(app, NSApplicationDidHideNotification, &appHidden, true);
+    watchDormancy(app, NSApplicationDidUnhideNotification, &appHidden, false);
+    watchDormancy(workspace, NSWorkspaceScreensDidSleepNotification, &screensAsleep, true);
+    watchDormancy(workspace, NSWorkspaceScreensDidWakeNotification, &screensAsleep, false);
+    watchDormancy(distributed, @"com.apple.screenIsLocked", &screenLocked, true);
+    watchDormancy(distributed, @"com.apple.screenIsUnlocked", &screenLocked, false);
 }
 
 namespace {

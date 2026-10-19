@@ -51,6 +51,13 @@ class ReaderSetup : public QObject {
     Q_OBJECT
 public:
     // A byte-identical copy of fixture.pdf under a new name, for duplicate detection.
+    // Where pose screenshots go: OWELK_PET_SHOTS names a folder to keep them in, else a temporary one.
+    Q_INVOKABLE QString petShotsFolder() const
+    {
+        const auto folder = qEnvironmentVariable("OWELK_PET_SHOTS", m_directory.filePath("pet-shots"));
+        QDir().mkpath(folder);
+        return folder;
+    }
     Q_INVOKABLE bool fileExists(const QUrl &url) const { return QFile::exists(url.toLocalFile()); }
     // What Finder sends when a PDF is opened with Owelk.
     Q_INVOKABLE void finderOpen(const QUrl &url)
