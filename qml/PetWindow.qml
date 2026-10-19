@@ -185,7 +185,7 @@ Window {
     // above it for a hop or a stretch: nothing the cat does is cut off at the edge.
     readonly property int catH: DesktopPet.height
     readonly property int catW: Math.round(catH * 220 / 180)
-    readonly property int marginX: Math.round(catW * .12)
+    readonly property int marginX: Math.round(catW * .25)
     readonly property int headroom: Math.round(catH * .42)
     // Where the line under its feet is in the window.
     readonly property int feetOffset: headroom + Math.round(catH * 172 / 180)

@@ -917,6 +917,45 @@ Item {
                 }
             }
         }
+        function test_aGallopInEitherDirectionIsNotCutOff() {
+            // The tail thrown back goes furthest outside the cat's own box; look at a whole stride, both ways.
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const cat = findChild(pet, "petCat")
+            const content = findChild(pet, "petContent")
+            for (const facing of [-1, 1]) {
+                brain.facing = facing
+                brain.setPose("run", "", 0)
+                tryCompare(cat, "flip", facing, 2000)
+                wait(300)
+                for (let i = 0; i < 24; ++i) {
+                    wait(14)
+                    let clear = null
+                    content.grabToImage(function(result) { clear = testInput.edgeIsClear(result.image, 1) })
+                    tryVerify(function() { return clear !== null }, 3000)
+                    verify(clear, "cut off at the edge, facing " + facing + ", sample " + i)
+                }
+            }
+        }
+        function test_noPoseIsCutOffFacingEitherWay() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const cat = findChild(pet, "petCat")
+            const content = findChild(pet, "petContent")
+            for (const facing of [-1, 1]) {
+                brain.facing = facing
+                tryCompare(cat, "flip", facing, 2000)
+                for (const pose of ["sit", "groom", "knead", "walk", "stand", "run", "sleep", "sleepBack", "belly", "stretch", "arch"]) {
+                    brain.setPose(pose, "", 0)
+                    tryCompare(cat, "shownPose", pose)
+                    wait(120)
+                    let clear = null
+                    content.grabToImage(function(result) { clear = testInput.edgeIsClear(result.image, 1) })
+                    tryVerify(function() { return clear !== null }, 3000)
+                    verify(clear, pose + " is cut off at the edge facing " + facing)
+                }
+            }
+        }
         function test_nothingTheCatDoesIsCutOffAtTheWindow() {
             const pet = quietPet()
             const bob = findChild(pet, "petBob")
