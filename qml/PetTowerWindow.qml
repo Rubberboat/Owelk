@@ -11,6 +11,8 @@ Window {
     // in screen points).
     property int towerWidth: 157
     property int towerHeight: 99
+    property string towerKind: "one"
+    property real towerSag: 0
     property real centerX: 0
     property real baseY: 0
     // Shown: always, or only while the cat is about to sleep on it or does.
@@ -103,6 +105,7 @@ Window {
         Accessible.name: DesktopPet.englishName + "'s cat tower"
         PetTower {
             objectName: "petTower"
+            kind: tower.towerKind; sag: tower.towerSag
             x: tower.pad; y: tower.pad
             width: tower.towerWidth; height: tower.towerHeight
         }
@@ -126,5 +129,11 @@ Window {
         palette.highlight: Theme.accent
         palette.highlightedText: Theme.onAccent
         MenuItem { objectName: "bringTower"; enabled: tower.canBring; text: "Move next to " + DesktopPet.englishName; onTriggered: tower.bringRequested() }
+        MenuSeparator {}
+        // How big it is: one, two or three tiers, or a hammock.
+        MenuItem { objectName: "towerKind-one"; text: "One tier"; checkable: true; checked: DesktopPet.towerKind === "one"; onTriggered: DesktopPet.towerKind = "one" }
+        MenuItem { objectName: "towerKind-two"; text: "Two tiers"; checkable: true; checked: DesktopPet.towerKind === "two"; onTriggered: DesktopPet.towerKind = "two" }
+        MenuItem { objectName: "towerKind-three"; text: "Three tiers"; checkable: true; checked: DesktopPet.towerKind === "three"; onTriggered: DesktopPet.towerKind = "three" }
+        MenuItem { objectName: "towerKind-hammock"; text: "Hammock"; checkable: true; checked: DesktopPet.towerKind === "hammock"; onTriggered: DesktopPet.towerKind = "hammock" }
     }
 }

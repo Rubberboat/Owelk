@@ -305,8 +305,8 @@ Window {
     property real towerCenterX: 0
     property real towerBase: 0
     function towerBeside() {
-        const side = brain.catX + catW * 2.7 < brain.screenLeft + brain.screenWidth ? 1 : -1
-        return Qt.point(Math.round(brain.catX + catW / 2 + side * catW * 1.6), Math.round(brain.lineY + 4))
+        const side = brain.catX + catW * 1.6 + brain.towerWidth < brain.screenLeft + brain.screenWidth ? 1 : -1
+        return Qt.point(Math.round(brain.catX + catW / 2 + side * (catW + brain.towerWidth / 2)), Math.round(brain.lineY + 4))
     }
     // The screen a point is on, else the nearest one.
     function screenOf(x, y) {
@@ -340,6 +340,22 @@ Window {
         towerDropped()
     }
 
+    // ---- looking at the user: up on the tower the pupils follow the pointer ----
+    property real lookX: 0
+    property real lookY: 0
+    function lookAt(pointer) {
+        const headX = x + marginX + innerX + catW * 142 / 220, headY = y + headroom + innerY + catH * .4
+        const across = Math.max(-1, Math.min(1, (pointer.x - headX) / 250))
+        lookX = cat.looksLeft ? -across : across
+        lookY = Math.max(-1, Math.min(1, (pointer.y - headY) / 250))
+    }
+    Timer {
+        interval: 120; repeat: true
+        running: brain.watching && pet.visible && pet.followPointer
+        onTriggered: pet.lookAt(DesktopPet.cursor())
+    }
+    Connections { target: brain; function onWatchingChanged() { if (!brain.watching) { pet.lookX = 0; pet.lookY = 0 } } }
+
     PetBehavior {
         id: brain
         objectName: "petBrain"
@@ -350,6 +366,7 @@ Window {
         windowWidth: pet.width
         windowOffset: pet.marginX
         screens: Qt.application.screens.map(function(screen) { return {x: screen.virtualX, y: screen.virtualY, width: screen.width, height: screen.height} })
+        towerKind: DesktopPet.towerKind
         towerX: pet.towerCenterX
         towerBaseY: pet.towerBase
     }
@@ -357,6 +374,7 @@ Window {
         id: towerWin
         followPointer: pet.followPointer
         towerWidth: brain.towerWidth; towerHeight: brain.towerHeight
+        towerKind: brain.towerKind; towerSag: brain.towerSag
         centerX: pet.towerCenterX; baseY: pet.towerBase
         // Always, or only for a nap (the cat is about to go up or is up there).
         wanted: pet.ready && (DesktopPet.towerMode === "always" || brain.towerNeeded || brain.onTower)
@@ -440,6 +458,7 @@ Window {
                     pose: brain.pose
                     facingLeft: brain.facing < 0
                     crouch: brain.crouch; leap: brain.leap; wipe: brain.wipe; meow: brain.meow; perk: brain.perk
+                    lookX: pet.lookX; lookY: pet.lookY
                     gait: brain.walking ? 1 : 0
                     stridePhase: brain.stridePhase
                     alive: !DesktopPet.dormant && pet.visible

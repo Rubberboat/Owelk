@@ -21,6 +21,9 @@ Item {
     Behavior on lid { NumberAnimation { duration: 80 } }
     // The head turned around its chin, in degrees (grooming), and the ears' size (perked).
     property real tilt: 0
+    // Where the eyes look (-1..1 across and down).
+    property real lookX: 0
+    property real lookY: 0
     property real earX: 1
     property real earY: 1
     x: px; y: py; rotation: r; scale: s
@@ -64,10 +67,10 @@ Item {
             PetShape {
                 PetFill { d: P.ellipse(-12, head.eyeCy, 7, head.eyeRy); color: P.eye }
                 PetFill { d: P.ellipse(12, head.eyeCy, 7, head.eyeRy); color: P.eye }
-                PetFill { d: P.ellipse(-12, head.eyeCy, head.pupilSize[0], Math.min(head.pupilSize[1], head.eyeRy - .8)); color: P.pupil }
-                PetFill { d: P.ellipse(12, head.eyeCy, head.pupilSize[0], Math.min(head.pupilSize[1], head.eyeRy - .8)); color: P.pupil }
-                PetFill { d: P.ellipse(-14.2, head.eyeCy - 2.4, 1.5, 1.5); color: P.white }
-                PetFill { d: P.ellipse(9.8, head.eyeCy - 2.4, 1.5, 1.5); color: P.white }
+                PetFill { d: P.ellipse(-12 + head.lookX * 3.2, head.eyeCy + head.lookY * 2.2, head.pupilSize[0], Math.min(head.pupilSize[1], head.eyeRy - .8)); color: P.pupil }
+                PetFill { d: P.ellipse(12 + head.lookX * 3.2, head.eyeCy + head.lookY * 2.2, head.pupilSize[0], Math.min(head.pupilSize[1], head.eyeRy - .8)); color: P.pupil }
+                PetFill { d: P.ellipse(-14.2 + head.lookX * 1.6, head.eyeCy - 2.4 + head.lookY * 1.1, 1.5, 1.5); color: P.white }
+                PetFill { d: P.ellipse(9.8 + head.lookX * 1.6, head.eyeCy - 2.4 + head.lookY * 1.1, 1.5, 1.5); color: P.white }
             }
         }
         PetShape {

@@ -71,6 +71,10 @@ Item {
             compare(DesktopPet.towerMode, "sleeping")
             compare(researchStore.setting("pet.towerMode"), "sleeping")
             DesktopPet.towerMode = "always"
+            visualChild(settings.contentItem, "petTowerKindBox").activated(3)
+            compare(DesktopPet.towerKind, "hammock")
+            compare(researchStore.setting("pet.towerKind"), "hammock")
+            DesktopPet.towerKind = "one"
             visualChild(settings.contentItem, "petBreakBox").activated(0)
             compare(DesktopPet.breakMinutes, 0)
             compare(researchStore.setting("pet.breakMinutes"), "0")

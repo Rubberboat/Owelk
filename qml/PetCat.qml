@@ -58,7 +58,15 @@ Item {
     property real flip: facingLeft ? -1 : 1
     Behavior on flip { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
     readonly property bool looksLeft: flip < 0
-    transform: Scale { origin.x: 110; xScale: cat.flip }
+    // How a cat that looks left is drawn: mirrored as one picture (a layer drawn the other way round), because
+    // paths drawn under a mirroring transform come out wrong with the curve renderer on the GPU (a tail cut off,
+    // jerky shapes). The software renderer has no layers and mirrors the paths.
+    readonly property bool mirrorByLayer: GraphicsInfo.api !== GraphicsInfo.Software
+    // Where the cat looks (-1..1 across and down): the pupils follow it. It is the pet window that says.
+    property real lookX: 0
+    property real lookY: 0
+    Behavior on lookX { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+    Behavior on lookY { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
 
     // ---- a change of pose: the new one fades in over the old one, which is built until it is gone ----
     // Two slots take turns: the one in front shows the pose, the other the pose it replaces.
@@ -116,8 +124,18 @@ Item {
         layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
         Loader { sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
     }
-    Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
-    Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+    Item {
+        id: mirrorBox
+        width: 220; height: 180
+        transform: Scale { origin.x: 110; xScale: cat.mirrorByLayer ? Math.abs(cat.flip) : cat.flip }
+        layer.enabled: cat.mirrorByLayer && cat.looksLeft
+        layer.textureMirroring: ShaderEffectSource.MirrorHorizontally
+        layer.smooth: true
+        layer.sourceRect: Qt.rect(-50, -40, 320, 260)
+        layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
+        Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
+        Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+    }
 
     onPerkChanged: {
         if (perk) perkGrow.restart()
@@ -170,6 +188,8 @@ Item {
         blink: cat.blink
         earX: cat.earX
         earY: cat.earY
+        lookX: cat.lookX
+        lookY: cat.lookY
     }
     component Foot: PetLeg {
         facingLeft: cat.looksLeft

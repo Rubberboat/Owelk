@@ -27,6 +27,7 @@ DesktopPet::DesktopPet(ResearchStore *store, QObject *parent) : QObject(parent),
     m_enabled = m_store->setting("pet.enabled") == "1";
     if (const auto size = m_store->setting("pet.size"); size == "small" || size == "large") m_size = size;
     if (m_store->setting("pet.towerMode") == "sleeping") m_towerMode = "sleeping";
+    if (const auto kind = m_store->setting("pet.towerKind"); kind == "two" || kind == "three" || kind == "hammock") m_towerKind = kind;
     const auto minutes = m_store->setting("pet.breakMinutes", "50").toInt();
     if (minutes == 0 || minutes == 25 || minutes == 90) m_breakMinutes = minutes;
 }
@@ -57,6 +58,14 @@ void DesktopPet::setTowerMode(const QString &mode)
     if ((mode != "always" && mode != "sleeping") || mode == m_towerMode) return;
     m_towerMode = mode;
     save("pet.towerMode", mode);
+    emit changed();
+}
+
+void DesktopPet::setTowerKind(const QString &kind)
+{
+    if ((kind != "one" && kind != "two" && kind != "three" && kind != "hammock") || kind == m_towerKind) return;
+    m_towerKind = kind;
+    save("pet.towerKind", kind);
     emit changed();
 }
 

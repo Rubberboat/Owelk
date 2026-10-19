@@ -26,7 +26,7 @@ Item {
         when: windowShown
         function cleanup() {
             DesktopPet.enabled = false; DesktopPet.size = "medium"; DesktopPet.breakMinutes = 50
-            DesktopPet.towerMode = "always"
+            DesktopPet.towerMode = "always"; DesktopPet.towerKind = "one"
             DesktopPet.dormant = false
             researchStore.setSetting("pet.position", "")
             researchStore.setSetting("pet.tower", "")
@@ -424,6 +424,91 @@ Item {
             // A tower is put on the screen nearest to where it is let go.
             const near = pet.screenOf(-9000, 50)
             verify(near !== null)
+        }
+        function test_theTowerHasOneTwoOrThreeTiersOrIsAHammock() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const towerWin = findChild(pet, "petTowerWindow")
+            const heights = {}
+            for (const kind of ["hammock", "one", "two", "three"]) {
+                DesktopPet.towerKind = kind
+                compare(researchStore.setting("pet.towerKind"), kind)
+                tryCompare(brain, "towerKind", kind)
+                heights[kind] = brain.towerHeight
+                // The window is as big as the tower.
+                tryCompare(towerWin, "towerHeight", brain.towerHeight)
+                verify(towerWin.height > brain.towerHeight)
+            }
+            verify(heights.hammock < heights.one && heights.one < heights.two && heights.two < heights.three, JSON.stringify(heights))
+            DesktopPet.towerKind = "hammock"
+            tryCompare(brain, "towerKind", "hammock")
+            verify(brain.towerSag > 0)
+            compare(brain.towerFeetY, brain.towerTopY + 2 + brain.towerSag)
+            DesktopPet.towerKind = "three"
+            tryCompare(brain, "towerKind", "three")
+            compare(brain.towerSag, 0)
+            verify(brain.towerWidth > Math.round(brain.catW * .8))
+            // The menu on the tower picks one.
+            findChild(towerWin, "towerKind-two").triggered()
+            compare(DesktopPet.towerKind, "two")
+        }
+        function test_aCatOnTheTowerGoesWithItWhenItsKindChanges() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            brain.pace = 600
+            brain.chance = function() { return .1 }
+            brain.begin("nap")
+            tryVerify(function() { return asleep(brain) }, 8000)
+            const before = brain.feetY
+            DesktopPet.towerKind = "three"
+            tryVerify(function() { return brain.feetY === brain.towerFeetY && brain.feetY < before - 50 }, 3000)
+            DesktopPet.towerKind = "hammock"
+            tryVerify(function() { return brain.feetY === brain.towerFeetY && brain.towerSag > 0 }, 3000)
+            verify(brain.onTower)
+            brain.stop()
+        }
+        function test_aCatSleepsInTheHammockAndUpOnEveryTier() {
+            for (const kind of ["hammock", "two", "three"]) {
+                DesktopPet.towerKind = kind
+                const pet = quietPet()
+                const brain = findChild(pet, "petBrain")
+                brain.pace = 600
+                brain.chance = function() { return .1 }
+                brain.begin("nap")
+                tryVerify(function() { return asleep(brain) }, 10000)
+                compare(brain.feetY, brain.towerFeetY, kind)
+                verify(brain.onTower)
+                if (kind === "hammock") verify(brain.status.indexOf("hammock") >= 0, brain.status)
+                brain.stop()
+            }
+        }
+        function test_upOnTheTowerItLooksAtYouAndItsEyesFollowThePointer() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            const cat = findChild(pet, "petCat")
+            brain.pace = 600
+            brain.chance = function() { return .1 }
+            brain.begin("watch")
+            tryVerify(function() { return brain.watching }, 10000)
+            brain.stop()    // (the watch itself is only a moment at this pace)
+            verify(brain.onTower)
+            compare(brain.pose, "sit")
+            // The pupils move towards the pointer, either way it looks.
+            const headX = pet.x + pet.marginX + pet.innerX + pet.catW * 142 / 220
+            const headY = pet.y + pet.headroom + pet.innerY + pet.catH * .4
+            pet.lookAt(Qt.point(headX + 500, headY))
+            compare(pet.lookX, 1); compare(pet.lookY, 0)
+            tryCompare(cat, "lookX", 1, 1000)
+            pet.lookAt(Qt.point(headX, headY + 125))
+            compare(pet.lookX, 0); compare(pet.lookY, .5)
+            brain.facing = -1
+            tryCompare(cat, "looksLeft", true, 2000)
+            pet.lookAt(Qt.point(headX + 500, headY))
+            compare(pet.lookX, -1, "mirrored, so across is the other way")
+            // Done watching: the eyes look ahead again.
+            brain.watching = false
+            compare(pet.lookX, 0); compare(pet.lookY, 0)
+            brain.stop()
         }
         function test_aNapperCarriedAwayStaysWhereItIsPut() {
             const pet = quietPet()

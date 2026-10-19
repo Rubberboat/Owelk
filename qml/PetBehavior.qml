@@ -65,11 +65,17 @@ Item {
     // Where it stands: the middle of its base and the bottom of it. It is where the user put it.
     property real towerX: 0
     property real towerBaseY: 0
-    readonly property real towerHeight: Math.round(catH * .62)
-    readonly property real towerWidth: Math.round(catW * .8)
+    // What it is: "one", "two" or "three" tiers (each a half cat taller; the lower ones wider) or a "hammock".
+    property string towerKind: "one"
+    readonly property int towerLevels: towerKind === "two" ? 2 : towerKind === "three" ? 3 : 1
+    readonly property bool hammock: towerKind === "hammock"
+    readonly property real towerHeight: Math.round(catH * (hammock ? .5 : .62 + .5 * (towerLevels - 1)))
+    readonly property real towerWidth: Math.round(catW * (hammock ? 1.3 : .8 + .16 * (towerLevels - 1)))
+    // How far the middle of a hammock hangs below its posts: the cat lies in it.
+    readonly property real towerSag: hammock ? Math.round(catH * .14) : 0
     readonly property real towerTopY: towerBaseY - towerHeight
-    // The cat's feet stand a little way into the cushion.
-    readonly property real towerFeetY: towerTopY + 2
+    // The cat's feet stand a little way into the cushion (or down in the hammock).
+    readonly property real towerFeetY: towerTopY + 2 + towerSag
     readonly property real towerCatX: towerX - catW / 2
     // The tower is wanted (a nap is coming or on); the cat is up on it; the side it leaps from (-1: its left).
     property bool towerNeeded: false
@@ -77,11 +83,14 @@ Item {
     property int leapSide: -1
     onTowerXChanged: followTower()
     onTowerBaseYChanged: followTower()
+    // Another kind of tower (or size): the cat on it is put on the new one once its numbers have followed.
+    onTowerKindChanged: Qt.callLater(followTower)
+    onCatHChanged: Qt.callLater(followTower)
     // A cat asleep up there goes along when the tower is moved.
     function followTower() {
         if (!onTower || jumpAnimation.running) return
         // (From what the tower is, not from towerCatX and towerFeetY: those follow it a moment after this runs.)
-        moveTo(towerX - catW / 2, towerBaseY - towerHeight + 2)
+        moveTo(towerX - catW / 2, towerBaseY - towerHeight + 2 + towerSag)
     }
 
     // What the window shows besides the cat: bubbles are the window's; these ask for them.
@@ -287,6 +296,7 @@ Item {
             ])
         case "zoomies": return zoomies()
         case "nap": return nap()
+        case "watch": return watch()
         case "belly":
             return toFloorSteps().concat([
                 {call: function() { setPose("belly", "rolling on its back", t(900)) }}, {wait: t(rand(6000, 10000))},
@@ -328,7 +338,7 @@ Item {
     // ---- the tower ----
     // The place on the line beside the tower (a cat's length from the middle of it) the cat leaps from and lands
     // on, on the side it is nearer to; the other side when that is out of the screen.
-    function spotFor(side) { return towerX + side * catW - catW / 2 }
+    function spotFor(side) { return towerX + side * (towerWidth / 2 + catW * .55) - catW / 2 }
     function spotX() {
         let side = catX + catW / 2 < towerX ? -1 : 1
         let spot = spotFor(side)
@@ -338,15 +348,9 @@ Item {
     }
     // How a nap goes: lying on its side or with its back turned, one as likely as the other.
     function sleepPoseFor(roll) { return roll < .5 ? "sleep" : "sleepBack" }
-    // It looks at the tower, goes to it, wiggles, leaps up, settles and lies down; and later wakes slowly.
-    function nap() {
-        const lying = sleepPoseFor(chance())
-        const asleep = lying === "sleep" ? "asleep on the tower" : "asleep on the tower, its back turned"
-        const sleepAndWake = [
-            {call: function() { setPose(lying, asleep, t(1100)) }}, {wait: rand(300000, 1200000)},
-            {call: function() { setPose("sit", "opened its eyes", t(900)) }}, {wait: t(1400)}
-        ]
-        if (onTower) return sleepAndWake
+    // Up on the tower: it looks at it, goes to it, wiggles, leaps up and settles.
+    function climbSteps() {
+        if (onTower) return []
         const spot = spotX()
         const far = Math.abs(spot - catX) > 6
         let approach = [
@@ -364,9 +368,28 @@ Item {
             {wait: t(1000)},
             {call: function() { onTower = true }},
             {jump: {tower: true}},
-            {call: function() { setPose("sit", "up on the tower", t(500)) }},
+            {call: function() { setPose("sit", hammock ? "in the hammock" : "up on the tower", t(500)) }},
             {wait: t(1000)}
-        ]).concat(sleepAndWake)
+        ])
+    }
+    // A nap up there (in the hammock, if it is one), and waking slowly.
+    function nap() {
+        const lying = sleepPoseFor(chance())
+        const where = hammock ? "asleep in the hammock" : "asleep on the tower"
+        return climbSteps().concat([
+            {call: function() { setPose(lying, lying === "sleep" ? where : where + ", its back turned", t(1100)) }}, {wait: rand(300000, 1200000)},
+            {call: function() { setPose("sit", "opened its eyes", t(900)) }}, {wait: t(1400)}
+        ])
+    }
+    // Up there it sits and looks at the user, the pupils following the pointer.
+    property bool watching: false
+    function watch() {
+        return climbSteps().concat([
+            {call: function() { setPose("sit", "watches you", t(500)); watching = true }},
+            {wait: rand(30000, 90000)},
+            {call: function() { watching = false }},
+            {wait: t(400)}
+        ])
     }
 
     // Low, bottom wiggling; then across the whole screen and out of sight; later in from the other side.
@@ -410,8 +433,8 @@ Item {
 
     // From HTML next(): what comes after a behaviour. After a poke it is something else than before.
     function next() {
-        const table = onTower ? [["wander", 55], ["groom", 25], ["sit", 20]]
-                              : [["sit", 22], ["groom", 16], ["wander", 22], ["nap", 16], ["belly", 9], ["stretch", 9], ["zoomies", 6]]
+        const table = onTower ? [["wander", 45], ["groom", 20], ["sit", 15], ["watch", 20]]
+                              : [["sit", 22], ["groom", 16], ["wander", 22], ["nap", 16], ["belly", 9], ["stretch", 9], ["zoomies", 6], ["watch", 8]]
         // A dash about once in forty minutes, never twice within ten.
         const options = table.filter(function(row) {
             return row[0] !== avoid && !(row[0] === "zoomies" && Date.now() - lastZoomies < 600000 / pace)
@@ -425,6 +448,7 @@ Item {
     function settle() {
         running = false
         walking = false
+        watching = false
         if (onTower) moveTo(towerCatX, towerFeetY)
         else { towerNeeded = false; moveTo(clampX(catX), lineY) }
     }
@@ -475,6 +499,7 @@ Item {
         halted = true
         current = ""
         walking = false
+        watching = false
         if (!wasAway) { running = false; setPose(held ? "stand" : "sit", held ? "held" : "", 160) }
     }
     // Let go: carries on from where it is (back in from out of sight if it was away).

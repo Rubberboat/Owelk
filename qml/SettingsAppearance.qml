@@ -262,6 +262,19 @@ ColumnLayout {
         }
         SettingsRow {
             visible: DesktopPet.enabled
+            label: "Tower size"
+            detail: "One, two or three tiers, or a hammock; the cat sleeps up there, or sits and watches you."
+            ComboBox {
+                objectName: "petTowerKindBox"
+                Layout.preferredWidth: 180
+                readonly property var values: ["one", "two", "three", "hammock"]
+                model: ["One tier", "Two tiers", "Three tiers", "Hammock"]
+                currentIndex: Math.max(0, values.indexOf(DesktopPet.towerKind))
+                onActivated: function(index) { DesktopPet.towerKind = values[index] }
+            }
+        }
+        SettingsRow {
+            visible: DesktopPet.enabled
             label: "Break reminder"
             detail: "The pet suggests a short break after this much reading in Owelk"
             ComboBox {

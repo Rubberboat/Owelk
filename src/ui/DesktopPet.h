@@ -32,6 +32,8 @@ class DesktopPet : public QObject {
     Q_PROPERTY(bool supported READ supported CONSTANT)
     // The cat tower: "always" (it stands where the user put it) or "sleeping" (it comes there for a nap).
     Q_PROPERTY(QString towerMode READ towerMode WRITE setTowerMode NOTIFY changed)
+    // What the tower is: "one", "two" or "three" tiers, or a "hammock".
+    Q_PROPERTY(QString towerKind READ towerKind WRITE setTowerKind NOTIFY changed)
     // The screen is locked or asleep, or Owelk is hidden (macOS): the pet stops whatever it does.
     Q_PROPERTY(bool dormant READ dormant WRITE setDormant NOTIFY dormantChanged)
 
@@ -50,6 +52,8 @@ public:
     int breakMinutes() const { return m_breakMinutes; }
     void setBreakMinutes(int minutes);
     static bool supported();
+    QString towerKind() const { return m_towerKind; }
+    void setTowerKind(const QString &kind);
     QString towerMode() const { return m_towerMode; }
     void setTowerMode(const QString &mode);
     bool dormant() const { return m_dormant; }
@@ -100,5 +104,6 @@ private:
     bool m_dormant = false;
     QString m_size = "medium";
     QString m_towerMode = "always";
+    QString m_towerKind = "one";
     int m_breakMinutes = 50;
 };
