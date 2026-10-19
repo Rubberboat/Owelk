@@ -49,7 +49,7 @@ Window {
     onBaseYChanged: place()
     onWidthChanged: place()
     onHeightChanged: place()
-    onVisibleChanged: if (visible) { place(); DesktopPet.floatEverywhere(tower); fitLater.restart() }
+    onVisibleChanged: if (visible) { place(); DesktopPet.floatEverywhere(tower); DesktopPet.placeBelowPet(tower); fitLater.restart() }
     Component.onCompleted: DesktopPet.prepare(tower)
 
     // Following the pointer: from where the pointer was when the button went down.

@@ -14,6 +14,7 @@ void desktopPetFloatEverywhere(QWindow *window);
 bool desktopPetPassThrough(QWindow *window, const QRegion &region);
 bool desktopPetLeftButtonDown();
 void desktopPetOrderFront(QWindow *window);
+void desktopPetLevelBelow(QWindow *window);
 void desktopPetWatchDormancy(DesktopPet *pet);
 #endif
 
@@ -146,6 +147,15 @@ void DesktopPet::raiseWindow(QWindow *window) const
     desktopPetOrderFront(window);
 #else
     window->raise();
+#endif
+}
+
+void DesktopPet::placeBelowPet(QWindow *window) const
+{
+#ifdef Q_OS_MACOS
+    desktopPetLevelBelow(window);
+#else
+    Q_UNUSED(window)
 #endif
 }
 

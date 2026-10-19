@@ -68,6 +68,9 @@ public:
     Q_INVOKABLE void move(QWindow *window, int x, int y) const;
     // A window in front of the other pet window, without bringing Owelk forward (raise() on macOS does).
     Q_INVOKABLE void raiseWindow(QWindow *window) const;
+    // A window that stays above other apps' but always below the pet's own (macOS window levels; elsewhere
+    // the order they were raised in), so the cat is never behind the tower it walks past.
+    Q_INVOKABLE void placeBelowPet(QWindow *window) const;
     // Before a pet window (or its speech bubble) is first shown: a transparent surface, and on macOS
     // kept on screen while another app is in front.
     Q_INVOKABLE void prepare(QWindow *window);

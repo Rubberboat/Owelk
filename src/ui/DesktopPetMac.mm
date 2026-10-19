@@ -30,6 +30,16 @@ void desktopPetOrderFront(QWindow *window)
     }
 }
 
+void desktopPetLevelBelow(QWindow *window)
+{
+    if (!window || QGuiApplication::platformName() != QLatin1String("cocoa")) return;
+    @autoreleasepool {
+        NSWindow *native = reinterpret_cast<NSView *>(window->winId()).window;
+        // One level under the pet's (floating) windows, still above every ordinary window.
+        if (native) native.level = NSFloatingWindowLevel - 1;
+    }
+}
+
 bool desktopPetLeftButtonDown()
 {
     return ([NSEvent pressedMouseButtons] & 1) != 0;
