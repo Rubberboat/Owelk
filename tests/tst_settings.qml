@@ -65,6 +65,12 @@ Item {
             visualChild(settings.contentItem, "petSizeBox").activated(2)
             compare(DesktopPet.size, "large")
             compare(DesktopPet.height, 220)
+            // The cat tower: where it is shown is a choice too.
+            compare(DesktopPet.towerMode, "always")
+            visualChild(settings.contentItem, "petTowerBox").activated(1)
+            compare(DesktopPet.towerMode, "sleeping")
+            compare(researchStore.setting("pet.towerMode"), "sleeping")
+            DesktopPet.towerMode = "always"
             visualChild(settings.contentItem, "petBreakBox").activated(0)
             compare(DesktopPet.breakMinutes, 0)
             compare(researchStore.setting("pet.breakMinutes"), "0")

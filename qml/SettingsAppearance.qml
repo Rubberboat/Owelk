@@ -249,6 +249,19 @@ ColumnLayout {
         }
         SettingsRow {
             visible: DesktopPet.enabled
+            label: "Cat tower"
+            detail: "Drag the tower anywhere; the cat goes there to sleep. It can stand there always, or come only for the nap."
+            ComboBox {
+                objectName: "petTowerBox"
+                Layout.preferredWidth: 180
+                readonly property var values: ["always", "sleeping"]
+                model: ["Always shown", "Only while it sleeps"]
+                currentIndex: Math.max(0, values.indexOf(DesktopPet.towerMode))
+                onActivated: function(index) { DesktopPet.towerMode = values[index] }
+            }
+        }
+        SettingsRow {
+            visible: DesktopPet.enabled
             label: "Break reminder"
             detail: "The pet suggests a short break after this much reading in Owelk"
             ComboBox {
