@@ -224,6 +224,43 @@ ColumnLayout {
             }
         }
     }
+    // 알맹이 (Allmeng-E), the tuxedo cat that floats above other apps (not on Wayland).
+    SettingsGroup {
+        objectName: "petGroup"
+        visible: DesktopPet.supported
+        title: "Desktop pet"
+        note: "Allmeng-E (\uC54C\uB9F9\uC774) keeps still while nothing happens, and stops when the screen is locked or Owelk is hidden."
+        SettingsRow {
+            label: "Desktop pet"
+            detail: "A tuxedo cat floats above other apps while Owelk is open. Click it to come back here."
+            Switch { objectName: "petSwitch"; checked: DesktopPet.enabled; onToggled: DesktopPet.enabled = checked }
+        }
+        SettingsRow {
+            visible: DesktopPet.enabled
+            label: "Pet size"
+            ComboBox {
+                objectName: "petSizeBox"
+                Layout.preferredWidth: 140
+                readonly property var values: ["small", "medium", "large"]
+                model: ["Small", "Medium", "Large"]
+                currentIndex: Math.max(0, values.indexOf(DesktopPet.size))
+                onActivated: function(index) { DesktopPet.size = values[index] }
+            }
+        }
+        SettingsRow {
+            visible: DesktopPet.enabled
+            label: "Break reminder"
+            detail: "The pet suggests a short break after this much reading in Owelk"
+            ComboBox {
+                objectName: "petBreakBox"
+                Layout.preferredWidth: 140
+                readonly property var values: [0, 25, 50, 90]
+                model: ["Off", "25 minutes", "50 minutes", "90 minutes"]
+                currentIndex: Math.max(0, values.indexOf(DesktopPet.breakMinutes))
+                onActivated: function(index) { DesktopPet.breakMinutes = values[index] }
+            }
+        }
+    }
     SettingsGroup {
         title: "Text"
         note: "Scales all text and the controls around it. PDF pages keep their own zoom."

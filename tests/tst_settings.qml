@@ -52,6 +52,25 @@ Item {
             verify(!customize.enabled)
             tryVerify(function() { const seed = visualChild(settings.contentItem, "seed-window"); return seed !== null && seed.visible })
         }
+        function test_desktopPet() {
+            settings.openPage("appearance"); tryCompare(settings, "opened", true)
+            tryVerify(function() { return page() !== null })
+            compare(DesktopPet.enabled, false, "off unless asked for")
+            compare(visualChild(settings.contentItem, "petSizeBox").visible, false)
+            const petSwitch = visualChild(settings.contentItem, "petSwitch")
+            petSwitch.toggle(); petSwitch.toggled()
+            compare(DesktopPet.enabled, true)
+            compare(researchStore.setting("pet.enabled"), "1")
+            verify(visualChild(settings.contentItem, "petSizeBox").visible)
+            visualChild(settings.contentItem, "petSizeBox").activated(2)
+            compare(DesktopPet.size, "large")
+            compare(DesktopPet.height, 220)
+            visualChild(settings.contentItem, "petBreakBox").activated(0)
+            compare(DesktopPet.breakMinutes, 0)
+            compare(researchStore.setting("pet.breakMinutes"), "0")
+            DesktopPet.breakMinutes = 50; DesktopPet.size = "medium"
+            DesktopPet.enabled = false
+        }
         function test_searchEnginesOfOnesOwn() {
             settings.openPage("web"); tryCompare(settings, "opened", true)
             tryVerify(function() { return page() !== null })
@@ -236,8 +255,11 @@ Item {
             // Scroll the page to the choice before clicking it.
             let flick = navy.parent
             while (flick && flick.contentItem === undefined) flick = flick.parent
-            if (flick) flick.contentY = Math.max(0, navy.mapToItem(flick.contentItem, 0, 0).y - 40)
-            waitForPolish(settings.contentItem); wait(50)
+            // (The page may still be settling after the first scroll: look again.)
+            for (let i = 0; i < 3 && flick; ++i) {
+                flick.contentY = Math.max(0, navy.mapToItem(flick.contentItem, 0, 0).y - 40)
+                waitForPolish(settings.contentItem); wait(50)
+            }
             mouseClick(navy)
             compare(Theme.appIcon, "navy")
             compare(researchStore.setting("appearance.appIcon"), "navy")
