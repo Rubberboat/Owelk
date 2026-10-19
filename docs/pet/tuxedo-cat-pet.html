@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>턱시도 고양이 펫 미리보기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #EDF1F2; --ink: #1F2428; --muted: #5C666E; --line: #CFD7DB; --surface: #FFFFFF;
+  --eye-soft: #E6EFCB; --pick: #CFE3A0;
+  --wall: #CBDAE0; --wall-2: #D9E4E8; --win: #FFFFFF; --win-bar: #EEF2F4; --win-line: #B9C7CE; --page: #FBFBF8; --text-line: #D5DCE0;
+  --floor: #A9BAC2; --floor-top: #97A9B2;
+  --sisal: #D6C49D; --sisal-line: #C1AB80; --wood: #C9AF85; --cushion: #8D97A8; --cushion-edge: #76808F;
+  --fur: #1D1B1E; --fur-hi: #2F2C32; --fur-lo: #121114; --cat-white: #F7F6F1; --eye: #CFE3A0; --pupil: #101012;
+  --pink: #E9A0A5; --nose: #343137; --closed: #8E929B; --bubble: #FFFFFF; --bubble-ink: #22272B;
+  --rim: none;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161A1D; --ink: #E5E9EB; --muted: #A1AAB1; --line: #2C3439; --surface: #1F2529;
+    --eye-soft: #2F3A24; --pick: #CFE3A0;
+    --wall: #55646D; --wall-2: #5E6E77; --win: #2A3136; --win-bar: #323A40; --win-line: #47535A; --page: #3A4248; --text-line: #4E585F;
+    --floor: #3C4850; --floor-top: #46535B;
+    --sisal: #B9A784; --sisal-line: #A08E6C; --wood: #A88F68; --cushion: #7C8697; --cushion-edge: #66707F;
+    --bubble: #F4F6F7; --bubble-ink: #1F2428;
+    --rim: drop-shadow(0 0 1.2px rgba(255,255,255,.55));
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161A1D; --ink: #E5E9EB; --muted: #A1AAB1; --line: #2C3439; --surface: #1F2529;
+  --eye-soft: #2F3A24; --pick: #CFE3A0;
+  --wall: #55646D; --wall-2: #5E6E77; --win: #2A3136; --win-bar: #323A40; --win-line: #47535A; --page: #3A4248; --text-line: #4E585F;
+  --floor: #3C4850; --floor-top: #46535B;
+  --sisal: #B9A784; --sisal-line: #A08E6C; --wood: #A88F68; --cushion: #7C8697; --cushion-edge: #66707F;
+  --bubble: #F4F6F7; --bubble-ink: #1F2428;
+  --rim: drop-shadow(0 0 1.2px rgba(255,255,255,.55));
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 16px/1.7 "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  word-break: keep-all;
+}
+main { max-width: 980px; margin: 0 auto; padding: 36px 20px 64px; }
+h1 { font: 400 2.1rem/1.2 "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; margin: 0 0 8px; letter-spacing: -0.01em; }
+.lede { margin: 0 0 22px; color: var(--muted); max-width: 64ch; }
+
+/* the pretend screen */
+.stage {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 300px; overflow: hidden;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: linear-gradient(var(--wall-2), var(--wall));
+  user-select: none; -webkit-user-select: none;
+}
+.app {
+  position: absolute; left: 6%; top: 8%; width: 54%; height: 66%;
+  background: var(--win); border: 1px solid var(--win-line); border-radius: 10px; overflow: hidden;
+}
+.app .bar { height: 28px; background: var(--win-bar); border-bottom: 1px solid var(--win-line); display: flex; align-items: center; padding: 0 12px; font-size: 13px; color: var(--muted); gap: 8px; }
+.app .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--win-line); display: inline-block; }
+.app .bar span { margin-left: 6px; }
+.app .page { position: absolute; left: 50%; transform: translateX(-50%); top: 44px; bottom: 0; width: 62%; background: var(--page); border: 1px solid var(--win-line); border-bottom: 0; padding: 18px 16px; }
+.app .page b { display: block; height: 7px; border-radius: 4px; background: var(--text-line); margin-bottom: 9px; }
+.app .page b.t { height: 10px; width: 70%; margin-bottom: 16px; }
+.floor { position: absolute; left: 0; right: 0; bottom: 0; background: var(--floor); border-top: 2px solid var(--floor-top); }
+.tower { position: absolute; }
+.tower .cushion { position: absolute; left: 0; right: 0; top: 0; border-radius: 10px 10px 6px 6px; background: var(--cushion); border-bottom: 4px solid var(--cushion-edge); }
+.tower .board { position: absolute; left: 4%; right: 4%; background: var(--wood); border-radius: 3px; }
+.tower .post { position: absolute; left: 50%; transform: translateX(-50%); width: 26%; bottom: 8px;
+  background: repeating-linear-gradient(0deg, var(--sisal) 0 5px, var(--sisal-line) 5px 7px); border-radius: 3px; }
+.tower .base { position: absolute; left: -6%; right: -6%; bottom: 0; height: 10px; background: var(--wood); border-radius: 4px; }
+
+.pet { position: absolute; left: 0; top: 0; will-change: transform; z-index: 3; }
+.pet .flip, .pet .bob { width: 100%; height: 100%; }
+.pet.left .flip { transform: scaleX(-1); }
+.pet svg { display: block; width: 100%; height: 100%; overflow: visible; filter: var(--rim); }
+.pet .bob.hop { animation: hop .55s cubic-bezier(.3,.7,.4,1); }
+.pet .bob.shake { animation: shake .5s linear; }
+@keyframes hop { 0% { transform: translateY(0); } 35% { transform: translateY(-34%) scaleY(1.04); } 70% { transform: translateY(0) scaleY(.94); } 100% { transform: translateY(0); } }
+@keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translate(-4%, -10%); } 40% { transform: translate(4%, -12%); } 60% { transform: translate(-3%, -4%); } 80% { transform: translate(2%, 0); } }
+
+.bubble {
+  position: absolute; bottom: 92%; left: 50%; transform: translateX(calc(-50% + var(--shift, 0px)));
+  background: var(--bubble); color: var(--bubble-ink); border-radius: 14px; padding: 7px 13px 6px;
+  font: 400 15px/1.35 "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; white-space: nowrap;
+  border: 1.5px solid #2B2F33; z-index: 4;
+}
+.bubble::after { content: ""; position: absolute; left: calc(50% - var(--shift, 0px)); bottom: -8px; width: 12px; height: 12px; background: var(--bubble); border-right: 1.5px solid #2B2F33; border-bottom: 1.5px solid #2B2F33; transform: translateX(-50%) rotate(45deg); }
+.bubble[hidden] { display: none; }
+.zzz { position: absolute; top: 18%; right: 4%; width: 30%; height: 50%; pointer-events: none; }
+.pet.left .zzz { right: auto; left: 4%; }
+.zzz span { position: absolute; bottom: 0; left: 30%; font: 400 18px/1 "Jua", sans-serif; color: var(--ink); opacity: 0; animation: zz 3.6s linear infinite; }
+.zzz span:nth-child(2) { animation-delay: 1.2s; font-size: 15px; }
+.zzz span:nth-child(3) { animation-delay: 2.4s; font-size: 12px; }
+@keyframes zz { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: .85; } 100% { transform: translate(60%, -160%); opacity: 0; } }
+.dust { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--floor-top); opacity: .7; pointer-events: none; animation: dust .5s ease-out forwards; z-index: 2; }
+@keyframes dust { to { transform: scale(2.2) translateY(-30%); opacity: 0; } }
+
+/* cat drawing */
+.f { fill: var(--fur); } .fh { fill: var(--fur-hi); } .fl { fill: var(--fur-lo); }
+.w { fill: var(--cat-white); } .e { fill: var(--eye); } .pu { fill: var(--pupil); } .pk { fill: var(--pink); } .no { fill: var(--nose); }
+.st { fill: none; stroke: var(--fur); stroke-linecap: round; stroke-linejoin: round; }
+.st-cl { fill: none; stroke: var(--closed); stroke-width: 1.9; stroke-linecap: round; }
+.st-m { fill: none; stroke: var(--pupil); stroke-width: 1.3; stroke-linecap: round; }
+.whisk path { fill: none; stroke: var(--cat-white); stroke-width: .75; opacity: .75; stroke-linecap: round; }
+.ear-o { stroke: var(--fur); stroke-width: 3; stroke-linejoin: round; }
+.pose { display: none; }
+#cat[data-pose="sit"] .p-sit, #cat[data-pose="groom"] .p-groom, #cat[data-pose="knead"] .p-knead,
+#cat[data-pose="walk"] .p-walk, #cat[data-pose="run"] .p-run, #cat[data-pose="sleep"] .p-sleep,
+#cat[data-pose="belly"] .p-belly, #cat[data-pose="stretch"] .p-stretch, #cat[data-pose="arch"] .p-arch { display: inline; }
+.lg, .tail, .head-in, .eyes, .ears, .breathe, .wig, .raise, .body-bob { transform-box: fill-box; }
+.lg { transform-origin: 50% 0%; }
+.eyes { transform-origin: 50% 50%; transition: transform .07s; }
+#cat.blink .eyes { transform: scaleY(.08); }
+.mouth-open, .tongue { display: none; }
+#cat.meow .mouth-open { display: inline; }
+#cat.meow .mouth-closed { display: none; }
+.front .m-mitten, .front .m-toes { display: none; }
+.pet:not(.left) .front.near .m-toes, .pet:not(.left) .front.far .m-mitten,
+.pet.left .front.near .m-mitten, .pet.left .front.far .m-toes { display: inline; }
+
+.p-sit .tail { transform-origin: 100% 80%; animation: flick 4.2s ease-in-out infinite; }
+@keyframes flick { 0%,100% { transform: rotate(0); } 40% { transform: rotate(-5deg); } 55% { transform: rotate(7deg); } 70% { transform: rotate(-2deg); } }
+.p-walk .tail { transform-origin: 30% 100%; animation: sway 1.2s ease-in-out infinite; }
+@keyframes sway { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
+.p-walk .sw-a { animation: swing .62s ease-in-out infinite; }
+.p-walk .sw-b { animation: swing .62s ease-in-out -.31s infinite; }
+@keyframes swing { 0%,100% { transform: rotate(20deg); } 50% { transform: rotate(-20deg); } }
+.p-walk .body-bob { animation: bob .31s ease-in-out infinite alternate; }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+#cat { --stride: .27s; }
+#cat.slow { --stride: 1.35s; }
+.seg { transform-box: view-box; transform-origin: 0 0; }
+/* rotary gallop, one stride: extended flight, front legs land, gathered flight, hind legs push */
+.p-run .ff-u { animation: fu var(--stride) linear infinite; } .p-run .ff-l { animation: fl var(--stride) linear infinite; }
+.p-run .fn-u { animation: fu var(--stride) linear calc(var(--stride) * -.11) infinite; } .p-run .fn-l { animation: fl var(--stride) linear calc(var(--stride) * -.11) infinite; }
+.p-run .hf-u { animation: hu var(--stride) linear infinite; } .p-run .hf-l { animation: hl var(--stride) linear infinite; }
+.p-run .hn-u { animation: hu var(--stride) linear calc(var(--stride) * -.11) infinite; } .p-run .hn-l { animation: hl var(--stride) linear calc(var(--stride) * -.11) infinite; }
+.p-run .hips { animation: hipsK var(--stride) linear infinite; }
+.p-run .mid { animation: midK var(--stride) linear infinite; }
+.p-run .run-all { transform-box: fill-box; transform-origin: 50% 50%; animation: runAll var(--stride) linear infinite; }
+.p-run .run-head { animation: runHead var(--stride) linear infinite; }
+.p-run .tail { transform-origin: 100% 0%; animation: tailRun var(--stride) linear infinite; }
+.p-run .speed path { fill: none; stroke: var(--closed); stroke-width: 2.2; stroke-linecap: round; opacity: .55; animation: speed calc(var(--stride) * .66) steps(2) infinite; }
+.p-run .speed path:nth-child(2) { animation-delay: calc(var(--stride) * -.33); }
+@keyframes fu { 0%,100% { transform: rotate(-68deg); } 25% { transform: rotate(-8deg); } 50% { transform: rotate(48deg); } 75% { transform: rotate(-35deg); } }
+@keyframes fl { 0%,100% { transform: rotate(-8deg); } 25% { transform: rotate(0deg); } 50% { transform: rotate(75deg); } 75% { transform: rotate(60deg); } }
+@keyframes hu { 0%,100% { transform: rotate(62deg); } 25% { transform: rotate(18deg); } 50% { transform: rotate(-50deg); } 75% { transform: rotate(5deg); } }
+@keyframes hl { 0%,100% { transform: rotate(12deg); } 25% { transform: rotate(-30deg); } 50% { transform: rotate(25deg); } 75% { transform: rotate(-5deg); } }
+@keyframes hipsK { 0%,100% { transform: translate(-11px, 0); } 25% { transform: translate(0, 0); } 50% { transform: translate(15px, -3px); } 75% { transform: translate(5px, 0); } }
+@keyframes midK { 0%,100% { transform: translate(-5px, 0); } 25% { transform: translate(0, 0); } 50% { transform: translate(7px, -2px); } 75% { transform: translate(2px, 0); } }
+@keyframes runAll { 0%,100% { transform: translateY(-5px) rotate(-1.5deg); } 25% { transform: translateY(1px) rotate(1deg); } 50% { transform: translateY(-8px) rotate(2deg); } 75% { transform: translateY(1px) rotate(-1deg); } }
+@keyframes runHead { 0%,100% { transform: translateY(1px); } 50% { transform: translateY(4px); } }
+@keyframes tailRun { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(5deg); } }
+@keyframes speed { 0% { opacity: .55; } 50% { opacity: .2; } }
+/* before the dash: low, bottom wiggling; during a jump: stretched out */
+#cat.crouch .p-run .seg, #cat.crouch .p-run .mid, #cat.crouch .p-run .run-head,
+#cat.leap .p-run .seg, #cat.leap .p-run .hips, #cat.leap .p-run .mid, #cat.leap .p-run .run-all, #cat.leap .p-run .run-head, #cat.leap .p-run .tail { animation: none; }
+#cat.crouch .p-run .speed, #cat.leap .p-run .speed { display: none; }
+#cat.crouch .p-run .ff-u, #cat.crouch .p-run .fn-u { transform: rotate(-22deg); }
+#cat.crouch .p-run .ff-l, #cat.crouch .p-run .fn-l { transform: rotate(70deg); }
+#cat.crouch .p-run .hf-u, #cat.crouch .p-run .hn-u { transform: rotate(-42deg); }
+#cat.crouch .p-run .hf-l, #cat.crouch .p-run .hn-l { transform: rotate(62deg); }
+#cat.crouch .p-run .run-all { animation: none; transform: translateY(9px); }
+#cat.crouch .p-run .hips { animation: wiggle .15s ease-in-out infinite alternate; }
+#cat.crouch .p-run .tail { animation: twitch .28s ease-in-out infinite alternate; }
+@keyframes wiggle { from { transform: translate(-3px, -2px); } to { transform: translate(3px, -1px); } }
+@keyframes twitch { from { transform: rotate(-4deg); } to { transform: rotate(8deg); } }
+#cat.leap .p-run .ff-u, #cat.leap .p-run .fn-u { transform: rotate(-58deg); }
+#cat.leap .p-run .ff-l, #cat.leap .p-run .fn-l { transform: rotate(-6deg); }
+#cat.leap .p-run .hf-u, #cat.leap .p-run .hn-u { transform: rotate(55deg); }
+#cat.leap .p-run .hf-l, #cat.leap .p-run .hn-l { transform: rotate(10deg); }
+#cat.leap .p-run .hips { transform: translate(-10px, 0); }
+.p-sleep .breathe { transform-origin: 50% 100%; animation: breathe 3.8s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.045); } }
+.p-belly .wig { transform-origin: 50% 80%; animation: wig 2.6s ease-in-out infinite; }
+@keyframes wig { 0%,100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg); } }
+.p-groom .head-in { transform-origin: 50% 85%; transform: rotate(9deg); transition: transform .3s; }
+.p-groom .raise { transform-origin: 50% 0%; animation: lick .46s ease-in-out infinite; }
+.p-groom .tongue { display: inline; animation: tongue .46s steps(1) infinite; }
+@keyframes lick { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-7deg) translateY(-1px); } }
+@keyframes tongue { 0% { opacity: 1; } 50% { opacity: 0; } }
+#cat.wipe .p-groom .raise { animation: wipe .9s ease-in-out infinite; }
+#cat.wipe .p-groom .head-in { transform: rotate(-14deg); }
+#cat.wipe .p-groom .tongue { display: none; }
+@keyframes wipe { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(-38deg) translateY(-3px); } }
+.p-knead .kn-a { animation: knead .52s ease-in-out infinite; }
+.p-knead .kn-b { animation: knead .52s ease-in-out -.26s infinite; }
+@keyframes knead { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+#cat.perk .ears { transform-origin: 50% 100%; animation: perk .7s ease-out; }
+@keyframes perk { 0% { transform: scale(1); } 40% { transform: scale(1.14, 1.2); } 100% { transform: scale(1.06, 1.1); } }
+#cat.perk .ears { transform: scale(1.06, 1.1); }
+.p-arch .tail { transform-origin: 50% 100%; animation: bristle .18s linear infinite alternate; }
+@keyframes bristle { from { transform: rotate(-2deg); } to { transform: rotate(2deg); } }
+
+/* below the screen */
+.now { margin: 14px 2px 18px; color: var(--muted); min-height: 1.7em; }
+.now strong { color: var(--ink); font-weight: 400; }
+.controls { display: grid; gap: 14px; }
+fieldset { border: 0; margin: 0; padding: 0; }
+legend { padding: 0; margin-bottom: 8px; font-size: .95rem; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.row button {
+  font: inherit; font-size: .95rem; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 10px; padding: 7px 14px; cursor: pointer;
+}
+.row button:hover { background: var(--eye-soft); }
+.row button.on { background: var(--pick); border-color: var(--pick); color: #1F2428; }
+.row button:focus-visible, .auto input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.note { margin: 8px 0 0; font-size: .9rem; color: var(--muted); }
+.auto { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 4px; }
+.auto input { width: 18px; height: 18px; accent-color: #7E9A43; margin: 0; }
+.traits { margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--line); max-width: 68ch; }
+.traits h2 { font: 400 1.25rem/1.3 "Jua", "Apple SD Gothic Neo", sans-serif; margin: 0 0 8px; }
+.traits p { margin: 0 0 10px; color: var(--muted); }
+.traits ul { margin: 0; padding-left: 1.1em; color: var(--muted); }
+.traits li { margin-bottom: 4px; }
+.traits li b { color: var(--ink); font-weight: 400; }
+@media (max-width: 600px) {
+  main { padding: 24px 14px 56px; }
+  h1 { font-size: 1.7rem; }
+  .stage { aspect-ratio: 4 / 3; }
+  .app { width: 70%; left: 4%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .p-sit .tail, .p-walk .tail, .p-sleep .breathe, .p-belly .wig, .zzz span { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>턱시도 고양이 펫 미리보기</h1>
+  <p class="lede">보내 주신 사진 8장과 영상 2개를 보고 그린 카툰이에요. 그냥 두면 알아서 앉아 있다가 그루밍하고, 어슬렁거리고, 캣타워에 올라가 자요. 가끔은 엉덩이를 씰룩이다가 화면을 쏜살같이 가로질러 사라지고, 잠시 뒤 반대쪽에서 슬그머니 돌아와요.</p>
+
+  <section class="stage" id="stage" aria-label="고양이 펫이 돌아다니는 가상 화면">
+    <div class="app" aria-hidden="true">
+      <div class="bar"><i></i><i></i><i></i><span>Owelk</span></div>
+      <div class="page"><b class="t"></b><b></b><b></b><b style="width:92%"></b><b></b><b style="width:80%"></b><b></b><b style="width:66%"></b></div>
+    </div>
+    <div class="tower" id="tower" aria-hidden="true"><div class="cushion"></div><div class="board"></div><div class="post"></div><div class="base"></div></div>
+    <div class="floor" id="floor"></div>
+    <div class="pet" id="pet">
+      <div class="bubble" id="bubble" hidden></div>
+      <div class="zzz" id="zzz" hidden><span>z</span><span>z</span><span>z</span></div>
+      <div class="flip"><div class="bob" id="bob"><svg id="cat" viewBox="0 0 220 180" data-pose="sit" role="img" aria-label="턱시도 고양이"></svg></div></div>
+    </div>
+  </section>
+  <p class="now" aria-live="polite">지금은 <strong id="now">앉아 있어요</strong></p>
+
+  <div class="controls">
+    <fieldset>
+      <legend>움직임 직접 보기</legend>
+      <div class="row" id="moves">
+        <button type="button" data-do="sit">앉아 있기</button>
+        <button type="button" data-do="groom">그루밍</button>
+        <button type="button" data-do="wander">어슬렁 걷기</button>
+        <button type="button" data-do="zoomies">우다다</button>
+        <button type="button" data-do="nap">캣타워에서 자기</button>
+        <button type="button" data-do="belly">배 보이며 뒹굴기</button>
+        <button type="button" data-do="stretch">기지개 켜고 야옹</button>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Owelk에서 이런 일이 생기면</legend>
+      <div class="row" id="events">
+        <button type="button" data-do="aiWriting">AI가 답을 쓰는 중</button>
+        <button type="button" data-do="aiReady">답변 완료</button>
+        <button type="button" data-do="aiFail">답변 실패</button>
+        <button type="button" data-do="forYou">For You 새 논문</button>
+        <button type="button" data-do="breakTime">휴식 알림</button>
+      </div>
+      <p class="note">우다다 하는 동안에는 알림을 띄우지 않아요.</p>
+    </fieldset>
+    <label class="auto"><input type="checkbox" id="auto" checked> 알아서 움직이기</label>
+    <label class="auto"><input type="checkbox" id="slow"> 우다다를 5배 느리게 보기 (달리는 자세 확인용)</label>
+  </div>
+
+  <section class="traits">
+    <h2>사진과 영상에서 옮긴 것</h2>
+    <ul>
+      <li><b>얼굴과 가슴</b>: 까만 얼굴에 연둣빛 눈, 하얀 턱받이와 흰 수염</li>
+      <li><b>앞발</b>: 오른쪽은 하얀 장갑, 왼쪽은 발가락 끝만 하얀색. 고양이가 어느 쪽을 보든 좌우가 바뀌지 않게 그렸어요.</li>
+      <li><b>뒷발과 배</b>: 하얀 뒷발, 배를 보이면 드러나는 하얀 배와 까만 점</li>
+      <li><b>걸음걸이</b>: 걸을 때 꼬리를 꼿꼿이 세우는 모습(첫 번째 영상)</li>
+      <li><b>버릇</b>: 엉덩이를 들고 기지개를 켠 뒤 야옹 하는 모습(두 번째 영상), 배를 보이며 뒹구는 모습(마지막 사진)</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+/* ---------- drawing ---------- */
+function eyes(kind) {
+  const Y = -2, L = -12, R = 12;
+  if (kind === "closed") return `<g><path class="st-cl" d="M${L - 6},${Y} q6,5 12,0"/><path class="st-cl" d="M${R - 6},${Y} q6,5 12,0"/></g>`;
+  if (kind === "happy") return `<g><path class="st-cl" d="M${L - 6},${Y + 2} q6,-6 12,0"/><path class="st-cl" d="M${R - 6},${Y + 2} q6,-6 12,0"/></g>`;
+  const ry = kind === "half" ? 4.2 : 7.6, cy = kind === "half" ? Y + 1.8 : Y;
+  const pr = kind === "wide" ? [4.8, 5.4] : kind === "half" ? [2, 3.2] : [2.3, 6.2];
+  const one = (cx) => `<ellipse class="e" cx="${cx}" cy="${cy}" rx="7" ry="${ry}"/><ellipse class="pu" cx="${cx}" cy="${cy}" rx="${pr[0]}" ry="${Math.min(pr[1], ry - .8)}"/><circle class="w" cx="${cx - 2.2}" cy="${cy - 2.4}" r="1.5"/>`;
+  return `<g class="eyes">${one(L)}${one(R)}</g>`;
+}
+function head({ x, y, s = 1, r = 0, eye = "open", ears = "up", mouth = "auto", tongue = false }) {
+  const tl = ears === "back" ? "rotate(-22 -16 -14)" : ears === "flat" ? "rotate(-40 -16 -14)" : "";
+  const tr = ears === "back" ? "rotate(22 16 -14)" : ears === "flat" ? "rotate(40 16 -14)" : "";
+  const open = `<g class="${mouth === "open" ? "" : "mouth-open"}"><ellipse class="pk" cx="0" cy="16.5" rx="5.4" ry="6.8"/><path class="st-m" d="M-5.4,16.5 a5.4,6.8 0 1 0 10.8,0 a5.4,6.8 0 1 0 -10.8,0"/></g>`;
+  const closed = mouth === "open" ? "" : `<path class="st-m mouth-closed" d="M-5,12.6 q2.5,3 5,0 q2.5,3 5,0"/>`;
+  return `<g transform="translate(${x} ${y}) rotate(${r}) scale(${s})"><g class="head-in">
+    <g class="ears">
+      <g transform="${tl}"><path class="f ear-o" d="M-28,-6 L-25,-41 L-5,-23 Z"/><path class="pk" opacity=".45" d="M-23,-13 L-22,-32 L-11,-22 Z"/></g>
+      <g transform="${tr}"><path class="f ear-o" d="M28,-6 L25,-41 L5,-23 Z"/><path class="pk" opacity=".45" d="M23,-13 L22,-32 L11,-22 Z"/></g>
+    </g>
+    <ellipse class="f" cx="0" cy="0" rx="32" ry="27"/>
+    <ellipse class="f" cx="0" cy="7" rx="29" ry="21"/>
+    <ellipse class="fh" cx="0" cy="9" rx="13" ry="8.5" opacity=".9"/>
+    ${eyes(eye)}
+    <ellipse class="w" cx="0" cy="17.6" rx="7.4" ry="4.8"/>
+    ${closed}${open}
+    ${tongue ? `<ellipse class="pk tongue" cx="0" cy="18.2" rx="3" ry="3.6"/>` : ""}
+    <path class="no" d="M-3.8,4.6 h7.6 l-3.8,4.4 z"/>
+    <g class="whisk"><path d="M8,9 L34,4 M8,11.5 L35,12 M8,14 L32,19.5 M-8,9 L-34,4 M-8,11.5 L-35,12 M-8,14 L-32,19.5"/></g>
+  </g></g>`;
+}
+// a leg hanging down from (px, py); its inner group swings around the top
+function leg({ px, py, len, w = 14, mark = "sock", cls = "", fill = "f", rot = 0 }) {
+  let marks = "";
+  if (mark === "sock") marks = `<rect class="w" x="${-w / 2}" y="${len - 11}" width="${w}" height="11" rx="${w / 2}"/>`;
+  if (mark === "front") marks = `<rect class="w m-mitten" x="${-w / 2}" y="${len - 15}" width="${w}" height="15" rx="${w / 2}"/><rect class="w m-toes" x="${-w / 2}" y="${len - 6}" width="${w}" height="6" rx="3"/>`;
+  return `<g transform="translate(${px} ${py}) rotate(${rot})"><g class="lg ${cls}"><rect class="${fill}" x="${-w / 2}" y="-4" width="${w}" height="${len + 4}" rx="${w / 2}"/>${marks}</g></g>`;
+}
+
+// a two-part leg (upper and lower), for running: each part turns around its own joint
+function leg2({ px, py, u, l, w = 13, mark = "sock", cls, side = "", fill = "f" }) {
+  let marks = "";
+  if (mark === "sock") marks = `<rect class="w" x="${-w / 2 + .5}" y="${l - 10}" width="${w - 1}" height="10" rx="${(w - 1) / 2}"/>`;
+  if (mark === "front") marks = `<rect class="w m-mitten" x="${-w / 2 + .5}" y="${l - 14}" width="${w - 1}" height="14" rx="${(w - 1) / 2}"/><rect class="w m-toes" x="${-w / 2 + .5}" y="${l - 6}" width="${w - 1}" height="6" rx="3"/>`;
+  return `<g class="${side}" transform="translate(${px} ${py})"><g class="seg ${cls}-u"><rect class="${fill}" x="${-w / 2}" y="-6" width="${w}" height="${u + 6 + w / 2}" rx="${w / 2}"/>
+    <g transform="translate(0 ${u})"><g class="seg ${cls}-l"><rect class="${fill}" x="${-w / 2 + .5}" y="${-w / 2}" width="${w - 1}" height="${l + w / 2}" rx="${(w - 1) / 2}"/>${marks}</g></g></g></g>`;
+}
+
+const SIT_BODY = `
+  <g class="tail"><path class="st" stroke-width="12" d="M80,162 C52,172 28,170 22,152 C18,141 24,133 31,135"/></g>
+  <ellipse class="f" cx="88" cy="140" rx="42" ry="33"/>
+  <path class="f" d="M86,152 C84,112 104,84 132,82 C154,82 162,104 160,128 C158,152 146,168 124,171 L96,171 Z"/>
+  <path class="w" opacity=".92" d="M66,160 C80,150 100,150 112,158 C100,155 80,155 66,160 Z"/>
+  <ellipse class="w" cx="104" cy="168" rx="16" ry="6"/>
+  <path class="w" d="M133,90 C145,94 151,108 148,126 C146,142 140,156 136,167 C131,154 126,138 125,122 C124,106 125,96 133,90 Z"/>`;
+
+const POSES = {
+  sit: SIT_BODY +
+    leg({ px: 126, py: 118, len: 54, cls: "front far", mark: "front", fill: "fl" }) +
+    leg({ px: 146, py: 118, len: 54, w: 15, cls: "front near", mark: "front" }) +
+    head({ x: 142, y: 70 }),
+
+  groom: SIT_BODY +
+    leg({ px: 146, py: 118, len: 54, w: 15, cls: "front near", mark: "front" }) +
+    head({ x: 140, y: 70, eye: "half", tongue: true }) +
+    `<g transform="translate(128 124) rotate(178)"><g class="raise"><g class="lg front far"><rect class="f" x="-7.5" y="-4" width="15" height="42" rx="7.5"/><rect class="w m-mitten" x="-7.5" y="24" width="15" height="15" rx="7.5"/><rect class="w m-toes" x="-7.5" y="33" width="15" height="6" rx="3"/></g></g></g>`,
+
+  knead: SIT_BODY +
+    leg({ px: 126, py: 118, len: 54, cls: "front far kn-a", mark: "front", fill: "fl" }) +
+    leg({ px: 146, py: 118, len: 54, w: 15, cls: "front near kn-b", mark: "front" }) +
+    head({ x: 142, y: 70, eye: "happy" }),
+
+  walk: `
+    <g class="tail"><path class="st" stroke-width="11" d="M62,106 C52,78 54,50 60,34 C63,26 71,24 73,31"/></g>
+    <g class="body-bob">
+      ${leg({ px: 78, py: 118, len: 54, cls: "sw-b", mark: "sock", fill: "fl" })}
+      ${leg({ px: 140, py: 118, len: 54, cls: "sw-a front far", mark: "front", fill: "fl" })}
+      <ellipse class="f" cx="108" cy="114" rx="56" ry="26"/>
+      <path class="w" d="M148,103 C161,108 164,124 155,136 C149,128 145,115 148,103 Z"/>
+      <path class="w" opacity=".9" d="M96,138 C108,141 124,141 134,137 C124,136 108,136 96,138 Z"/>
+      ${leg({ px: 88, py: 122, len: 50, cls: "sw-a", mark: "sock" })}
+      ${leg({ px: 150, py: 122, len: 50, w: 15, cls: "sw-b front near", mark: "front" })}
+      ${head({ x: 166, y: 84, s: .95, r: 4 })}
+    </g>`,
+
+  run: `
+    <g class="speed"><path d="M34,104 h-30"/><path d="M40,122 h-36"/><path d="M30,140 h-22"/></g>
+    <g class="run-all">
+      <g class="hips">
+        <g class="tail"><path class="st" stroke-width="10" d="M54,114 C40,112 24,114 6,121"/></g>
+        ${leg2({ px: 74, py: 122, u: 26, l: 28, cls: "hf", fill: "fl" })}
+      </g>
+      ${leg2({ px: 148, py: 120, u: 24, l: 30, cls: "ff", side: "front far", mark: "front", fill: "fl" })}
+      <g class="mid"><ellipse class="f" cx="102" cy="117" rx="37" ry="19.5"/></g>
+      <g class="hips"><ellipse class="f" cx="74" cy="118" rx="26" ry="21"/></g>
+      <ellipse class="f" cx="132" cy="116" rx="38" ry="20"/>
+      <path class="w" d="M158,107 C170,111 172,125 164,133 C159,126 155,116 158,107 Z"/>
+      <g class="hips">${leg2({ px: 80, py: 126, u: 24, l: 26, cls: "hn" })}</g>
+      ${leg2({ px: 154, py: 124, u: 22, l: 28, w: 14, cls: "fn", side: "front near", mark: "front" })}
+      <g class="run-head">${head({ x: 184, y: 106, s: .86, r: 6, eye: "wide", ears: "back" })}</g>
+    </g>`,
+
+  sleep: `
+    <g class="breathe">
+      <ellipse class="f" cx="108" cy="142" rx="60" ry="30"/>
+      <path fill="none" stroke="var(--fur-hi)" stroke-width="2.5" stroke-linecap="round" opacity=".8" d="M62,128 C84,108 132,106 160,120"/>
+    </g>
+    <ellipse class="w" cx="68" cy="166" rx="12" ry="5"/>
+    ${head({ x: 154, y: 138, s: .82, r: 14, eye: "closed" })}
+    <path class="st" stroke-width="11" d="M54,150 C62,172 122,177 172,163"/>
+    <ellipse class="w" cx="164" cy="164" rx="13" ry="6"/>`,
+
+  belly: `
+    <g class="wig">
+      <path class="st" stroke-width="10" d="M50,156 C32,166 16,164 8,152"/>
+      <g transform="translate(66 150) rotate(78)"><rect class="f" x="-7" y="-4" width="14" height="48" rx="7"/><rect class="w" x="-7" y="33" width="14" height="11" rx="7"/></g>
+      <ellipse class="f" cx="106" cy="142" rx="60" ry="27"/>
+      <path class="w" d="M60,140 C66,117 128,110 156,128 C150,150 96,160 60,140 Z"/>
+      <ellipse class="f" cx="98" cy="129" rx="10" ry="6"/><ellipse class="f" cx="129" cy="140" rx="7" ry="5"/><ellipse class="f" cx="75" cy="139" rx="6" ry="4"/>
+      <g transform="translate(80 132) rotate(200)"><rect class="f" x="-7" y="-4" width="14" height="34" rx="7"/><rect class="w" x="-7" y="19" width="14" height="11" rx="7"/></g>
+      <g transform="translate(144 126) rotate(196)"><g class="front near"><rect class="f" x="-7" y="-4" width="14" height="30" rx="7"/><rect class="w m-mitten" x="-7" y="12" width="14" height="14" rx="7"/><rect class="w m-toes" x="-7" y="20" width="14" height="6" rx="3"/></g></g>
+      <g transform="translate(155 133) rotate(168)"><g class="front far"><rect class="f" x="-7" y="-4" width="14" height="26" rx="7"/><rect class="w m-mitten" x="-7" y="8" width="14" height="14" rx="7"/><rect class="w m-toes" x="-7" y="16" width="14" height="6" rx="3"/></g></g>
+      ${head({ x: 172, y: 140, s: .88, r: 100 })}
+    </g>`,
+
+  stretch: `
+    <g class="tail"><path class="st" stroke-width="11" d="M62,88 C54,62 58,42 66,30"/></g>
+    ${leg({ px: 66, py: 96, len: 76, mark: "sock", fill: "fl" })}
+    <path class="f" d="M54,96 C54,74 84,70 104,88 C126,108 156,130 176,142 C184,150 178,162 164,162 C132,160 96,142 72,124 C60,116 54,108 54,96 Z"/>
+    ${leg({ px: 80, py: 100, len: 72, mark: "sock" })}
+    <g class="front far"><rect class="fl" x="148" y="156" width="60" height="12" rx="6"/><rect class="w m-mitten" x="193" y="156" width="15" height="12" rx="6"/><rect class="w m-toes" x="202" y="156" width="6" height="12" rx="3"/></g>
+    <path class="w" d="M160,140 C171,144 175,152 170,159 C164,155 159,148 160,140 Z"/>
+    <g class="front near"><rect class="f" x="142" y="160" width="60" height="12" rx="6"/><rect class="w m-mitten" x="187" y="160" width="15" height="12" rx="6"/><rect class="w m-toes" x="196" y="160" width="6" height="12" rx="3"/></g>
+    ${head({ x: 178, y: 130, s: .9, r: -6, eye: "half" })}`,
+
+  arch: `
+    <g class="tail"><path class="st" stroke-width="19" d="M62,114 C56,86 58,60 64,40"/></g>
+    ${leg({ px: 74, py: 112, len: 60, mark: "sock", fill: "fl" })}
+    ${leg({ px: 150, py: 112, len: 60, cls: "front far", mark: "front", fill: "fl" })}
+    <path class="f" d="M54,128 C52,66 162,62 168,124 C160,114 138,104 112,104 C86,104 64,114 54,128 Z"/>
+    <path class="f" d="M70,96 l-6,-10 l10,4 l2,-12 l7,10 l5,-12 l5,12 l7,-11 l3,13 l9,-9 l0,13 l10,-6 l-3,12 Z"/>
+    ${leg({ px: 82, py: 116, len: 56, mark: "sock" })}
+    ${leg({ px: 158, py: 116, len: 56, w: 15, cls: "front near", mark: "front" })}
+    <path class="w" d="M160,108 C170,112 172,124 166,132 C160,126 158,116 160,108 Z"/>
+    ${head({ x: 176, y: 106, s: .9, r: 10, eye: "wide", ears: "flat", mouth: "open" })}`,
+};
+const cat = document.getElementById("cat");
+cat.innerHTML = Object.entries(POSES).map(([name, svg]) => `<g class="pose p-${name}">${svg}</g>`).join("");
+
+/* ---------- stage ---------- */
+const stage = document.getElementById("stage"), pet = document.getElementById("pet"), bob = document.getElementById("bob");
+const bubble = document.getElementById("bubble"), zzz = document.getElementById("zzz"), tower = document.getElementById("tower");
+const floorEl = document.getElementById("floor"), nowEl = document.getElementById("now"), auto = document.getElementById("auto");
+const slow = document.getElementById("slow");
+slow.addEventListener("change", () => cat.classList.toggle("slow", slow.checked));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (reduce) auto.checked = false;
+
+const S = { x: 0, y: 0, onTower: false, facing: 1, pose: "sit" };
+const G = {};
+function layout() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const floorH = Math.round(Math.max(30, H * .1));
+  const catW = Math.round(Math.min(190, Math.max(100, W * .19)));
+  const catH = catW * 180 / 220;
+  const towerW = Math.round(catW * 1.3);
+  const towerX = Math.round(W - towerW - W * .05);
+  const floorY = H - floorH;
+  const platY = Math.round(Math.max(catH * 1.15, floorY - H * .5));
+  const cushionH = Math.round(catW * .16);
+  Object.assign(G, { W, H, floorH, catW, catH, towerW, towerX, floorY, platY, cushionH, ground: catH * 172 / 180 });
+  floorEl.style.height = floorH + "px";
+  pet.style.width = catW + "px"; pet.style.height = catH + "px";
+  Object.assign(tower.style, { left: towerX + "px", top: platY + "px", width: towerW + "px", height: (floorY - platY) + "px" });
+  tower.querySelector(".cushion").style.height = cushionH + "px";
+  const board = tower.querySelector(".board");
+  board.style.top = (cushionH - 2) + "px"; board.style.height = "8px";
+  tower.querySelector(".post").style.top = (cushionH + 4) + "px";
+  if (!S.placed) { S.x = W * .26; S.placed = true; }
+  S.x = Math.min(Math.max(S.x, minX()), maxX());
+  S.y = S.onTower ? platTop() : floorTop();
+  if (S.onTower) S.x = towerSpot();
+  place();
+}
+const floorTop = () => G.floorY - G.ground;
+const platTop = () => G.platY + 2 - G.ground;
+const minX = () => G.W * .015;
+const maxX = () => G.W - G.catW - G.W * .015;
+const towerSpot = () => G.towerX + G.towerW / 2 - G.catW / 2;
+function place() {
+  pet.style.transform = `translate3d(${S.x}px, ${S.y}px, 0)`;
+  pet.classList.toggle("left", S.facing < 0);
+  if (!bubble.hidden) fitBubble();
+}
+new ResizeObserver(layout).observe(stage);
+
+/* ---------- pose, bubble, status ---------- */
+const STATUS = {
+  sit: "앉아서 꼬리를 살랑거려요", groom: "그루밍하는 중이에요", knead: "꾹꾹이 하는 중이에요", walk: "어슬렁어슬렁 걷고 있어요",
+  run: "우다다! 화면을 가로질러 달려요", sleep: "캣타워에서 자고 있어요", belly: "배를 보이며 뒹굴어요", stretch: "기지개를 켜요", arch: "깜짝 놀랐어요",
+};
+function pose(name, status) {
+  S.pose = name;
+  cat.dataset.pose = name;
+  cat.classList.remove("wipe", "perk", "meow", "crouch", "leap");
+  cat.classList.toggle("slow", slow.checked);
+  zzz.hidden = name !== "sleep";
+  nowEl.textContent = status || STATUS[name];
+}
+let bubbleTimer = 0;
+function say(text, ms = 2600) {
+  clearTimeout(bubbleTimer);
+  bubble.textContent = text; bubble.hidden = false; fitBubble();
+  if (ms) bubbleTimer = setTimeout(() => (bubble.hidden = true), ms);
+}
+function hush() { clearTimeout(bubbleTimer); bubble.hidden = true; }
+function fitBubble() {
+  bubble.style.setProperty("--shift", "0px");
+  const b = bubble.getBoundingClientRect(), s = stage.getBoundingClientRect();
+  let shift = 0;
+  if (b.left < s.left + 6) shift = s.left + 6 - b.left;
+  if (b.right > s.right - 6) shift = s.right - 6 - b.right;
+  bubble.style.setProperty("--shift", shift + "px");
+}
+bubble.addEventListener("click", hush);
+function bounce(kind) { bob.classList.remove("hop", "shake"); void bob.offsetWidth; bob.classList.add(kind); }
+bob.addEventListener("animationend", () => bob.classList.remove("hop", "shake"));
+
+// blinking, only with open eyes
+(function blinkLoop() {
+  setTimeout(() => {
+    if (["sit", "walk", "belly", "stretch"].includes(S.pose)) { cat.classList.add("blink"); setTimeout(() => cat.classList.remove("blink"), 140); }
+    blinkLoop();
+  }, 2200 + Math.random() * 4200);
+})();
+
+/* ---------- behaviour engine ---------- */
+const STOP = Symbol("stop");
+let token = 0;
+const check = (my) => { if (my !== token) throw STOP; };
+const wait = async (ms, my) => { await new Promise((r) => setTimeout(r, ms)); check(my); };
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function moveTo(x, speed, my, onStep) {
+  x = Math.min(Math.max(x, minX() - G.catW * .2), maxX() + G.catW * .2);
+  S.facing = x >= S.x ? 1 : -1; place();
+  return new Promise((resolve, reject) => {
+    let last = performance.now();
+    function step(t) {
+      if (my !== token) return reject(STOP);
+      const dt = Math.min(48, t - last) / 1000; last = t;
+      const d = x - S.x, move = speed * dt;
+      if (Math.abs(d) <= move) { S.x = x; place(); return resolve(); }
+      S.x += Math.sign(d) * move; place();
+      if (onStep) onStep();
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+// a jump to the floor or onto the tower; the level is taken at once, so an interrupted jump still lands
+function jumpTo(x, toTower, my) {
+  const y = toTower ? platTop() : floorTop();
+  S.onTower = toTower;
+  S.facing = x >= S.x ? 1 : -1;
+  pose("run", toTower ? "캣타워로 폴짝 뛰어올라요" : "폴짝 뛰어내려요"); cat.classList.add("leap");
+  const x0 = S.x, y0 = S.y, peak = Math.min(y0, y) - G.catH * .55, dur = 620;
+  return new Promise((resolve, reject) => {
+    const t0 = performance.now();
+    function step(t) {
+      if (my !== token) return reject(STOP);
+      const k = Math.min(1, (t - t0) / dur);
+      S.x = x0 + (x - x0) * k;
+      const c = 2 * peak - (y0 + y) / 2;
+      S.y = (1 - k) * (1 - k) * y0 + 2 * (1 - k) * k * c + k * k * y;
+      place();
+      if (k < 1) requestAnimationFrame(step); else resolve();
+    }
+    requestAnimationFrame(step);
+  });
+}
+function dash(toX, vmax, my) {
+  const dir = Math.sign(toX - S.x) || 1;
+  S.facing = dir; place();
+  return new Promise((resolve, reject) => {
+    let last = performance.now(), v = 0, n = 0;
+    function step(t) {
+      if (my !== token) return reject(STOP);
+      const dt = Math.min(40, t - last) / 1000; last = t;
+      v = Math.min(vmax, v + vmax * dt / .16);
+      S.x += dir * v * dt; place();
+      if (++n % 2 === 0 && S.x > -G.catW * .4 && S.x < G.W - G.catW * .6) dust();
+      if (dir > 0 ? S.x >= toX : S.x <= toX) return resolve();
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+async function toFloor(my) {
+  if (!S.onTower) return;
+  const x = Math.max(minX(), G.towerX - G.catW * 1.1);
+  await jumpTo(x, false, my);
+  pose("sit");
+  await wait(250, my);
+}
+function dust() {
+  const d = document.createElement("div");
+  d.className = "dust";
+  const footX = S.facing > 0 ? S.x + G.catW * .25 : S.x + G.catW * .75;
+  d.style.left = footX + "px"; d.style.top = (G.floorY - 12) + "px";
+  stage.appendChild(d);
+  setTimeout(() => d.remove(), 520);
+}
+
+const B = {
+  async sit(my) { pose("sit"); await wait(rand(3000, 6000), my); },
+  async groom(my) {
+    pose("groom"); await wait(2600, my);
+    cat.classList.add("wipe"); nowEl.textContent = "앞발로 얼굴을 닦아요"; await wait(1900, my);
+    cat.classList.remove("wipe"); nowEl.textContent = STATUS.groom; await wait(1600, my);
+    pose("sit"); await wait(1200, my);
+  },
+  async wander(my) {
+    await toFloor(my);
+    let x = rand(minX(), Math.min(maxX(), G.towerX - G.catW * .3));
+    if (Math.abs(x - S.x) < G.catW) x = S.x > G.W / 2 ? minX() + G.W * .1 : G.W * .5;
+    pose("walk"); await moveTo(x, Math.max(55, G.W * .085), my);
+    pose("sit"); await wait(1500, my);
+  },
+  // bottom wiggle, then across the whole screen and out of sight; later it strolls back in from the other side
+  async zoomies(my) {
+    await toFloor(my);
+    hush();
+    S.running = true;
+    try {
+      const right = S.x + G.catW / 2 < G.W / 2;
+      S.facing = right ? 1 : -1; place();
+      pose("run", "엉덩이를 씰룩씰룩…"); cat.classList.add("crouch");
+      await wait(850, my);
+      cat.classList.remove("crouch");
+      nowEl.textContent = "우다다! 화면을 가로질러 달려요";
+      await dash(right ? G.W + G.catW * .2 : -G.catW * 1.2, G.W / .7 / (slow.checked ? 5 : 1), my);
+      pose("sit", "화면 밖으로 사라졌어요");
+      await wait(rand(3500, 5500), my);
+      S.x = right ? -G.catW * 1.05 : G.W + G.catW * .05;
+      pose("walk", "슬그머니 돌아와요");
+      await moveTo(right ? rand(G.W * .12, G.W * .4) : rand(G.W * .3, Math.min(maxX(), G.towerX - G.catW * .3)), Math.max(55, G.W * .085), my);
+    } finally { if (my === token) S.running = false; }
+    pose("sit"); await wait(1400, my);
+  },
+  async nap(my) {
+    if (!S.onTower) {
+      pose("walk");
+      await moveTo(Math.max(minX(), G.towerX - G.catW * .9), Math.max(55, G.W * .09), my);
+      await jumpTo(towerSpot(), true, my);
+    }
+    pose("sit"); await wait(600, my);
+    pose("sleep"); await wait(rand(14000, 22000), my);
+    pose("sit", "눈을 떴어요"); await wait(1400, my);
+  },
+  async belly(my) { await toFloor(my); pose("belly"); await wait(rand(5000, 7000), my); pose("sit"); await wait(800, my); },
+  async stretch(my) {
+    pose("stretch"); await wait(1300, my);
+    cat.classList.add("meow"); nowEl.textContent = "하품해요"; await wait(900, my);
+    pose("sit", "야옹 했어요"); cat.classList.add("meow"); say("야옹", 1600); await wait(1100, my);
+    cat.classList.remove("meow"); await wait(900, my);
+  },
+  // things that happen in Owelk
+  async aiWriting(my) {
+    pose("knead", "꾹꾹이 하는 중이에요 (AI가 답을 쓰는 동안)"); say("답변 쓰는 중…", 0);
+    await wait(6000, my);
+    await B.aiReady(my, true);
+  },
+  async aiReady(my) {
+    pose("sit", "답변이 준비됐다고 알려 줘요"); cat.classList.add("meow"); bounce("hop");
+    say("답변이 준비됐어요!", 2800); await wait(700, my); cat.classList.remove("meow"); await wait(2200, my);
+  },
+  async aiFail(my) {
+    pose("arch", "깜짝 놀랐어요 (AI가 답하지 못했어요)"); bounce("shake");
+    say("AI가 답하지 못했어요", 2800); await wait(2400, my);
+    pose("sit"); await wait(800, my);
+  },
+  async forYou(my) {
+    pose("sit", "귀를 쫑긋 세웠어요"); cat.classList.add("perk"); bounce("hop");
+    say("For You에 새 논문 3편", 2800); await wait(2900, my);
+  },
+  async breakTime(my) {
+    say("50분 읽었어요. 잠깐 쉴까요?", 4200);
+    pose("stretch", "쉬자고 기지개를 켜요"); await wait(1500, my);
+    cat.classList.add("meow"); await wait(900, my);
+    pose("sit"); await wait(2200, my);
+  },
+};
+
+function next() {
+  if (S.onTower) {
+    const r = Math.random();
+    return r < .55 ? "wander" : r < .8 ? "groom" : "sit";
+  }
+  const table = [["sit", 22], ["groom", 16], ["wander", 22], ["nap", 16], ["belly", 9], ["stretch", 9], ["zoomies", 6]];
+  let r = Math.random() * table.reduce((a, [, w]) => a + w, 0);
+  for (const [name, w] of table) { if ((r -= w) < 0) return name; }
+  return "sit";
+}
+const buttons = [...document.querySelectorAll("[data-do]")];
+// where the cat stands when a new behaviour starts (an interrupted jump or walk leaves it anywhere)
+function settle() {
+  if (S.onTower) S.x = towerSpot();
+  else S.x = Math.min(Math.max(S.x, minX()), maxX());
+  S.y = S.onTower ? platTop() : floorTop();
+  place();
+}
+const EVENTS = ["aiWriting", "aiReady", "aiFail", "forYou", "breakTime"];
+async function run(name) {
+  if (S.running && EVENTS.includes(name)) { nowEl.textContent = "달리는 중이라 알림은 띄우지 않아요"; return; }
+  const my = ++token;
+  S.running = false;
+  settle();
+  buttons.forEach((b) => b.classList.toggle("on", b.dataset.do === name));
+  if (!["aiWriting", "aiReady", "aiFail", "forYou", "breakTime", "stretch"].includes(name)) hush();
+  try { await B[name](my); } catch (e) { if (e !== STOP) console.error(e); return; }
+  if (my !== token) return;
+  buttons.forEach((b) => b.classList.remove("on"));
+  if (auto.checked) run(next());
+  else pose("sit");
+}
+buttons.forEach((b) => b.addEventListener("click", () => run(b.dataset.do)));
+auto.addEventListener("change", () => { if (auto.checked) run(next()); });
+
+layout();
+pose("sit");
+if (auto.checked) setTimeout(() => { if (token === 0) run("sit"); }, 900);
+</script>
+</body>
+</html>
