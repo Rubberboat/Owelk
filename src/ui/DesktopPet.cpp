@@ -1,5 +1,6 @@
 #include "DesktopPet.h"
 #include "ResearchStore.h"
+#include <QCursor>
 #include <QGuiApplication>
 #include <QtMath>
 #include <QRect>
@@ -23,6 +24,7 @@ DesktopPet::DesktopPet(ResearchStore *store, QObject *parent) : QObject(parent),
     if (!m_store) return;
     m_enabled = m_store->setting("pet.enabled") == "1";
     if (const auto size = m_store->setting("pet.size"); size == "small" || size == "large") m_size = size;
+    if (m_store->setting("pet.towerMode") == "sleeping") m_towerMode = "sleeping";
     const auto minutes = m_store->setting("pet.breakMinutes", "50").toInt();
     if (minutes == 0 || minutes == 25 || minutes == 90) m_breakMinutes = minutes;
 }
@@ -45,6 +47,14 @@ void DesktopPet::setSize(const QString &size)
     if ((size != "small" && size != "medium" && size != "large") || size == m_size) return;
     m_size = size;
     save("pet.size", size);
+    emit changed();
+}
+
+void DesktopPet::setTowerMode(const QString &mode)
+{
+    if ((mode != "always" && mode != "sleeping") || mode == m_towerMode) return;
+    m_towerMode = mode;
+    save("pet.towerMode", mode);
     emit changed();
 }
 
@@ -99,6 +109,33 @@ QPoint DesktopPet::place(int width, int height) const
     const auto *screen = QGuiApplication::primaryScreen();
     const QRect area = screen ? screen->availableGeometry() : QRect(0, 0, 1280, 800);
     return {area.x() + area.width() - width - 24, area.y() + area.height() - height - 24};
+}
+
+QPoint DesktopPet::towerPlace(int defaultX, int defaultY) const
+{
+    const auto saved = m_store ? m_store->setting("pet.tower").split(',') : QStringList();
+    if (saved.size() == 2) {
+        const QPoint at(saved[0].toInt(), saved[1].toInt());
+        // Still on a screen (one may have been unplugged since); its base may sit on the screen's lower edge.
+        for (const auto *screen : QGuiApplication::screens())
+            if (screen->geometry().contains(at - QPoint(0, 8))) return at;
+    }
+    return {defaultX, defaultY};
+}
+
+void DesktopPet::rememberTower(int x, int y)
+{
+    save("pet.tower", QString("%1,%2").arg(x).arg(y));
+}
+
+QPoint DesktopPet::cursor() const
+{
+    return QCursor::pos();
+}
+
+void DesktopPet::move(QWindow *window, int x, int y) const
+{
+    if (window) window->setPosition(x, y);
 }
 
 void DesktopPet::remember(int x, int y)

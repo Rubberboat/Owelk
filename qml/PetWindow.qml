@@ -5,10 +5,11 @@ import Owelk.Ui
 
 // The desktop pet, 알맹이 (Allmeng-E), a tuxedo cat in a small window that floats above other apps while Owelk
 // runs (Settings › Appearance › Desktop pet). It lives on the line it was left on: sits, grooms, strolls along
-// it, sleeps on a small tower beside it, rolls on its back, stretches, and now and then dashes out of the screen
-// and back. Drag it anywhere (it keeps still while held); a click brings Owelk forward; the right button has its
-// menu. While Owelk is behind other apps it says when an AI answer is ready or failed and when For You has new
-// papers, in a bubble above it; it kneads while an answer is written. PDFs dropped on it open in Owelk; text
+// it, sleeps up on a cat tower that stands where the user put it (drag the tower anywhere), rolls on its back,
+// stretches, and now and then dashes out of the screen and back. Drag it anywhere (it keeps still while held);
+// a click makes it spring up and do something else, a double click brings Owelk forward; the right button has
+// its menu. While Owelk is behind other apps it says when an AI answer is ready or failed and when For You has
+// new papers, in a bubble above it; it kneads while an answer is written. PDFs dropped on it open in Owelk; text
 // dropped on it is explained by the AI. After a stretch of reading it suggests a break. Nothing moves or redraws
 // while nothing happens, and it stops when the screen is locked or Owelk is hidden.
 Window {
@@ -55,13 +56,20 @@ Window {
         const threads = Object.keys(answering).map(function(request) { return answering[request] })
         if (threads.length) say({text: "답변 쓰는 중…", kind: "aiWriting", thread: threads[threads.length - 1], writing: true, ttl: 0})
     }
+    // A click on the bubble does what it says.
     function act() {
         const m = message
         message = null
-        if (m && (m.reminder || m.plain)) return
-        if (m && m.thread) threadRequested(m.thread)
-        else if (m && m.forYou) forYouRequested()
+        if (!m || m.reminder || m.plain) return
+        if (m.thread) threadRequested(m.thread)
+        else if (m.forYou) forYouRequested()
         else openRequested()
+    }
+    // A click on the cat: with a bubble up it does what the bubble says; else the cat springs up and goes on
+    // to something else.
+    function tapped() {
+        if (message) act()
+        else brain.poke()
     }
     // Conversations being answered (gloss and other requests are not news).
     property var answering: ({})
@@ -79,7 +87,9 @@ Window {
         function onMeowSaid() { if (!pet.message) pet.message = {text: "야옹", plain: true, ttl: 1600} }
         function onHushRequested() { pet.message = null }
         function onHopRequested() { hop.restart() }
+        function onSpringRequested() { spring.restart() }
         function onShakeRequested() { shake.restart() }
+        function onLanded() { land.restart() }
     }
     Connections {
         target: pet.ai
@@ -171,81 +181,156 @@ Window {
     palette.toolTipBase: Theme.raised
     palette.toolTipText: Theme.text
 
-    // The cat is DesktopPet.height tall; the window has room beside it for the tower, above it for a hop
-    // and a jump, and as much above the floor as the tower is high.
+    // The cat is DesktopPet.height tall. The window has room around it for whiskers, a tail and a shake, and
+    // above it for a hop or a stretch: nothing the cat does is cut off at the edge.
     readonly property int catH: DesktopPet.height
     readonly property int catW: Math.round(catH * 220 / 180)
-    readonly property int towerRoom: Math.round(catW * .9)
-    readonly property int headroom: Math.round(catH * .4)
-    // How far the cat is from the window's left edge (the tower may be on its left).
-    readonly property int catOffset: brain.towerSide < 0 ? towerRoom : 0
-    readonly property real feetY: headroom + brain.towerHeight + catH * 172 / 180
-    width: catW + towerRoom
-    height: headroom + brain.towerHeight + catH
+    readonly property int marginX: Math.round(catW * .12)
+    readonly property int headroom: Math.round(catH * .42)
+    // Where the line under its feet is in the window.
+    readonly property int feetOffset: headroom + Math.round(catH * 172 / 180)
+    width: catW + 2 * marginX
+    height: headroom + catH + Math.round(catH * .06)
     property bool ready: false
     // Held (dragged by the user): the pet keeps still there, and the line it walks is where it was put.
     property bool dragging: false
+    // Where the cat is in the window beyond whole points (the window moves in whole points, the cat to a
+    // fraction of one, so a slow walk is not a stutter).
+    property real innerX: 0
+    property real innerY: 0
     visible: ready && !brain.away
 
-    // Follows the cat's place; its height (the line it walks along) is where the user left the window.
+    // Follows the cat's place.
     function follow() {
         if (dragging) return
-        x = Math.round(brain.catX - catOffset)
+        const wx = brain.catX - marginX, wy = brain.feetY - feetOffset
+        const ix = Math.floor(wx), iy = Math.floor(wy)
+        innerX = wx - ix
+        innerY = wy - iy
+        DesktopPet.move(pet, ix, iy)
     }
     Connections {
         target: brain
-        function onCatXChanged() { pet.follow(); rememberLater.restart() }
-        function onPlaced() { pet.follow() }
-    }
-    onCatOffsetChanged: follow()
-    property int lastHeight: 0
-    onHeightChanged: {
-        // A new size keeps the feet where they were.
-        if (ready && lastHeight > 0) y += lastHeight - height
-        lastHeight = height
-        fitLater.restart()
+        function onCatXChanged() { if (!brain.batching) { pet.follow(); rememberLater.restart() } }
+        function onFeetYChanged() { if (!brain.batching) pet.follow() }
+        function onPlaced() { pet.follow(); rememberLater.restart() }
     }
     onWidthChanged: { follow(); fitLater.restart() }
+    onHeightChanged: { follow(); fitLater.restart() }
     Component.onCompleted: {
         DesktopPet.prepare(pet)
-        lastHeight = height
         const at = DesktopPet.place(width, height)
-        brain.catX = at.x; brain.floorX = at.x
-        y = at.y
+        brain.catX = at.x + marginX
+        brain.lineY = at.y + feetOffset
+        brain.feetY = brain.lineY
+        // The tower where the user left it; the first time beside the cat.
+        const beside = towerBeside()
+        const spot = DesktopPet.towerPlace(beside.x, beside.y)
+        towerCenterX = spot.x; towerBase = spot.y
+        DesktopPet.rememberTower(spot.x, spot.y)
         ready = true
         follow()
         DesktopPet.floatEverywhere(pet)
         brain.begin(DesktopPet.first)
         fitLater.restart()
+        Qt.callLater(pet.raise)
     }
     onVisibleChanged: if (visible) { DesktopPet.floatEverywhere(pet); fitLater.restart() }
-    // Where it was left, once it stops moving; not while it is out of the screen.
+    // Where it was left, once it stops moving; not while it is out of the screen or up on the tower.
     Timer {
         id: rememberLater
         interval: 500
-        onTriggered: if (!brain.running && !brain.away && !pet.dragging) DesktopPet.remember(Math.round(brain.catX), pet.y)
+        onTriggered: if (!brain.running && !brain.away && !pet.dragging && !brain.onTower && brain.feetY === brain.lineY)
+            DesktopPet.remember(Math.round(brain.catX - pet.marginX), Math.round(brain.lineY - pet.feetOffset))
     }
-    onYChanged: rememberLater.restart()
+
+    // ---- held by the user: the system moves the window; where there is no such move, it follows the pointer
+    // (from where the pointer was when the button went down) ----
+    property point pressCursor
+    property point dragCursor
+    property point dragWindow
+    property bool followByHand: false
+    function beginDrag(cursor) {
+        dragging = true
+        dragCursor = cursor
+        dragWindow = Qt.point(x, y)
+        brain.halt(true)
+    }
+    function dragTo(cursor) {
+        innerX = 0
+        innerY = 0
+        DesktopPet.move(pet, dragWindow.x + cursor.x - dragCursor.x, dragWindow.y + cursor.y - dragCursor.y)
+    }
+    // Let go: the line it walks is where it was put (and it is off the tower, if it was up on it).
+    function dropped() {
+        if (!dragging) return
+        // (Held still: the window does not follow the cat while these are set one by one.)
+        brain.onTower = false
+        brain.lineY = y + feetOffset
+        brain.feetY = brain.lineY
+        brain.catX = x + marginX
+        dragging = false
+        follow()
+        DesktopPet.remember(Math.round(brain.catX - marginX), Math.round(brain.lineY - feetOffset))
+        sync()
+    }
+    // The button coming up ends it (the system moves the window itself, and a window that lags behind the pointer
+    // may ignore the mouse, so the release may not reach it as an event). Tests turn this off.
+    property bool followPointer: true
+    Timer {
+        interval: 100; repeat: true
+        running: pet.dragging && pet.followPointer
+        onTriggered: if (!DesktopPet.leftButtonDown()) pet.dropped()
+    }
+    FrameAnimation {
+        running: pet.dragging && pet.followPointer && pet.followByHand
+        onTriggered: pet.dragTo(DesktopPet.cursor())
+    }
 
     // Held, or the screen locked or Owelk hidden: nothing moves.
     function sync() {
-        if (dragging || DesktopPet.dormant) brain.halt()
+        if (dragging || DesktopPet.dormant) brain.halt(dragging)
         else brain.resume()
     }
     Connections { target: DesktopPet; function onDormantChanged() { pet.sync() } }
-    function dropped() {
-        dragging = false
-        brain.catX = x + catOffset
-        // Asleep up on the tower: the tower goes along, beside the cat's floor spot.
-        brain.floorX = brain.onTower ? brain.catX - brain.towerSide * catW * .95 : brain.catX
-        DesktopPet.remember(Math.round(brain.catX), y)
-        sync()
+
+    // ---- the tower: where the user put it (the middle of its base, the bottom of it) ----
+    property real towerCenterX: 0
+    property real towerBase: 0
+    function towerBeside() {
+        const side = brain.catX + catW * 2.7 < brain.screenLeft + brain.screenWidth ? 1 : -1
+        return Qt.point(Math.round(brain.catX + catW / 2 + side * catW * 1.6), Math.round(brain.lineY + 4))
     }
-    Timer {
-        // The system moves the window while the button is down; this notices the button coming up.
-        interval: 150; repeat: true
-        running: pet.dragging
-        onTriggered: if (!DesktopPet.leftButtonDown()) pet.dropped()
+    // The screen a point is on, else the nearest one.
+    function screenOf(x, y) {
+        let best = null, nearest = Infinity
+        for (const screen of Qt.application.screens) {
+            const dx = Math.max(screen.virtualX - x, 0, x - (screen.virtualX + screen.width))
+            const dy = Math.max(screen.virtualY - y, 0, y - (screen.virtualY + screen.height))
+            if (dx * dx + dy * dy < nearest) { best = screen; nearest = dx * dx + dy * dy }
+        }
+        return best
+    }
+    function moveTower(centerX, base) {
+        // Anywhere on any screen: at least its middle and its top stay on the one it is nearest.
+        const screen = screenOf(centerX, base - 1)
+        const left = screen ? screen.virtualX : 0, top = screen ? screen.virtualY : 0
+        const right = left + (screen ? screen.width : 1440), bottom = top + (screen ? screen.height : 900)
+        towerCenterX = Math.min(Math.max(centerX, left + 20), right - 20)
+        towerBase = Math.min(Math.max(base, top + brain.towerHeight + 10), bottom + 4)
+        // A cat asleep up there stays in front of it, though the tower is the window being moved.
+        if (brain.onTower) pet.raise()
+    }
+    function towerDropped() {
+        DesktopPet.rememberTower(Math.round(towerCenterX), Math.round(towerBase))
+        pet.raise()
+    }
+    // The tower back beside the cat (not while the cat sleeps up on it).
+    function bringTower() {
+        if (brain.onTower) return
+        const beside = towerBeside()
+        moveTower(beside.x, beside.y)
+        towerDropped()
     }
 
     PetBehavior {
@@ -256,55 +341,65 @@ Window {
         catW: pet.catW; catH: pet.catH
         pace: DesktopPet.pace
         windowWidth: pet.width
-        towerRoom: pet.towerRoom
+        windowOffset: pet.marginX
+        screens: Qt.application.screens.map(function(screen) { return {x: screen.virtualX, y: screen.virtualY, width: screen.width, height: screen.height} })
+        towerX: pet.towerCenterX
+        towerBaseY: pet.towerBase
+    }
+    PetTowerWindow {
+        id: towerWin
+        followPointer: pet.followPointer
+        towerWidth: brain.towerWidth; towerHeight: brain.towerHeight
+        centerX: pet.towerCenterX; baseY: pet.towerBase
+        // Always, or only for a nap (the cat is about to go up or is up there).
+        wanted: pet.ready && (DesktopPet.towerMode === "always" || brain.towerNeeded || brain.onTower)
+        onDragged: function(centerX, baseY) { pet.moveTower(centerX, baseY) }
+        onDropped: pet.towerDropped()
+        onBringRequested: pet.bringTower()
+        // The cat is above the tower, not behind it.
+        onVisibleChanged: if (visible) Qt.callLater(pet.raise)
     }
 
     // Clicks on the transparent parts go to whatever is behind the pet; worked out again when what is
-    // drawn changes (pose, direction, tower, a jump over).
+    // drawn changes (pose, direction, a jump over).
     function fitClicks() {
         if (!visible || !content.visible) return
         content.grabToImage(function(result) {
             DesktopPet.letClicksThrough(pet, result.image, Qt.size(pet.width, pet.height), 0)
         }, Qt.size(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2))))
     }
-    Timer { id: fitLater; interval: 120; onTriggered: pet.fitClicks() }
+    Timer { id: fitLater; interval: 150; onTriggered: pet.fitClicks() }
     Connections {
         target: brain
         function onPoseChanged() { fitLater.restart() }
         function onFacingChanged() { fitLater.restart() }
-        function onTowerShownChanged() { fitLater.restart() }
-        function onLiftChanged() { fitLater.restart() }
+        function onFeetYChanged() { fitLater.restart() }
         function onCrouchChanged() { fitLater.restart() }
         function onMeowChanged() { fitLater.restart() }
     }
     Connections { target: Theme; function onChanged() { fitLater.restart() } }
+    // The fade between two poses is over: the shape to click on is the new one.
+    Connections { target: cat; function onFadeChanged() { if (cat.fade >= 1) fitLater.restart() } }
+    // Turning round, and appearing: the shape to click on is worked out when they are over.
+    Connections { target: cat; function onFlipChanged() { fitLater.restart() } }
 
     Item {
         id: content
         objectName: "petContent"
         anchors.fill: parent
+        // It appears, not pops up.
+        opacity: pet.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutQuad } }
+        onOpacityChanged: fitLater.restart()
         Accessible.role: Accessible.Graphic
         Accessible.name: DesktopPet.englishName + ", a tuxedo cat"
         Accessible.description: brain.status
-
-        PetTower {
-            id: tower
-            objectName: "petTower"
-            // Beside the cat's floor spot, on the side it leaps from, and under it once it is up there (the
-            // window goes along with the cat); its top is where the cat stands up there.
-            width: Math.round(pet.catW * .8); height: brain.towerHeight + 4
-            x: pet.catOffset + pet.catW / 2 + brain.towerSide * pet.catW * .95 - (brain.catX - brain.floorX) - width / 2
-            y: pet.feetY - brain.towerHeight
-            opacity: brain.towerShown ? 1 : 0
-            visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 250 } }
-            onOpacityChanged: fitLater.restart()
-        }
-        // A little larger while something is dragged over it.
+        // The cat: a little larger while something is dragged over it.
         Item {
             id: bob
-            x: pet.catOffset + bobX
-            y: pet.headroom + brain.towerHeight - brain.lift + bobY
+            objectName: "petBob"
+            x: pet.marginX + pet.innerX + bobX
+            y: pet.headroom + pet.innerY + bobY
             width: pet.catW; height: pet.catH
             property real bobX: 0
             property real bobY: 0
@@ -327,9 +422,13 @@ Window {
                     objectName: "petCat"
                     scale: pet.catW / 220
                     transformOrigin: Item.TopLeft
+                    renderScale: pet.catW / 220 * (pet.screen ? pet.screen.devicePixelRatio : 1)
+                    blendMs: brain.blendMs
                     pose: brain.pose
                     facingLeft: brain.facing < 0
                     crouch: brain.crouch; leap: brain.leap; wipe: brain.wipe; meow: brain.meow; perk: brain.perk
+                    gait: brain.walking ? 1 : 0
+                    stridePhase: brain.stridePhase
                     alive: !DesktopPet.dormant && pet.visible
                 }
             }
@@ -340,46 +439,76 @@ Window {
         anchors.fill: parent
         onDropped: function(event) { if (pet.received(event.urls, event.hasText ? event.text : "")) event.acceptProposedAction() }
     }
-    // A hop when it has something to say, a shake when it is startled.
+    // A hop when it has something to say or is startled up, a shake when it is startled, a squash when it lands.
     SequentialAnimation {
         id: hop
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .34; duration: 190; easing.type: Easing.OutCubic }
-            NumberAnimation { target: bob; property: "bobStretch"; to: 1.04; duration: 190 }
+            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .34; duration: 300; easing.type: Easing.OutQuad }
+            NumberAnimation { target: bob; property: "bobStretch"; to: 1.05; duration: 300; easing.type: Easing.OutQuad }
         }
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobY"; to: 0; duration: 190; easing.type: Easing.InQuad }
-            NumberAnimation { target: bob; property: "bobStretch"; to: .94; duration: 190 }
+            NumberAnimation { target: bob; property: "bobY"; to: 0; duration: 300; easing.type: Easing.InQuad }
+            NumberAnimation { target: bob; property: "bobStretch"; to: .93; duration: 300; easing.type: Easing.InQuad }
         }
-        NumberAnimation { target: bob; property: "bobStretch"; to: 1; duration: 170 }
+        NumberAnimation { target: bob; property: "bobStretch"; to: 1; duration: 260; easing.type: Easing.OutQuad }
         ScriptAction { script: fitLater.restart() }
+    }
+    // Sprung up by a poke: sudden, up in a moment and down a little slower, squashed as it lands.
+    SequentialAnimation {
+        id: spring
+        ParallelAnimation {
+            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .28; duration: 150; easing.type: Easing.OutCubic }
+            NumberAnimation { target: bob; property: "bobStretch"; to: 1.08; duration: 150; easing.type: Easing.OutQuad }
+        }
+        ParallelAnimation {
+            NumberAnimation { target: bob; property: "bobY"; to: 0; duration: 220; easing.type: Easing.InQuad }
+            NumberAnimation { target: bob; property: "bobStretch"; to: .9; duration: 220; easing.type: Easing.InQuad }
+        }
+        NumberAnimation { target: bob; property: "bobStretch"; to: 1; duration: 260; easing.type: Easing.OutBack }
+        ScriptAction { script: fitLater.restart() }
+    }
+    SequentialAnimation {
+        id: land
+        NumberAnimation { target: bob; property: "bobStretch"; to: .92; duration: 140; easing.type: Easing.OutQuad }
+        NumberAnimation { target: bob; property: "bobStretch"; to: 1; duration: 420; easing.type: Easing.OutQuad }
     }
     SequentialAnimation {
         id: shake
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobX"; to: -pet.catW * .04; duration: 100 }
-            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .10; duration: 100 }
+            NumberAnimation { target: bob; property: "bobX"; to: -pet.catW * .04; duration: 130; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .10; duration: 130; easing.type: Easing.InOutQuad }
         }
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobX"; to: pet.catW * .04; duration: 100 }
-            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .12; duration: 100 }
+            NumberAnimation { target: bob; property: "bobX"; to: pet.catW * .04; duration: 130; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .12; duration: 130; easing.type: Easing.InOutQuad }
         }
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobX"; to: -pet.catW * .03; duration: 100 }
-            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .04; duration: 100 }
+            NumberAnimation { target: bob; property: "bobX"; to: -pet.catW * .03; duration: 130; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: bob; property: "bobY"; to: -pet.catH * .04; duration: 130; easing.type: Easing.InOutQuad }
         }
         ParallelAnimation {
-            NumberAnimation { target: bob; property: "bobX"; to: pet.catW * .02; duration: 100 }
-            NumberAnimation { target: bob; property: "bobY"; to: 0; duration: 100 }
+            NumberAnimation { target: bob; property: "bobX"; to: pet.catW * .02; duration: 130; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: bob; property: "bobY"; to: 0; duration: 130; easing.type: Easing.InOutQuad }
         }
-        NumberAnimation { target: bob; property: "bobX"; to: 0; duration: 100 }
+        NumberAnimation { target: bob; property: "bobX"; to: 0; duration: 130; easing.type: Easing.InOutQuad }
         ScriptAction { script: fitLater.restart() }
     }
     DragHandler {
         target: null
-        onActiveChanged: if (active) { pet.dragging = true; brain.halt(); pet.startSystemMove() }
+        onActiveChanged: {
+            if (active) {
+                pet.beginDrag(pet.pressCursor)
+                // The system's own move is the smoothest; by hand where there is none.
+                pet.followByHand = pet.startSystemMove() === false
+            } else pet.dropped()
+        }
     }
-    TapHandler { objectName: "petTap"; onTapped: pet.act() }
+    TapHandler {
+        objectName: "petTap"
+        onPressedChanged: if (pressed) pet.pressCursor = DesktopPet.cursor()
+        onTapped: pet.tapped()
+        onDoubleTapped: pet.openRequested()
+    }
     TapHandler { acceptedButtons: Qt.RightButton; onTapped: menu.popup() }
     Menu {
         id: menu
@@ -393,6 +522,7 @@ Window {
         palette.highlight: Theme.accent
         palette.highlightedText: Theme.onAccent
         MenuItem { text: "Open Owelk"; onTriggered: pet.openRequested() }
+        MenuItem { objectName: "bringTowerHere"; text: "Move the tower here"; enabled: !brain.onTower; onTriggered: pet.bringTower() }
         MenuItem { objectName: "hidePet"; text: "Hide " + DesktopPet.englishName; onTriggered: DesktopPet.enabled = false }
     }
 
@@ -404,16 +534,20 @@ Window {
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint | Qt.WindowDoesNotAcceptFocus
         color: "transparent"
         title: DesktopPet.name
-        visible: pet.message !== null && pet.visible && !brain.running
+        // Up while there is something to say; it fades in and out.
+        readonly property bool wanted: pet.message !== null && pet.visible && !brain.running
+        property string said: ""
+        visible: wanted || card.opacity > 0
         width: card.width + 4; height: card.height + 4
         // The top of the cat's head in the window.
-        readonly property real headTop: pet.headroom + brain.towerHeight - brain.lift + pet.catH * .14
+        readonly property real headTop: pet.headroom + pet.innerY + pet.catH * .14
         readonly property bool below: pet.y + headTop - height - 4 < (pet.screen ? pet.screen.virtualY : 0)
-        readonly property real centerX: pet.x + pet.catOffset + pet.catW / 2
+        readonly property real centerX: pet.x + pet.marginX + pet.innerX + pet.catW / 2
         x: Math.round(Math.min(Math.max(centerX - width / 2, (pet.screen ? pet.screen.virtualX : 0) + 4), (pet.screen ? pet.screen.virtualX + pet.screen.width : 4000) - width - 4))
         y: below ? pet.y + pet.height + 4 : pet.y + headTop - height + 4
         Component.onCompleted: DesktopPet.prepare(bubble)
         onVisibleChanged: if (visible) DesktopPet.floatEverywhere(bubble)
+        Connections { target: pet; function onMessageChanged() { if (pet.message) bubble.said = pet.message.text } }
         Rectangle {
             id: card
             x: 2; y: 2
@@ -421,11 +555,13 @@ Window {
             radius: Theme.radiusLarge
             color: Theme.raised
             border.color: Theme.border
+            opacity: bubble.wanted ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
             Label {
                 id: words
                 objectName: "petBubbleText"
                 x: 12; y: 8; width: parent.width - 24
-                text: pet.message ? pet.message.text : ""
+                text: pet.message ? pet.message.text : bubble.said
                 wrapMode: Text.Wrap
                 maximumLineCount: 3
                 elide: Text.ElideRight

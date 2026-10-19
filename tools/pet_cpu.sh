@@ -25,5 +25,6 @@ measure() {
     rm -rf "$dir"
     echo "pet.enabled=$1: $(echo "$end $start $SECONDS_EACH" | awk '{printf "%.2f s CPU in %d s = %.2f %%", $1-$2, $3, ($1-$2)/$3*100}'), memory ${rss} KB"
 }
-measure 0
+# OWELK_SKIP_OFF=1 measures only with the pet on.
+[ -n "${OWELK_SKIP_OFF:-}" ] || measure 0
 measure 1

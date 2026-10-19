@@ -6,11 +6,18 @@ import "PetPath.js" as P
 // in its 220 x 180 units, with the page's @keyframes as motion. Only the pose shown is built, and it moves
 // only when it should: a sitting cat is still but for a tail flick and a blink every half minute or so,
 // a sleeping one only breathes.
+//
+// A change of pose is not a cut: the new pose fades in over the old one (blendMs), the legs of a walker
+// stride as far as it really moves and ease in and out, and crouching, jumping and running run into each
+// other.
 Item {
     id: cat
     width: 220; height: 180
-    // sit, groom, knead, walk, run, sleep, belly, stretch or arch.
+    // sit, groom, knead, walk, stand, run, sleep, sleepBack, belly, stretch or arch. (stand is the walker
+    // without its stride.)
     property string pose: "sit"
+    // How long a change of pose takes to show, in milliseconds.
+    property int blendMs: 450
     // Looking left; the paws keep their marks (white glove on the right front paw, toes on the left).
     property bool facingLeft: false
     // Switched on for a while by what the cat does: low with the bottom wiggling (before the dash), a jump,
@@ -20,12 +27,16 @@ Item {
     property bool wipe: false
     property bool meow: false
     property bool perk: false
+    // How much the walker strides (0 stands, 1 walks) and how far it has walked, in strides: the legs follow
+    // the ground, so the feet do not slide.
+    property real gait: 0
+    property real stridePhase: 0
     // Nothing moves while this is false (the screen is locked, the pet is hidden).
     property bool alive: true
     // Seconds per stride of the gallop.
     property real stride: .27
-    // The dark theme's light rim, so black fur shows on a dark desktop.
-    property bool rim: false
+    // Points of the screen the cat's 220 units take: the fade of a change of pose is drawn at that size.
+    property real renderScale: 2
     // Milliseconds between idle blinks and tail flicks (a blink or a flick after somewhere in between).
     property int quietMin: 25000
     property int quietMax: 60000
@@ -34,9 +45,77 @@ Item {
     property real earY: 1
     // Progress of the tail flick (0..1; 1: at rest).
     property real flick: 1
-    readonly property bool eyesOpen: pose === "sit" || pose === "walk" || pose === "belly" || pose === "stretch"
+    readonly property bool eyesOpen: pose === "sit" || pose === "walk" || pose === "stand" || pose === "belly" || pose === "stretch"
 
-    transform: Scale { origin.x: 110; xScale: cat.facingLeft ? -1 : 1 }
+    // Crouching and jumping come on and off over a moment, not at once.
+    property real crouchBlend: crouch ? 1 : 0
+    Behavior on crouchBlend { NumberAnimation { duration: 320; easing.type: Easing.InOutQuad } }
+    property real leapBlend: leap ? 1 : 0
+    Behavior on leapBlend { NumberAnimation { duration: 320; easing.type: Easing.InOutQuad } }
+
+    // Turning round takes a moment: the cat narrows to a line and widens the other way, and its marks swap
+    // sides at the middle of that, when it is edge on.
+    property real flip: facingLeft ? -1 : 1
+    Behavior on flip { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
+    readonly property bool looksLeft: flip < 0
+    transform: Scale { origin.x: 110; xScale: cat.flip }
+
+    // ---- a change of pose: the new one fades in over the old one, which is built until it is gone ----
+    // Two slots take turns: the one in front shows the pose, the other the pose it replaces.
+    property bool aFront: true
+    // Progress of the change: 0 when it starts, 1 when the old pose is gone.
+    property real fade: 1
+    readonly property string shownPose: aFront ? slotA.name : slotB.name
+    readonly property string leavingPose: fade < 1 ? (aFront ? slotB.name : slotA.name) : ""
+    // The new one is solid before the old one starts to go, so no gap shows through where both are drawn.
+    readonly property real frontOpacity: P.smoothstep(0, .6, fade)
+    readonly property real backOpacity: 1 - P.smoothstep(.5, 1, fade)
+    // Poses that are drawn alike (a standing cat is the walker without its stride) change without a fade.
+    function family(name) { return name === "stand" ? "walk" : name }
+    onPoseChanged: {
+        const front = aFront ? slotA : slotB, back = aFront ? slotB : slotA
+        if (front.name.length && family(front.name) === family(pose)) { front.name = pose; return }
+        if (!front.name.length || blendMs <= 0) { front.name = pose; back.name = ""; fade = 1; blendAnimation.stop(); return }
+        back.name = pose
+        aFront = !aFront
+        fade = 0
+        blendAnimation.duration = blendMs
+        blendAnimation.restart()
+    }
+    Component.onCompleted: slotA.name = pose
+    NumberAnimation {
+        id: blendAnimation
+        target: cat; property: "fade"; from: 0; to: 1
+        onFinished: (cat.aFront ? slotB : slotA).name = ""
+    }
+    function poseComponent(name) {
+        switch (name) {
+        case "sit": return sitPose
+        case "groom": return groomPose
+        case "knead": return kneadPose
+        case "walk": case "stand": return walkPose
+        case "run": return runPose
+        case "sleep": return sleepPose
+        case "sleepBack": return sleepBackPose
+        case "belly": return bellyPose
+        case "stretch": return stretchPose
+        case "arch": return archPose
+        }
+        return null
+    }
+    component Slot: Item {
+        id: slot
+        property string name: ""
+        width: 220; height: 180
+        // While it fades the pose is drawn as one picture and then made see-through, so what overlaps in it
+        // does not show through itself.
+        layer.enabled: opacity > 0 && opacity < 1
+        layer.smooth: true
+        layer.textureSize: Qt.size(Math.max(1, Math.round(220 * cat.renderScale)), Math.max(1, Math.round(180 * cat.renderScale)))
+        Loader { sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
+    }
+    Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
+    Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
 
     onPerkChanged: {
         if (perk) perkGrow.restart()
@@ -61,7 +140,7 @@ Item {
         interval: cat.rest()
         onTriggered: { cat.blink = true; blinkEnd.start(); interval = cat.rest() }
     }
-    Timer { id: blinkEnd; interval: 140; onTriggered: cat.blink = false }
+    Timer { id: blinkEnd; interval: 180; onTriggered: cat.blink = false }
     Timer {
         id: flicker
         running: cat.alive && cat.pose === "sit" && cat.flick >= 1
@@ -75,12 +154,14 @@ Item {
     component Letter: Text {
         text: "z"
         color: Theme.textSecondary
-        transform: Scale { origin.x: width / 2; xScale: cat.facingLeft ? -1 : 1 }
+        transform: Scale { origin.x: width / 2; xScale: cat.looksLeft ? -1 : 1 }
     }
     component Pose: Item {
+        // Milliseconds between the steps of its clock: 0 every frame, -1 no clock (a pose that does not move by
+        // itself has nothing to count, and a running clock would wake the window every frame).
         property int tick: 0
         readonly property alias t: clock.t
-        PetClock { id: clock; running: cat.alive; interval: parent ? parent.tick : 0 }
+        PetClock { id: clock; objectName: "clock"; running: cat.alive && parent && parent.tick >= 0; interval: parent ? Math.max(0, parent.tick) : 0 }
     }
     component Head: PetHead {
         meow: cat.meow
@@ -89,10 +170,10 @@ Item {
         earY: cat.earY
     }
     component Foot: PetLeg {
-        facingLeft: cat.facingLeft
+        facingLeft: cat.looksLeft
     }
     component Foot2: PetLeg2 {
-        facingLeft: cat.facingLeft
+        facingLeft: cat.looksLeft
     }
     // A rounded bar at (px, py) turned: a leg of a lying pose. sock, glove and toes are the white parts as
     // [x, y, width, height, radius]; front ("near" or "far") makes it a front paw with its marks.
@@ -107,8 +188,8 @@ Item {
         property var glove: null
         property var toes: null
         property string front: ""
-        readonly property bool gloved: (front === "near" && cat.facingLeft) || (front === "far" && !cat.facingLeft)
-        readonly property bool toed: (front === "near" && !cat.facingLeft) || (front === "far" && cat.facingLeft)
+        readonly property bool gloved: (front === "near" && cat.looksLeft) || (front === "far" && !cat.looksLeft)
+        readonly property bool toed: (front === "near" && !cat.looksLeft) || (front === "far" && cat.looksLeft)
         function path(r) { return r ? P.rect(r[0], r[1], r[2], r[3], r[4]) : "M0,0" }
         x: px; y: py; rotation: rot
         PetShape {
@@ -135,10 +216,11 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "sit"
-        sourceComponent: Pose {
-            tick: 0
+    Component {
+        id: sitPose
+        Pose {
+            objectName: "pose-sit"
+            tick: -1
             SitBody { tailAngle: P.keyframes([[0, 0], [.4, -5], [.55, 7], [.7, -2], [1, 0]], cat.flick, true) }
             Foot { px: 126; py: 118; len: 54; front: "far"; mark: "front"; fill: P.furLo }
             Foot { px: 146; py: 118; len: 54; w: 15; front: "near"; mark: "front" }
@@ -146,9 +228,10 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "groom"
-        sourceComponent: Pose {
+    Component {
+        id: groomPose
+        Pose {
+            objectName: "pose-groom"
             id: groom
             SitBody {}
             Foot { px: 146; py: 118; len: 54; w: 15; front: "near"; mark: "front" }
@@ -156,7 +239,7 @@ Item {
                 px: 140; py: 70; eye: "half"
                 tongue: !cat.wipe && groom.t % .46 < .23
                 tilt: cat.wipe ? -14 : 9
-                Behavior on tilt { NumberAnimation { duration: 300 } }
+                Behavior on tilt { NumberAnimation { duration: 450; easing.type: Easing.InOutQuad } }
             }
             // The far paw raised to the mouth: licked, then wiped over the face.
             Item {
@@ -177,9 +260,10 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "knead"
-        sourceComponent: Pose {
+    Component {
+        id: kneadPose
+        Pose {
+            objectName: "pose-knead"
             id: knead
             SitBody {}
             Foot { px: 126; py: 118; len: 54; front: "far"; mark: "front"; fill: P.furLo; lift: -7 * P.back(P.cycle(knead.t, .52)) }
@@ -188,50 +272,58 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "walk"
-        sourceComponent: Pose {
+    // Walking and standing: the legs stride as far as the cat has walked, as much as it walks now.
+    Component {
+        id: walkPose
+        Pose {
+            objectName: "pose-walk"
             id: walk
+            property real amp: cat.pose === "stand" ? 0 : cat.gait
+            Behavior on amp { NumberAnimation { duration: 450; easing.type: Easing.InOutQuad } }
+            readonly property real phase: P.frac(cat.stridePhase)
             Item {
-                transform: Rotation { origin.x: 60.4; origin.y: 106; angle: P.keyframes([[0, -4], [.5, 5], [1, -4]], P.cycle(walk.t, 1.2), true) }
+                transform: Rotation { origin.x: 60.4; origin.y: 106; angle: P.keyframes([[0, -4], [.5, 5], [1, -4]], P.cycle(walk.t, 1.8), true) }
                 PetShape { PetLine { d: "M62,106 C52,78 54,50 60,34 C63,26 71,24 73,31"; color: P.fur; width: 11 } }
             }
+            // The two pairs of legs (a and b, half a stride apart), in degrees.
+            readonly property real legA: walk.amp * P.keyframes([[0, 20], [.5, -20], [1, 20]], walk.phase, true)
+            readonly property real legB: walk.amp * P.keyframes([[0, 20], [.5, -20], [1, 20]], P.frac(walk.phase + .5), true)
             Item {
-                y: -2 * P.back(P.cycle(walk.t, .62))
-                readonly property real a: P.keyframes([[0, 20], [.5, -20], [1, 20]], P.cycle(walk.t, .62), true)
-                readonly property real b: P.keyframes([[0, 20], [.5, -20], [1, 20]], P.cycle(walk.t, .62, .5), true)
-                Foot { px: 78; py: 118; len: 54; mark: "sock"; fill: P.furLo; swing: parent.b }
-                Foot { px: 140; py: 118; len: 54; front: "far"; mark: "front"; fill: P.furLo; swing: parent.a }
+                y: -2 * walk.amp * P.back(walk.phase)
+                Foot { px: 78; py: 118; len: 54; mark: "sock"; fill: P.furLo; swing: walk.legB }
+                Foot { px: 140; py: 118; len: 54; front: "far"; mark: "front"; fill: P.furLo; swing: walk.legA }
                 PetShape {
                     PetFill { d: P.ellipse(108, 114, 56, 26); color: P.fur }
                     PetFill { d: "M148,103 C161,108 164,124 155,136 C149,128 145,115 148,103 Z"; color: P.white }
                     PetFill { d: "M96,138 C108,141 124,141 134,137 C124,136 108,136 96,138 Z"; color: Qt.alpha(P.white, .9) }
                 }
-                Foot { px: 88; py: 122; len: 50; mark: "sock"; swing: parent.a }
-                Foot { px: 150; py: 122; len: 50; w: 15; front: "near"; mark: "front"; swing: parent.b }
+                Foot { px: 88; py: 122; len: 50; mark: "sock"; swing: walk.legA }
+                Foot { px: 150; py: 122; len: 50; w: 15; front: "near"; mark: "front"; swing: walk.legB }
                 Head { px: 166; py: 84; s: .95; r: 4 }
             }
         }
     }
 
-    // Rotary gallop: extended flight, front legs land, gathered flight, hind legs push.
-    Loader {
-        active: cat.pose === "run"
-        sourceComponent: Pose {
+    // Rotary gallop: extended flight, front legs land, gathered flight, hind legs push. Crouching (before
+    // the dash) and the jump are poses of the same body; they run into the gallop and out of it.
+    Component {
+        id: runPose
+        Pose {
+            objectName: "pose-run"
             id: run
             readonly property real far: P.cycle(run.t, cat.stride)
             readonly property real near: P.cycle(run.t, cat.stride, .11)
-            readonly property bool still: cat.crouch || cat.leap
+            readonly property real cb: cat.crouchBlend
+            readonly property real lb: Math.min(cat.leapBlend, 1 - cb)
+            readonly property real gw: Math.max(0, 1 - cb - lb)
             readonly property real wig: P.back(P.cycle(run.t, .3))
-            // Angles of the legs: running, crouched, or in a jump.
-            function leg(keys, phase, crouched, leaped) {
-                return cat.crouch ? crouched : cat.leap ? leaped : P.keyframes(keys, phase)
-            }
-            readonly property real hipX: cat.crouch ? -3 + 6 * wig : cat.leap ? -10 : P.keyframes(P.hipsX, far)
-            readonly property real hipY: cat.crouch ? -2 + wig : cat.leap ? 0 : P.keyframes(P.hipsY, far)
+            // A number for the gallop (g), crouched (c) or in a jump (l), as far as each is on.
+            function mix(g, c, l) { return g * gw + c * cb + l * lb }
+            readonly property real hipX: mix(P.keyframes(P.hipsX, far), -3 + 6 * wig, -10)
+            readonly property real hipY: mix(P.keyframes(P.hipsY, far), -2 + wig, 0)
             Item {
-                visible: !run.still
-                opacity: .55
+                visible: run.gw > .02
+                opacity: .55 * run.gw
                 PetShape {
                     PetLine { d: "M34,104 h-30"; color: Qt.alpha(P.closed, run.t % (cat.stride * .66) < cat.stride * .33 ? .55 : .2); width: 2.2 }
                     PetLine { d: "M40,122 h-36"; color: Qt.alpha(P.closed, run.t % (cat.stride * .66) < cat.stride * .33 ? .2 : .55); width: 2.2 }
@@ -239,28 +331,28 @@ Item {
                 }
             }
             Item {
-                y: cat.crouch ? 9 : cat.leap ? 0 : P.keyframes(P.allY, run.far)
-                transform: Rotation { origin.x: 110; origin.y: 125; angle: run.still ? 0 : P.keyframes(P.allR, run.far) }
+                y: run.mix(P.keyframes(P.allY, run.far), 9, 0)
+                transform: Rotation { origin.x: 110; origin.y: 125; angle: run.gw * P.keyframes(P.allR, run.far) }
                 Item {
                     x: run.hipX; y: run.hipY
                     Item {
                         transform: Rotation {
                             origin.x: 54; origin.y: 113.27
-                            angle: cat.crouch ? -4 + 12 * P.back(P.cycle(run.t, .56)) : cat.leap ? 0 : P.keyframes([[0, -6], [.5, 5], [1, -6]], run.far)
+                            angle: run.mix(P.keyframes([[0, -6], [.5, 5], [1, -6]], run.far), -4 + 12 * P.back(P.cycle(run.t, .56)), 0)
                         }
                         PetShape { PetLine { d: "M54,114 C40,112 24,114 6,121"; color: P.fur; width: 10 } }
                     }
                     Foot2 {
                         px: 74; py: 122; u: 26; l: 28; fill: P.furLo; mark: "sock"
-                        upper: run.leg(P.hu, run.far, -42, 55); lower: run.leg(P.hl, run.far, 62, 10)
+                        upper: run.mix(P.keyframes(P.hu, run.far), -42, 55); lower: run.mix(P.keyframes(P.hl, run.far), 62, 10)
                     }
                 }
                 Foot2 {
                     px: 148; py: 120; u: 24; l: 30; front: "far"; mark: "front"; fill: P.furLo
-                    upper: run.leg(P.fu, run.far, -22, -58); lower: run.leg(P.fl, run.far, 70, -6)
+                    upper: run.mix(P.keyframes(P.fu, run.far), -22, -58); lower: run.mix(P.keyframes(P.fl, run.far), 70, -6)
                 }
                 Item {
-                    x: run.still ? 0 : P.keyframes(P.midX, run.far); y: run.still ? 0 : P.keyframes(P.midY, run.far)
+                    x: run.gw * P.keyframes(P.midX, run.far); y: run.gw * P.keyframes(P.midY, run.far)
                     PetShape { PetFill { d: P.ellipse(102, 117, 37, 19.5); color: P.fur } }
                 }
                 Item {
@@ -275,27 +367,28 @@ Item {
                     x: run.hipX; y: run.hipY
                     Foot2 {
                         px: 80; py: 126; u: 24; l: 26; mark: "sock"
-                        upper: run.leg(P.hu, run.near, -42, 55); lower: run.leg(P.hl, run.near, 62, 10)
+                        upper: run.mix(P.keyframes(P.hu, run.near), -42, 55); lower: run.mix(P.keyframes(P.hl, run.near), 62, 10)
                     }
                 }
                 Foot2 {
                     px: 154; py: 124; u: 22; l: 28; w: 14; front: "near"; mark: "front"
-                    upper: run.leg(P.fu, run.near, -22, -58); lower: run.leg(P.fl, run.near, 70, -6)
+                    upper: run.mix(P.keyframes(P.fu, run.near), -22, -58); lower: run.mix(P.keyframes(P.fl, run.near), 70, -6)
                 }
                 Item {
-                    y: run.still ? 0 : P.keyframes([[0, 1], [.5, 4], [1, 1]], run.far)
+                    y: run.gw * P.keyframes([[0, 1], [.5, 4], [1, 1]], run.far)
                     Head { px: 184; py: 106; s: .86; r: 6; eye: "wide"; ears: "back" }
                 }
             }
         }
     }
 
-    Loader {
-        active: cat.pose === "sleep"
-        sourceComponent: Pose {
+    Component {
+        id: sleepPose
+        Pose {
+            objectName: "pose-sleep"
             id: sleep
-            // Breathing is slow: a few steps a second are enough to look smooth.
-            tick: 100
+            // Breathing is slow, and little: thirty steps a second look smooth and keep the window quiet.
+            tick: 33
             Item {
                 transform: Scale { origin.x: 108; origin.y: 172; yScale: P.keyframes([[0, 1], [.5, 1.045], [1, 1]], P.cycle(sleep.t, 3.8), true) }
                 PetShape {
@@ -317,13 +410,13 @@ Item {
     }
 
     // Asleep with its back turned: breathing, and now and then an ear twitch and a flick of the tail tip.
-    Loader {
-        active: cat.pose === "sleepBack"
-        sourceComponent: Pose {
+    Component {
+        id: sleepBackPose
+        Pose {
             id: back
             objectName: "petSleepBack"
-            // Breathing is slow: a few steps a second are enough to look smooth.
-            tick: 100
+            // Breathing is slow, and little: thirty steps a second look smooth and keep the window quiet.
+            tick: 33
             // How far the ear twitch and the tail flick are (0..1; 1: at rest). Each moves once in a while,
             // not on the page's cycle (7.5 s and 11 s): that would keep the window redrawn.
             property real earMove: 1
@@ -386,9 +479,10 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "belly"
-        sourceComponent: Pose {
+    Component {
+        id: bellyPose
+        Pose {
+            objectName: "pose-belly"
             id: belly
             Item {
                 transform: Rotation { origin.x: 110; origin.y: 161; angle: P.keyframes([[0, -2.5], [.5, 2.5], [1, -2.5]], P.cycle(belly.t, 2.6), true) }
@@ -409,9 +503,11 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "stretch"
-        sourceComponent: Pose {
+    Component {
+        id: stretchPose
+        Pose {
+            objectName: "pose-stretch"
+            tick: -1
             PetShape { PetLine { d: "M62,88 C54,62 58,42 66,30"; color: P.fur; width: 11 } }
             Foot { px: 66; py: 96; len: 76; mark: "sock"; fill: P.furLo }
             PetShape { PetFill { d: "M54,96 C54,74 84,70 104,88 C126,108 156,130 176,142 C184,150 178,162 164,162 C132,160 96,142 72,124 C60,116 54,108 54,96 Z"; color: P.fur } }
@@ -423,9 +519,10 @@ Item {
         }
     }
 
-    Loader {
-        active: cat.pose === "arch"
-        sourceComponent: Pose {
+    Component {
+        id: archPose
+        Pose {
+            objectName: "pose-arch"
             id: arch
             Item {
                 transform: Rotation { origin.x: 61.19; origin.y: 114; angle: -2 + 4 * P.back(P.cycle(arch.t, .36)) }

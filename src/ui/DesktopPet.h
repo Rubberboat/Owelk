@@ -30,6 +30,8 @@ class DesktopPet : public QObject {
     Q_PROPERTY(int breakMinutes READ breakMinutes WRITE setBreakMinutes NOTIFY changed)
     // Not on Wayland, where a window can neither stay above others nor say where it goes.
     Q_PROPERTY(bool supported READ supported CONSTANT)
+    // The cat tower: "always" (it stands where the user put it) or "sleeping" (it comes there for a nap).
+    Q_PROPERTY(QString towerMode READ towerMode WRITE setTowerMode NOTIFY changed)
     // The screen is locked or asleep, or Owelk is hidden (macOS): the pet stops whatever it does.
     Q_PROPERTY(bool dormant READ dormant WRITE setDormant NOTIFY dormantChanged)
 
@@ -48,6 +50,8 @@ public:
     int breakMinutes() const { return m_breakMinutes; }
     void setBreakMinutes(int minutes);
     static bool supported();
+    QString towerMode() const { return m_towerMode; }
+    void setTowerMode(const QString &mode);
     bool dormant() const { return m_dormant; }
     void setDormant(bool dormant);
 
@@ -55,6 +59,13 @@ public:
     // bottom right of the main screen.
     Q_INVOKABLE QPoint place(int width, int height) const;
     Q_INVOKABLE void remember(int x, int y);
+    // Where the tower stands (the middle of its base): where the user left it while that is still on a
+    // screen, else the place given.
+    Q_INVOKABLE QPoint towerPlace(int defaultX, int defaultY) const;
+    Q_INVOKABLE void rememberTower(int x, int y);
+    // The pointer, in screen points; and a window moved to a place in one step (a drag follows the pointer).
+    Q_INVOKABLE QPoint cursor() const;
+    Q_INVOKABLE void move(QWindow *window, int x, int y) const;
     // Before a pet window (or its speech bubble) is first shown: a transparent surface, and on macOS
     // kept on screen while another app is in front.
     Q_INVOKABLE void prepare(QWindow *window);
@@ -83,5 +94,6 @@ private:
     bool m_enabled = false;
     bool m_dormant = false;
     QString m_size = "medium";
+    QString m_towerMode = "always";
     int m_breakMinutes = 50;
 };

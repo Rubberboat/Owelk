@@ -16,6 +16,9 @@ Item {
     // The cat meows; the eyes are blinking.
     property bool meow: false
     property bool blink: false
+    // How open the eyes are (1) or shut (.08): a blink closes and opens them, not in one step.
+    property real lid: blink ? .08 : 1
+    Behavior on lid { NumberAnimation { duration: 80 } }
     // The head turned around its chin, in degrees (grooming), and the ears' size (perked).
     property real tilt: 0
     property real earX: 1
@@ -57,7 +60,7 @@ Item {
         // Eyes: open ones close for a blink; shut ones are lines.
         Item {
             visible: head.openEyes
-            transform: Scale { origin.y: head.eyeCy; yScale: head.blink ? .08 : 1 }
+            transform: Scale { origin.y: head.eyeCy; yScale: head.lid }
             PetShape {
                 PetFill { d: P.ellipse(-12, head.eyeCy, 7, head.eyeRy); color: P.eye }
                 PetFill { d: P.ellipse(12, head.eyeCy, 7, head.eyeRy); color: P.eye }

@@ -1,43 +1,52 @@
 import QtQuick
 
-// What the pet does, from docs/pet/tuxedo-cat-pet.html (next(), the B table, zoomies()), at the speed of real
-// use: a sit lasts half a minute, a nap five to twenty minutes, a dash across the screen about once in
-// forty minutes. It only decides poses and places; PetWindow draws them and moves its window.
+// What the pet does, from docs/pet/tuxedo-cat-pet.html (next(), the B table, zoomies()), at the speed of a real
+// cat: it strolls rather than hurries, a sit lasts half a minute, a nap five to twenty minutes, a dash across the
+// screen about once in forty minutes, and nothing is a cut: a pose fades into the next, a walk speeds up and
+// slows down, and a lazy cat does it all slower still. It only decides poses and places; PetWindow draws them
+// and moves its window.
 //
-// Places are in screen points. catX is the cat's left edge; lift how far its feet are above the walking line
-// (the tower's top, or the arc of a jump).
+// Places are in screen points: catX is the cat's left edge, feetY the line under its feet now, lineY the line it
+// walks along (where the user left it). The tower stands where the user put it (towerX, towerBaseY).
 Item {
     id: brain
     visible: false
 
-    // The screen the pet is on, and the size of the pet window.
+    // ---- what it needs to know ----
+    // The screen the pet is on, the size of the pet window and how far the cat is from its left edge.
     property real screenLeft: 0
     property real screenWidth: 1440
     property real catW: 196
     property real catH: 160
-    // The window's width and how far the cat is from its left edge (the tower is beside the cat, on either side).
-    property real windowWidth: catW * 1.9
-    property real towerRoom: catW * .9
+    property real windowWidth: catW * 1.24
+    property real windowOffset: catW * .12
+    // Every screen, as [{x, y, width, height}] (the pet's own is the one above).
+    property var screens: []
+    function onScreen(x, y) {
+        return screens.some(function(s) { return x >= s.x && x < s.x + s.width && y >= s.y && y <= s.y + s.height })
+    }
     // 1 is real time; tests use more to see it all quickly.
     property real pace: 1
+    // A number from 0 to 1 for every roll of the dice (tests replace it).
+    property var chance: Math.random
 
-    // The state.
+    // ---- where it is and what it does ----
     property real catX: 0
-    property real lift: 0
+    property real feetY: 0
+    property real lineY: 0
     property int facing: 1
     property string pose: "sit"
     property string status: ""
+    // How long the change into this pose takes to show.
+    property int blendMs: 450
     property bool crouch: false
     property bool leap: false
     property bool wipe: false
     property bool meow: false
     property bool perk: false
-    property bool onTower: false
-    property bool towerShown: false
-    property int towerSide: 1
-    // Where the cat stood before it went up the tower, and the tower's height.
-    property real floorX: 0
-    readonly property real towerHeight: Math.round(catH * .62)
+    // Walking, and how far it has walked in strides (the legs follow the ground).
+    property bool walking: false
+    property real stridePhase: 0
     // Out of the screen after a dash (the window is hidden); the side it left by (1: right, -1: left).
     property bool away: false
     property int exitSide: 1
@@ -47,27 +56,74 @@ Item {
     property bool halted: false
     // Goes on with a new behaviour when one ends.
     property bool autoRun: true
-    // The behaviour in progress, and when it began (tests read these).
+    // The behaviour in progress (empty between two), the last one begun, and one the next must not be (after a poke).
     property string current: ""
+    property string last: ""
+    property string avoid: ""
+
+    // ---- the tower ----
+    // Where it stands: the middle of its base and the bottom of it. It is where the user put it.
+    property real towerX: 0
+    property real towerBaseY: 0
+    readonly property real towerHeight: Math.round(catH * .62)
+    readonly property real towerWidth: Math.round(catW * .8)
+    readonly property real towerTopY: towerBaseY - towerHeight
+    // The cat's feet stand a little way into the cushion.
+    readonly property real towerFeetY: towerTopY + 2
+    readonly property real towerCatX: towerX - catW / 2
+    // The tower is wanted (a nap is coming or on); the cat is up on it; the side it leaps from (-1: its left).
+    property bool towerNeeded: false
+    property bool onTower: false
+    property int leapSide: -1
+    onTowerXChanged: followTower()
+    onTowerBaseYChanged: followTower()
+    // A cat asleep up there goes along when the tower is moved.
+    function followTower() {
+        if (!onTower || jumpAnimation.running) return
+        // (From what the tower is, not from towerCatX and towerFeetY: those follow it a moment after this runs.)
+        moveTo(towerX - catW / 2, towerBaseY - towerHeight + 2)
+    }
 
     // What the window shows besides the cat: bubbles are the window's; these ask for them.
     signal hushRequested()
     signal meowSaid()
     signal hopRequested()
     signal shakeRequested()
-    // The cat is moving or has moved; the window follows.
+    // Sprung up (poked): quick and sudden, not the hop of good news.
+    signal springRequested()
+    // The cat has come down from a leap.
+    signal landed()
+    // The cat is somewhere new; the window follows. (Both coordinates are set between batching and placed, so the
+    // window moves once, not along one and then the other.)
+    property bool batching: false
     signal placed()
+    function moveTo(x, y) {
+        batching = true
+        catX = x
+        feetY = y
+        batching = false
+        placed()
+    }
 
-    readonly property real walkSpeed: catW * .8 * pace
+    // ---- how fast ----
+    // A lazy cat does everything slowly, a brisk one less so; every behaviour has its own.
+    property real tempo: 1.25
+    function tempoFor(roll) { return roll < .22 ? 2.1 : roll < .78 ? 1.25 : .9 }
+    function t(n) { return n * tempo }
+    function ms(n) { return n / pace }
+    // Points a second: a stroll is about half a cat's length, the dash three and a half.
+    readonly property real walkSpeed: catW * .5 / tempo * pace
+    readonly property real dashSpeed: catW * 3.4 * pace
+    // The ground a full stride covers, so the feet do not slide.
+    readonly property real strideLength: catW * .34
     readonly property real minX: screenLeft + screenWidth * .015
     readonly property real maxX: screenLeft + screenWidth - catW - screenWidth * .015
-    readonly property real catXOnTower: floorX + towerSide * catW * .95
-    function ms(n) { return n / pace }
     function rand(a, b) { return a + Math.random() * (b - a) }
     function clampX(v) { return Math.min(Math.max(v, minX), maxX) }
 
     // The pose (and what the cat is doing, for the status line); the extra poses switched off.
-    function setPose(name, text) {
+    function setPose(name, text, blend) {
+        blendMs = Math.max(0, Math.round(ms(blend === undefined ? t(420) : blend)))
         pose = name
         crouch = false; leap = false; wipe = false; meow = false; perk = false
         status = text || ""
@@ -80,7 +136,7 @@ Item {
     // window react) ends the old one's run of steps.
     property int generation: 0
     function stop() {
-        waitTimer.stop(); moveAnimation.stop(); jumpAnimation.stop(); dashAccel.stop(); dashRun.stop()
+        waitTimer.stop(); travelAnimation.stop(); jumpAnimation.stop()
         steps = []; index = 0
         ++generation
     }
@@ -100,8 +156,8 @@ Item {
             }
             if (step.wait !== undefined) { waitTimer.interval = Math.max(1, ms(step.wait)); waitTimer.restart(); return }
             // Places may be given as functions, worked out when the step starts.
-            if (step.walk !== undefined) { walkTo(value(step.walk), step.speed || walkSpeed); return }
-            if (step.jump) { jumpTo(value(step.jump.x), value(step.jump.lift)); return }
+            if (step.walk !== undefined) { walkTo(value(step.walk)); return }
+            if (step.jump) { jumpTo(value(step.jump.x), value(step.jump.y), !!step.jump.tower); return }
             if (step.dash !== undefined) { dashTo(value(step.dash)); return }
         }
         finished()
@@ -113,172 +169,224 @@ Item {
     }
     Timer { id: waitTimer; onTriggered: brain.advance() }
 
-    NumberAnimation { id: moveAnimation; target: brain; property: "catX"; easing.type: Easing.Linear; onFinished: brain.advance() }
-    function walkTo(target, speed) {
-        const to = Math.min(Math.max(target, minX - catW * .2), maxX + catW * .2)
+    // ---- moving along the line: speeding up, a steady speed, slowing down ----
+    SequentialAnimation {
+        id: travelAnimation
+        NumberAnimation { id: speedUp; target: brain; property: "catX"; easing.type: Easing.InQuad }
+        NumberAnimation { id: steady; target: brain; property: "catX"; easing.type: Easing.Linear }
+        NumberAnimation { id: slowDown; target: brain; property: "catX"; easing.type: Easing.OutQuad }
+        onFinished: { brain.walking = false; brain.advance() }
+    }
+    // To a place at a speed (points a second), taking accelMs to get there and decelMs to stop. A short way is
+    // covered at a lower top speed, so it still starts and ends gently.
+    function travelTo(to, speed, accelMs, decelMs, stroll) {
+        const distance = Math.abs(to - catX)
         facing = to >= catX ? 1 : -1
-        moveAnimation.to = to
-        moveAnimation.duration = Math.max(1, Math.abs(to - catX) / speed * 1000)
-        moveAnimation.restart()
+        if (distance < 1) { advance(); return }
+        walking = stroll
+        let ta = accelMs / 1000 / pace, td = decelMs / 1000 / pace, v = speed
+        let da = v * ta / 2, dd = v * td / 2, k = 1
+        if (da + dd > distance) k = Math.sqrt(distance / (da + dd))
+        ta *= k; td *= k; v *= k; da *= k * k; dd *= k * k
+        const cruise = Math.max(0, distance - da - dd), dir = facing
+        plan = {distance: distance, topSpeed: v, accelMs: ta * 1000, decelMs: td * 1000, cruiseMs: cruise / v * 1000,
+                accelDistance: da, decelDistance: dd}
+        speedUp.to = catX + dir * da; speedUp.duration = ta * 1000
+        steady.to = catX + dir * (da + cruise); steady.duration = cruise / v * 1000
+        slowDown.to = to; slowDown.duration = td * 1000
+        travelAnimation.restart()
+    }
+    // How the last move was planned (tests read it): distances in points, times in milliseconds.
+    property var plan: ({})
+    function walkTo(target) {
+        travelTo(Math.min(Math.max(target, minX - catW * .2), maxX + catW * .2), walkSpeed, t(700), t(900), true)
+    }
+    function dashTo(target) { travelTo(target, dashSpeed, 650, 0, false) }
+    property real lastX: 0
+    onCatXChanged: {
+        if (walking) stridePhase += Math.abs(catX - lastX) / strideLength
+        lastX = catX
     }
 
-    // A jump up to the tower or down to the floor: an arc, a little higher than both ends.
+    // ---- a leap up to the tower or down from it: an arc, higher than both ends ----
     property real jumpFromX: 0
+    property real jumpFromY: 0
     property real jumpToX: 0
-    property real jumpFromLift: 0
-    property real jumpToLift: 0
+    property real jumpToY: 0
+    property real jumpRise: 0
+    // Landing on the tower: where it is now (the tower may be carried while the cat is in the air).
+    property bool jumpToTower: false
     property real jumpProgress: 0
-    NumberAnimation { id: jumpAnimation; target: brain; property: "jumpProgress"; from: 0; to: 1; onFinished: brain.advance() }
+    NumberAnimation { id: jumpAnimation; target: brain; property: "jumpProgress"; from: 0; to: 1; onFinished: { brain.landed(); brain.advance() } }
     onJumpProgressChanged: {
         if (!jumpAnimation.running) return
         const k = jumpProgress
-        catX = jumpFromX + (jumpToX - jumpFromX) * k
-        const peak = Math.max(jumpFromLift, jumpToLift) + catH * .35
-        const control = 2 * peak - (jumpFromLift + jumpToLift) / 2
-        lift = (1 - k) * (1 - k) * jumpFromLift + 2 * (1 - k) * k * control + k * k * jumpToLift
+        const toX = jumpToTower ? towerCatX : jumpToX, toY = jumpToTower ? towerFeetY : jumpToY
+        const apex = Math.min(jumpFromY, toY) - jumpRise
+        const control = 2 * apex - (jumpFromY + toY) / 2
+        moveTo(jumpFromX + (toX - jumpFromX) * k,
+               (1 - k) * (1 - k) * jumpFromY + 2 * (1 - k) * k * control + k * k * toY)
     }
-    function jumpTo(toX, toLift) {
-        facing = toX >= catX ? 1 : -1
-        jumpFromX = catX; jumpToX = toX; jumpFromLift = lift; jumpToLift = toLift
-        // The jump is a pose of its own: legs stretched out.
-        setPose("run", toLift > 0 ? "jumps up to the tower" : "jumps down")
+    function jumpTo(toX, toY, tower) {
+        jumpToTower = tower
+        const x1 = tower ? towerCatX : toX, y1 = tower ? towerFeetY : toY
+        if (Math.abs(x1 - catX) > 2) facing = x1 >= catX ? 1 : -1
+        jumpFromX = catX; jumpFromY = feetY; jumpToX = x1; jumpToY = y1
+        jumpRise = catH * .5 + Math.min(Math.abs(x1 - catX), catW * 4) * .12
+        // The leap is a pose of its own, run into from the crouch: legs stretched out.
+        setPose("run", y1 < feetY ? "leaps up" : "leaps down", t(260))
         leap = true
-        jumpAnimation.duration = Math.max(1, ms(620))
+        const seconds = (.8 + Math.hypot(x1 - catX, y1 - feetY) / 1500) * Math.min(tempo, 1.5)
+        jumpAnimation.duration = Math.max(1, ms(seconds * 1000))
         jumpAnimation.restart()
     }
 
-    // The dash: speeds up for 0.16 s, then runs on at a constant speed to the target.
-    property real dashSpeed: 1
-    NumberAnimation { id: dashAccel; target: brain; property: "catX"; easing.type: Easing.InQuad; onFinished: dashRun.restart() }
-    NumberAnimation { id: dashRun; target: brain; property: "catX"; easing.type: Easing.Linear; onFinished: brain.advance() }
-    function dashTo(target) {
-        const dir = target >= catX ? 1 : -1
-        facing = dir
-        const speed = screenWidth / .7 * pace
-        const accel = Math.min(Math.abs(target - catX), speed * .08)
-        dashAccel.to = catX + dir * accel
-        dashAccel.duration = Math.max(1, accel / speed * 2000)
-        dashRun.to = target
-        dashRun.duration = Math.max(1, (Math.abs(target - catX) - accel) / speed * 1000)
-        dashAccel.restart()
-    }
-
     // ---- behaviours ----
+    // Down from the tower first, beside it on the floor: on the line it walks along, or on the tower's own
+    // floor when that line is not on the screen the tower is on (a tower carried to another screen).
+    property real landingX: 0
+    property real landingY: 0
     function toFloorSteps() {
         if (!onTower) return []
         return [
-            {call: function() { onTower = false }},
-            {jump: {x: floorX, lift: 0}},
-            {call: function() { towerShown = false; setPose("sit") }},
-            {wait: 250}
+            {call: function() { setPose("sit", "looks down", t(450)) }},
+            {wait: t(600)},
+            {call: function() {
+                landingX = spotX()
+                landingY = onScreen(landingX + catW / 2, lineY - 1) ? lineY : towerBaseY - 4
+                onTower = false
+            }},
+            {jump: {x: function() { return landingX }, y: function() { return landingY }}},
+            {call: function() { lineY = landingY; setPose("sit", "", t(400)); towerNeeded = false }},
+            {wait: t(500)}
         ]
     }
+    function wanderTarget() {
+        const to = rand(minX, maxX)
+        if (Math.abs(to - catX) >= catW * 1.5) return to
+        return catX > screenLeft + screenWidth / 2 ? minX + screenWidth * .1 : screenLeft + screenWidth * .5
+    }
     function behaviour(name) {
-        const edge = screenLeft + screenWidth
         switch (name) {
         case "sit":
             return [{call: function() { setPose("sit", "sitting, its tail now and then") }}, {wait: rand(20000, 60000)}]
         case "groom":
             return [
-                {call: function() { setPose("groom", "licking its paw") }}, {wait: 4000},
-                {call: function() { wipe = true; status = "wiping its face" }}, {wait: 3000},
-                {call: function() { wipe = false; status = "licking its paw" }}, {wait: 3000},
-                {call: function() { setPose("sit") }}, {wait: 1200}
+                {call: function() { setPose("groom", "licking its paw", t(650)) }}, {wait: t(4200)},
+                {call: function() { wipe = true; status = "wiping its face" }}, {wait: t(3200)},
+                {call: function() { wipe = false; status = "licking its paw" }}, {wait: t(3200)},
+                {call: function() { setPose("sit", "", t(600)) }}, {wait: t(1200)}
             ]
-        case "wander": {
+        case "wander":
             return toFloorSteps().concat([
-                {call: function() { setPose("walk", "strolling") }},
-                {walk: function() {
-                    const to = rand(minX, maxX)
-                    if (Math.abs(to - catX) >= catW) return to
-                    return catX > screenLeft + screenWidth / 2 ? minX + screenWidth * .1 : screenLeft + screenWidth * .5
-                }},
-                {call: function() { setPose("sit") }}, {wait: 1500}
+                {call: function() { setPose("walk", "strolling", t(500)) }},
+                {wait: t(350)},
+                {walk: wanderTarget},
+                {wait: t(500)},
+                {call: function() { setPose("sit", "", t(650)) }}, {wait: t(1500)}
             ])
-        }
         case "zoomies": return zoomies()
         case "nap": return nap()
         case "belly":
             return toFloorSteps().concat([
-                {call: function() { setPose("belly", "rolling on its back") }}, {wait: rand(6000, 10000)},
-                {call: function() { setPose("sit") }}, {wait: 800}
+                {call: function() { setPose("belly", "rolling on its back", t(900)) }}, {wait: t(rand(6000, 10000))},
+                {call: function() { setPose("sit", "", t(900)) }}, {wait: t(800)}
             ])
         case "stretch":
             return [
-                {call: function() { setPose("stretch", "stretching") }}, {wait: 1300},
-                {call: function() { meow = true; status = "yawning" }}, {wait: 900},
-                {call: function() { setPose("sit", "meowed"); meow = true; meowSaid() }}, {wait: 1100},
-                {call: function() { meow = false }}, {wait: 900}
+                {call: function() { setPose("stretch", "stretching", t(700)) }}, {wait: t(1800)},
+                {call: function() { meow = true; status = "yawning" }}, {wait: t(1200)},
+                {call: function() { setPose("sit", "meowed", t(600)); meow = true; meowSaid() }}, {wait: t(1200)},
+                {call: function() { meow = false }}, {wait: t(1000)}
             ]
         // Owelk: an AI answer is written (until it is done, ten minutes at most), ready, failed, new papers, time for a break.
         case "aiWriting":
-            return [{call: function() { setPose("knead", "kneading while the AI writes") }}, {wait: 600000}]
+            return [{call: function() { setPose("knead", "kneading while the AI writes", 300) }}, {wait: 600000}]
         case "aiReady":
             return [
-                {call: function() { setPose("sit", "tells the answer is ready"); meow = true; hopRequested() }}, {wait: 700},
-                {call: function() { meow = false }}, {wait: 2200}
+                {call: function() { setPose("sit", "tells the answer is ready", 200); meow = true; hopRequested() }}, {wait: 800},
+                {call: function() { meow = false }}, {wait: 2400}
             ]
         case "aiFail":
             return [
-                {call: function() { setPose("arch", "startled: the AI could not answer"); shakeRequested() }}, {wait: 2400},
-                {call: function() { setPose("sit") }}, {wait: 800}
+                {call: function() { setPose("arch", "startled: the AI could not answer", 100); shakeRequested() }}, {wait: 2600},
+                {call: function() { setPose("sit", "", 450) }}, {wait: 900}
             ]
         case "forYou":
-            return [{call: function() { setPose("sit", "ears up: new papers"); perk = true; hopRequested() }}, {wait: 2900}]
+            return [{call: function() { setPose("sit", "ears up: new papers", 200); perk = true; hopRequested() }}, {wait: 3000}]
         case "breakTime":
             return [
-                {call: function() { setPose("stretch", "stretches: time for a break") }}, {wait: 1500},
-                {call: function() { meow = true }}, {wait: 900},
-                {call: function() { setPose("sit") }}, {wait: 2200}
+                {call: function() { setPose("stretch", "stretches: time for a break", 450) }}, {wait: 1800},
+                {call: function() { meow = true }}, {wait: 1000},
+                {call: function() { setPose("sit", "", 450) }}, {wait: 2400}
             ]
         }
         return [{wait: 1000}]
     }
+    readonly property var events: ["aiWriting", "aiReady", "aiFail", "forYou", "breakTime"]
 
-    // How a nap goes: lying on its side or with its back turned, one as likely as the other. chance gives a
-    // number from 0 to 1 (tests replace it).
-    property var chance: Math.random
+    // ---- the tower ----
+    // The place on the line beside the tower (a cat's length from the middle of it) the cat leaps from and lands
+    // on, on the side it is nearer to; the other side when that is out of the screen.
+    function spotFor(side) { return towerX + side * catW - catW / 2 }
+    function spotX() {
+        let side = catX + catW / 2 < towerX ? -1 : 1
+        let spot = spotFor(side)
+        if (spot < minX || spot > maxX) { side = -side; spot = spotFor(side) }
+        leapSide = side
+        return clampX(spot)
+    }
+    // How a nap goes: lying on its side or with its back turned, one as likely as the other.
     function sleepPoseFor(roll) { return roll < .5 ? "sleep" : "sleepBack" }
-    // The tower appears beside the cat, and it leaps up and sleeps.
+    // It looks at the tower, goes to it, wiggles, leaps up, settles and lies down; and later wakes slowly.
     function nap() {
         const lying = sleepPoseFor(chance())
         const asleep = lying === "sleep" ? "asleep on the tower" : "asleep on the tower, its back turned"
-        if (onTower) return [{call: function() { setPose(lying, asleep) }}, {wait: rand(300000, 1200000)}, {call: function() { setPose("sit", "opened its eyes") }}, {wait: 1400}]
-        return [
-            {call: function() {
-                setPose("sit", "a tower appears")
-                floorX = catX
-                const roomRight = edgeRight() - (catX + catW), roomLeft = catX - screenLeft
-                towerSide = roomRight >= towerRoom ? 1 : roomLeft >= towerRoom ? -1 : 1
-                towerShown = true
-            }},
-            {wait: 700},
-            {call: function() { onTower = true }},
-            {jump: {x: function() { return catXOnTower }, lift: function() { return towerHeight }}},
-            {call: function() { setPose("sit") }}, {wait: 600},
-            {call: function() { setPose(lying, asleep) }}, {wait: rand(300000, 1200000)},
-            {call: function() { setPose("sit", "opened its eyes") }}, {wait: 1400}
+        const sleepAndWake = [
+            {call: function() { setPose(lying, asleep, t(1100)) }}, {wait: rand(300000, 1200000)},
+            {call: function() { setPose("sit", "opened its eyes", t(900)) }}, {wait: t(1400)}
         ]
+        if (onTower) return sleepAndWake
+        const spot = spotX()
+        const far = Math.abs(spot - catX) > 6
+        let approach = [
+            {call: function() { towerNeeded = true; setPose("sit", "looks at the tower", t(450)) }},
+            {wait: t(900)}
+        ]
+        if (far) approach = approach.concat([
+            {call: function() { setPose("walk", "goes to the tower", t(450)) }},
+            {wait: t(350)},
+            {walk: function() { return spotX() }},
+            {wait: t(500)}
+        ])
+        return approach.concat([
+            {call: function() { facing = towerX >= catX + catW / 2 ? 1 : -1; setPose("run", "gathers itself", t(450)); crouch = true }},
+            {wait: t(1000)},
+            {call: function() { onTower = true }},
+            {jump: {tower: true}},
+            {call: function() { setPose("sit", "up on the tower", t(500)) }},
+            {wait: t(1000)}
+        ]).concat(sleepAndWake)
     }
-    function edgeRight() { return screenLeft + screenWidth }
 
     // Low, bottom wiggling; then across the whole screen and out of sight; later in from the other side.
+    property double lastZoomies: 0
     function zoomies() {
         const edge = screenLeft + screenWidth
-        // The window is out of sight when it is fully past the edge.
-        const offset = towerSide < 0 ? towerRoom : 0
         return toFloorSteps().concat([
             {call: function() {
                 hushRequested()
                 running = true
+                lastZoomies = Date.now()
                 exitSide = catX + catW / 2 < screenLeft + screenWidth / 2 ? 1 : -1
                 facing = exitSide
-                setPose("run", "wiggling its bottom"); crouch = true
+                setPose("run", "wiggling its bottom", 300); crouch = true
             }},
             {wait: 850},
             {call: function() { crouch = false; status = "zoomies across the screen" }},
-            {dash: function() { return exitSide === 1 ? edge + offset : screenLeft - windowWidth + offset }},
-            {call: function() { setPose("sit", "out of sight"); away = true }},
+            // The window is out of sight when it is fully past the edge.
+            {dash: function() { return exitSide === 1 ? edge + windowOffset : screenLeft - windowWidth + windowOffset }},
+            {call: function() { setPose("sit", "out of sight", 0); away = true }},
             {wait: rand(30000, 120000)}
         ]).concat(comeBack())
     }
@@ -286,46 +394,49 @@ Item {
     function comeBack() {
         return [
             {call: function() {
-                const offset = towerSide < 0 ? towerRoom : 0
-                catX = exitSide === 1 ? screenLeft - windowWidth + offset : screenLeft + screenWidth + offset
-                lift = 0
+                moveTo(exitSide === 1 ? screenLeft - windowWidth + windowOffset : screenLeft + screenWidth + windowOffset, lineY)
                 facing = exitSide === 1 ? 1 : -1
                 away = false
-                setPose("walk", "strolls back in")
-                placed()
+                setPose("walk", "strolls back in", 0)
             }},
             {walk: function() {
                 return exitSide === 1 ? rand(screenLeft + screenWidth * .12, screenLeft + screenWidth * .4)
                                       : rand(screenLeft + screenWidth * .5, maxX)
             }},
-            {call: function() { setPose("sit"); running = false }}, {wait: 1400}
+            {wait: t(500)},
+            {call: function() { setPose("sit", "", t(650)); running = false }}, {wait: t(1400)}
         ]
     }
 
-    // From HTML next(): what comes after a behaviour.
+    // From HTML next(): what comes after a behaviour. After a poke it is something else than before.
     function next() {
-        if (onTower) {
-            const r = Math.random()
-            return r < .55 ? "wander" : r < .8 ? "groom" : "sit"
-        }
-        const table = [["sit", 22], ["groom", 16], ["wander", 22], ["nap", 16], ["belly", 9], ["stretch", 9], ["zoomies", 6]]
-        let r = Math.random() * table.reduce(function(sum, row) { return sum + row[1] }, 0)
-        for (const row of table) { r -= row[1]; if (r < 0) return row[0] }
+        const table = onTower ? [["wander", 55], ["groom", 25], ["sit", 20]]
+                              : [["sit", 22], ["groom", 16], ["wander", 22], ["nap", 16], ["belly", 9], ["stretch", 9], ["zoomies", 6]]
+        // A dash about once in forty minutes, never twice within ten.
+        const options = table.filter(function(row) {
+            return row[0] !== avoid && !(row[0] === "zoomies" && Date.now() - lastZoomies < 600000 / pace)
+        })
+        let r = Math.random() * options.reduce(function(sum, row) { return sum + row[1] }, 0)
+        for (const row of options) { r -= row[1]; if (r < 0) return row[0] }
         return "sit"
     }
 
     // Where the cat stands when a new behaviour starts: an interrupted jump or walk leaves it anywhere.
     function settle() {
         running = false
-        if (onTower) { catX = catXOnTower; lift = towerHeight }
-        else { catX = clampX(catX); lift = 0; towerShown = false }
-        placed()
+        walking = false
+        if (onTower) moveTo(towerCatX, towerFeetY)
+        else { towerNeeded = false; moveTo(clampX(catX), lineY) }
     }
     function begin(name) {
         if (halted) return
         stop()
         settle()
+        last = name
         current = name
+        avoid = ""
+        // Something that happens in Owelk is quick; a cat at its own business is not.
+        tempo = events.indexOf(name) >= 0 ? 1 : tempoFor(chance())
         play(behaviour(name))
     }
     // Something happened in Owelk. Nothing while it dashes, or is held, or the screen is locked.
@@ -334,14 +445,37 @@ Item {
         begin(name)
         return true
     }
+
+    // ---- a poke: it springs up, and does something else than it did ----
+    Timer { id: pokeCooldown; interval: 1200 }
+    readonly property bool pokeCooling: pokeCooldown.running
+    function poke() {
+        if (running || halted || away || pokeCooling) return false
+        // Kneading while the AI writes goes on after a start.
+        if (pose === "knead") { springRequested(); pokeCooldown.start(); return true }
+        const from = last
+        pokeCooldown.start()
+        stop()
+        settle()
+        tempo = 1
+        current = "poke"
+        play([
+            {call: function() { setPose("stand", "springs up", 140); perk = true; springRequested() }},
+            {wait: 800},
+            {call: function() { perk = false; avoid = from }}
+        ])
+        return true
+    }
+
     // Held (dragged), or the screen is locked or Owelk hidden: nothing moves. The notices stay out.
-    function halt() {
+    function halt(held) {
         if (halted) return
         const wasAway = away
         stop()
         halted = true
         current = ""
-        if (!wasAway) { running = false; setPose("sit") }
+        walking = false
+        if (!wasAway) { running = false; setPose(held ? "stand" : "sit", held ? "held" : "", 160) }
     }
     // Let go: carries on from where it is (back in from out of sight if it was away).
     function resume() {

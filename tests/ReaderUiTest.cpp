@@ -58,6 +58,24 @@ public:
         QDir().mkpath(folder);
         return folder;
     }
+    // Whether nothing is drawn within `border` pixels of the edge of an image (a grab of a window): nothing is
+    // cut off by it.
+    Q_INVOKABLE bool edgeIsClear(const QImage &image, int border) const
+    {
+        if (image.isNull()) return false;
+        const auto argb = image.convertToFormat(QImage::Format_ARGB32);
+        for (int y = 0; y < argb.height(); ++y)
+            for (int x = 0; x < argb.width(); ++x) {
+                const bool edge = x < border || y < border || x >= argb.width() - border || y >= argb.height() - border;
+                if (edge && qAlpha(argb.pixel(x, y)) > 8) return false;
+            }
+        return true;
+    }
+    Q_INVOKABLE bool writeText(const QString &path, const QString &text) const
+    {
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(text.toUtf8()) >= 0;
+    }
     Q_INVOKABLE bool fileExists(const QUrl &url) const { return QFile::exists(url.toLocalFile()); }
     // What Finder sends when a PDF is opened with Owelk.
     Q_INVOKABLE void finderOpen(const QUrl &url)

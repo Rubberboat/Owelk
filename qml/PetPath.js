@@ -12,6 +12,7 @@ function ellipse(cx, cy, rx, ry) {
 }
 function rect(x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2)
+    if (r <= 0) return "M" + x + "," + y + " h" + w + " v" + h + " h" + (-w) + " Z"
     return "M" + (x + r) + "," + y + " h" + (w - 2 * r) + " a" + r + "," + r + " 0 0 1 " + r + "," + r
         + " v" + (h - 2 * r) + " a" + r + "," + r + " 0 0 1 " + (-r) + "," + r
         + " h" + (-(w - 2 * r)) + " a" + r + "," + r + " 0 0 1 " + (-r) + "," + (-r)
@@ -36,6 +37,15 @@ function keyframes(keys, t, smooth) {
 function cycle(t, period, shift) {
     const p = t / period + (shift || 0)
     return p - Math.floor(p)
+}
+// The part of a number after the point (0..1).
+function frac(x) {
+    return x - Math.floor(x)
+}
+// 0 below a, 1 above b, an ease-in-out between.
+function smoothstep(a, b, x) {
+    const u = Math.min(1, Math.max(0, (x - a) / (b - a)))
+    return u * u * (3 - 2 * u)
 }
 // A value that goes 0 -> 1 -> 0 over a cycle (CSS "alternate" with ease-in-out).
 function back(p) {
