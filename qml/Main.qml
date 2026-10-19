@@ -518,6 +518,8 @@ ApplicationWindow {
         if (window.currentReader && window.currentReader.annotationDirty) { close.accepted = false; notify("Save or discard annotation edits before closing the window."); return }
         if (researchStore.busy) { close.accepted = false; notify("Saving. Please close the window after saving finishes.") }
         else if (initialized && !restoreFailed && !persist()) { close.accepted = false; notify("Cannot save the session. Check storage and try again.") }
+        // Closing Owelk's window ends Owelk, desktop pet and all (the pet's own windows would keep it running).
+        if (close.accepted) Qt.callLater(Qt.quit)
     }
     onWidthChanged: scheduleSave()
     onHeightChanged: scheduleSave()
