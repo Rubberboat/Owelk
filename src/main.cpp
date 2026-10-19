@@ -1,6 +1,7 @@
 #include "ResearchStore.h"
 #include "AppInstance.h"
 #include "AnnotationImageProvider.h"
+#include "DesktopPet.h"
 #include "MathImageProvider.h"
 #include "SelectionGeometry.h"
 #include "Theme.h"
@@ -64,6 +65,8 @@ int main(int argc, char *argv[])
     // Read before the window exists, so the first frame already has the chosen theme.
     Theme theme(&store);
     qmlRegisterSingletonInstance("Owelk.Ui", 1, 0, "Theme", &theme);
+    DesktopPet pet(&store);
+    qmlRegisterSingletonInstance("Owelk.Ui", 1, 0, "DesktopPet", &pet);
     // The web tabs' accounts (Google), read from their profile once the window makes it; made before the
     // engine, so it outlives the profile that asks it about requests.
     WebAccounts webAccounts;

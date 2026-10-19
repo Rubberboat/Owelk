@@ -1,5 +1,6 @@
 #include "ResearchStore.h"
 #include "AnnotationImageProvider.h"
+#include "DesktopPet.h"
 #include "MathImageProvider.h"
 #include "SelectionGeometry.h"
 #include "Theme.h"
@@ -208,6 +209,8 @@ public slots:
         m_store->setSetting("library.keepPdfs", "0");
         m_theme = new Theme(m_store, this);
         qmlRegisterSingletonInstance("Owelk.Ui", 1, 0, "Theme", m_theme);
+        m_pet = new DesktopPet(m_store, this);
+        qmlRegisterSingletonInstance("Owelk.Ui", 1, 0, "DesktopPet", m_pet);
     }
     void qmlEngineAvailable(QQmlEngine *engine)
     {
@@ -485,6 +488,7 @@ private:
     AppInstance *m_instance = nullptr;
     WebAccounts *m_webAccounts = nullptr;
     Theme *m_theme = nullptr;
+    DesktopPet *m_pet = nullptr;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(reader_ui, ReaderSetup)
