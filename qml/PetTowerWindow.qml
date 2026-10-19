@@ -16,6 +16,7 @@ Window {
     // Shown: always, or only while the cat is about to sleep on it or does.
     property bool wanted: true
     property bool dragging: false
+    property bool canBring: true
     // The user moves it (where to), lets go, or asks for it beside the cat.
     signal dragged(real centerX, real baseY)
     signal dropped()
@@ -124,6 +125,6 @@ Window {
         palette.buttonText: Theme.text
         palette.highlight: Theme.accent
         palette.highlightedText: Theme.onAccent
-        MenuItem { objectName: "bringTower"; text: "Move next to " + DesktopPet.englishName; onTriggered: tower.bringRequested() }
+        MenuItem { objectName: "bringTower"; enabled: tower.canBring; text: "Move next to " + DesktopPet.englishName; onTriggered: tower.bringRequested() }
     }
 }

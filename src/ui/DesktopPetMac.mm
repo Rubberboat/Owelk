@@ -21,6 +21,15 @@ void desktopPetFloatEverywhere(QWindow *window)
     }
 }
 
+void desktopPetOrderFront(QWindow *window)
+{
+    if (!window || QGuiApplication::platformName() != QLatin1String("cocoa")) return;
+    @autoreleasepool {
+        NSWindow *native = reinterpret_cast<NSView *>(window->winId()).window;
+        [native orderFront:nil];
+    }
+}
+
 bool desktopPetLeftButtonDown()
 {
     return ([NSEvent pressedMouseButtons] & 1) != 0;
@@ -34,6 +43,16 @@ void tellDormancy()
 {
     if (dormancyTarget) dormancyTarget->setDormant(appHidden || screenLocked || screensAsleep);
 }
+// Told of the lock at once (the plain observer API lets the system hold distributed notices back while the
+// application is in the background, which is where the pet lives).
+}
+@interface PetLockObserver : NSObject
+@end
+@implementation PetLockObserver
+- (void)locked:(NSNotification *)note { screenLocked = true; tellDormancy(); }
+- (void)unlocked:(NSNotification *)note { screenLocked = false; tellDormancy(); }
+@end
+namespace {
 void watchDormancy(NSNotificationCenter *center, NSString *name, bool *flag, bool value)
 {
     // Built without ARC: the observers live as long as the program, so they are kept.
@@ -56,13 +75,16 @@ void desktopPetWatchDormancy(DesktopPet *pet)
     if (!first) return;
     NSNotificationCenter *app = [NSNotificationCenter defaultCenter];
     NSNotificationCenter *workspace = [[NSWorkspace sharedWorkspace] notificationCenter];
-    NSNotificationCenter *distributed = [NSDistributedNotificationCenter defaultCenter];
+    NSDistributedNotificationCenter *distributed = [NSDistributedNotificationCenter defaultCenter];
     watchDormancy(app, NSApplicationDidHideNotification, &appHidden, true);
     watchDormancy(app, NSApplicationDidUnhideNotification, &appHidden, false);
     watchDormancy(workspace, NSWorkspaceScreensDidSleepNotification, &screensAsleep, true);
     watchDormancy(workspace, NSWorkspaceScreensDidWakeNotification, &screensAsleep, false);
-    watchDormancy(distributed, @"com.apple.screenIsLocked", &screenLocked, true);
-    watchDormancy(distributed, @"com.apple.screenIsUnlocked", &screenLocked, false);
+    PetLockObserver *lock = [[PetLockObserver alloc] init];
+    [distributed addObserver:lock selector:@selector(locked:) name:@"com.apple.screenIsLocked" object:nil
+          suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
+    [distributed addObserver:lock selector:@selector(unlocked:) name:@"com.apple.screenIsUnlocked" object:nil
+          suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
 }
 
 namespace {

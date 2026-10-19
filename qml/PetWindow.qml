@@ -56,6 +56,8 @@ Window {
         const threads = Object.keys(answering).map(function(request) { return answering[request] })
         if (threads.length) say({text: "답변 쓰는 중…", kind: "aiWriting", thread: threads[threads.length - 1], writing: true, ttl: 0})
     }
+    // In front of the tower's window, without bringing Owelk forward.
+    function putInFront() { DesktopPet.raiseWindow(pet) }
     // A click on the bubble does what it says.
     function act() {
         const m = message
@@ -143,11 +145,14 @@ Window {
     }
     // The bubble goes after its time.
     Timer {
+        id: bubbleClock
         objectName: "bubbleClock"
         interval: pet.message && pet.message.ttl ? pet.message.ttl : 1
         running: pet.message !== null && !!pet.message.ttl
         onTriggered: pet.message = null
     }
+    // A new bubble gets its whole time, also when it follows one of the same length.
+    onMessageChanged: if (message && message.ttl) bubbleClock.restart()
     // New papers in For You: said when there are more than before (counted when the pet starts, not
     // bound: the count would follow the list before the handler below compares).
     property int knownPapers: 0
@@ -215,6 +220,8 @@ Window {
         function onFeetYChanged() { if (!brain.batching) pet.follow() }
         function onPlaced() { pet.follow(); rememberLater.restart() }
     }
+    // A new size: a cat asleep up on the tower is put right on the new tower.
+    onCatHChanged: if (ready) brain.settle()
     onWidthChanged: { follow(); fitLater.restart() }
     onHeightChanged: { follow(); fitLater.restart() }
     Component.onCompleted: {
@@ -233,7 +240,7 @@ Window {
         DesktopPet.floatEverywhere(pet)
         brain.begin(DesktopPet.first)
         fitLater.restart()
-        Qt.callLater(pet.raise)
+        Qt.callLater(pet.putInFront)
     }
     onVisibleChanged: if (visible) { DesktopPet.floatEverywhere(pet); fitLater.restart() }
     // Where it was left, once it stops moving; not while it is out of the screen or up on the tower.
@@ -319,11 +326,11 @@ Window {
         towerCenterX = Math.min(Math.max(centerX, left + 20), right - 20)
         towerBase = Math.min(Math.max(base, top + brain.towerHeight + 10), bottom + 4)
         // A cat asleep up there stays in front of it, though the tower is the window being moved.
-        if (brain.onTower) pet.raise()
+        if (brain.onTower) pet.putInFront()
     }
     function towerDropped() {
         DesktopPet.rememberTower(Math.round(towerCenterX), Math.round(towerBase))
-        pet.raise()
+        pet.putInFront()
     }
     // The tower back beside the cat (not while the cat sleeps up on it).
     function bringTower() {
@@ -355,9 +362,10 @@ Window {
         wanted: pet.ready && (DesktopPet.towerMode === "always" || brain.towerNeeded || brain.onTower)
         onDragged: function(centerX, baseY) { pet.moveTower(centerX, baseY) }
         onDropped: pet.towerDropped()
+        canBring: !brain.onTower
         onBringRequested: pet.bringTower()
         // The cat is above the tower, not behind it.
-        onVisibleChanged: if (visible) Qt.callLater(pet.raise)
+        onVisibleChanged: if (visible) Qt.callLater(pet.putInFront)
     }
 
     // Clicks on the transparent parts go to whatever is behind the pet; worked out again when what is

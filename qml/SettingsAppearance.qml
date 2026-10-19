@@ -232,7 +232,7 @@ ColumnLayout {
         note: "Allmeng-E (\uC54C\uB9F9\uC774) keeps still while nothing happens, and stops when the screen is locked or Owelk is hidden."
         SettingsRow {
             label: "Desktop pet"
-            detail: "A tuxedo cat floats above other apps while Owelk is open. Click it to come back here."
+            detail: "A tuxedo cat floats above other apps while Owelk is open. Double-click it to come back here."
             Switch { objectName: "petSwitch"; checked: DesktopPet.enabled; onToggled: DesktopPet.enabled = checked }
         }
         SettingsRow {
