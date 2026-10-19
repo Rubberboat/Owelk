@@ -409,8 +409,12 @@ Window {
             Behavior on scale { NumberAnimation { duration: 120 } }
             Item {
                 id: art
-                anchors.fill: parent
-                transform: Scale { origin.x: art.width / 2; origin.y: art.height; yScale: bob.bobStretch }
+                // Wider than the cat: a tail thrown back in a gallop is outside its 220 x 180 units, and the
+                // dark theme's rim (a layer) would cut off whatever is outside the item.
+                readonly property real pad: pet.catW * .2
+                x: -pad; y: -pad
+                width: bob.width + 2 * pad; height: bob.height + 2 * pad
+                transform: Scale { origin.x: art.width / 2; origin.y: art.height - art.pad; yScale: bob.bobStretch }
                 // The dark theme's light rim, so black fur shows on a dark desktop.
                 layer.enabled: Theme.dark
                 layer.effect: MultiEffect {
@@ -420,6 +424,7 @@ Window {
                 PetCat {
                     id: cat
                     objectName: "petCat"
+                    x: art.pad; y: art.pad
                     scale: pet.catW / 220
                     transformOrigin: Item.TopLeft
                     renderScale: pet.catW / 220 * (pet.screen ? pet.screen.devicePixelRatio : 1)

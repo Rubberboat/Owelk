@@ -111,7 +111,9 @@ Item {
         // does not show through itself.
         layer.enabled: opacity > 0 && opacity < 1
         layer.smooth: true
-        layer.textureSize: Qt.size(Math.max(1, Math.round(220 * cat.renderScale)), Math.max(1, Math.round(180 * cat.renderScale)))
+        // (Wider than the 220 x 180 units: a galloping cat's tail is outside them.)
+        layer.sourceRect: Qt.rect(-50, -40, 320, 260)
+        layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
         Loader { sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
     }
     Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
