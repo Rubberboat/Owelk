@@ -221,7 +221,7 @@ Window {
         function onPlaced() { pet.follow(); rememberLater.restart() }
     }
     // A new size: a cat asleep up on the tower is put right on the new tower.
-    onCatHChanged: if (ready) brain.settle()
+    onCatHChanged: if (ready) Qt.callLater(function() { moveTower(towerCenterX, towerBase); brain.settle() })
     onWidthChanged: { follow(); fitLater.restart() }
     onHeightChanged: { follow(); fitLater.restart() }
     Component.onCompleted: {
@@ -234,7 +234,8 @@ Window {
         const beside = towerBeside()
         const spot = DesktopPet.towerPlace(beside.x, beside.y)
         towerCenterX = spot.x; towerBase = spot.y
-        DesktopPet.rememberTower(spot.x, spot.y)
+        moveTower(spot.x, spot.y)
+        DesktopPet.rememberTower(towerCenterX, towerBase)
         ready = true
         follow()
         DesktopPet.floatEverywhere(pet)
@@ -324,7 +325,10 @@ Window {
         const left = screen ? screen.virtualX : 0, top = screen ? screen.virtualY : 0
         const right = left + (screen ? screen.width : 1440), bottom = top + (screen ? screen.height : 900)
         towerCenterX = Math.min(Math.max(centerX, left + 20), right - 20)
-        towerBase = Math.min(Math.max(base, top + brain.towerHeight + 10), bottom + 4)
+        // Not so high that the cat up on it would be above the top of the screen (where a window cannot go, and
+        // the cat could not be seen or reached): the cat's own height above its feet is left over.
+        const lowest = top + brain.towerHeight + pet.feetOffset + 30
+        towerBase = Math.min(Math.max(base, lowest), Math.max(lowest, bottom + 4))
         // A cat asleep up there stays in front of it, though the tower is the window being moved.
         if (brain.onTower) pet.putInFront()
     }
@@ -360,6 +364,8 @@ Window {
         id: brain
         objectName: "petBrain"
         screenLeft: pet.screen ? pet.screen.virtualX : 0
+        screenTop: pet.screen ? pet.screen.virtualY : 0
+        windowAbove: pet.feetOffset
         screenWidth: pet.screen && pet.screen.width > 0 ? pet.screen.width : 1440
         catW: pet.catW; catH: pet.catH
         pace: DesktopPet.pace

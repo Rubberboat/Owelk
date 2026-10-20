@@ -15,6 +15,9 @@ Item {
     // ---- what it needs to know ----
     // The screen the pet is on, the size of the pet window and how far the cat is from its left edge.
     property real screenLeft: 0
+    property real screenTop: 0
+    // The cat's window may not go above the top of the screen: from its feet to the top of the window.
+    property real windowAbove: catH * 1.4
     property real screenWidth: 1440
     property real catW: 196
     property real catH: 160
@@ -247,6 +250,8 @@ Item {
         if (Math.abs(x1 - catX) > 2) facing = x1 >= catX ? 1 : -1
         jumpFromX = catX; jumpFromY = feetY; jumpToX = x1; jumpToY = y1
         jumpRise = catH * .5 + Math.min(Math.abs(x1 - catX), catW * 4) * .12
+        // (Not so high that the cat's window would be above the screen: it would be pushed back down.)
+        jumpRise = Math.max(0, Math.min(jumpRise, Math.min(feetY, y1) - screenTop - windowAbove - 8))
         // The leap is a pose of its own, run into from the crouch: legs stretched out.
         setPose("run", y1 < feetY ? "leaps up" : "leaps down", t(260))
         leap = true

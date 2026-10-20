@@ -114,15 +114,15 @@ Item {
     component Slot: Item {
         id: slot
         property string name: ""
-        width: 220; height: 180
+        // Wider than the 220 x 180 units all round (a galloping cat's tail is outside them): the item is that
+        // much bigger, the pose inside it where it was, so that a picture of it is shown at its own size.
+        x: -50; y: -40; width: 320; height: 260
         // While it fades the pose is drawn as one picture and then made see-through, so what overlaps in it
         // does not show through itself.
         layer.enabled: opacity > 0 && opacity < 1
         layer.smooth: true
-        // (Wider than the 220 x 180 units: a galloping cat's tail is outside them.)
-        layer.sourceRect: Qt.rect(-50, -40, 320, 260)
         layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
-        Loader { sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
+        Loader { x: 50; y: 40; sourceComponent: slot.name.length ? cat.poseComponent(slot.name) : null }
     }
     // The turn itself (a flat picture turned over is drawn right on every renderer) ...
     Item {
@@ -132,13 +132,15 @@ Item {
         // ... of the cat drawn the right way round into a picture while it looks left.
         Item {
             id: mirrorBox
-            width: 220; height: 180
+            x: -50; y: -40; width: 320; height: 260
             layer.enabled: cat.mirrorByLayer && cat.looksLeft
             layer.smooth: true
-            layer.sourceRect: Qt.rect(-50, -40, 320, 260)
             layer.textureSize: Qt.size(Math.max(1, Math.round(320 * cat.renderScale)), Math.max(1, Math.round(260 * cat.renderScale)))
-            Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
-            Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+            Item {
+                x: 50; y: 40
+                Slot { id: slotA; z: cat.aFront ? 1 : 0; opacity: cat.aFront ? cat.frontOpacity : cat.backOpacity }
+                Slot { id: slotB; z: cat.aFront ? 0 : 1; opacity: cat.aFront ? cat.backOpacity : cat.frontOpacity }
+            }
         }
     }
 

@@ -402,6 +402,27 @@ Item {
             tryVerify(function() { return !brain.onTower }, 6000)
             tryVerify(function() { return brain.feetY === brain.lineY }, 8000)
         }
+        function test_theTowerCannotGoSoHighThatTheCatOnItIsOffTheScreen() {
+            const pet = quietPet()
+            const brain = findChild(pet, "petBrain")
+            pet.moveTower(pet.towerCenterX, -9999)
+            const screen = pet.screenOf(pet.towerCenterX, pet.towerBase)
+            // The cat's window, up on it, is below the top of the screen.
+            const windowTop = brain.towerFeetY - pet.feetOffset
+            verify(windowTop >= screen.virtualY + 25, "window top " + windowTop)
+            // And it still finds its way up there.
+            brain.pace = 600
+            brain.chance = function() { return .1 }
+            brain.begin("nap")
+            tryVerify(function() { return asleep(brain) }, 10000)
+            compare(brain.feetY, brain.towerFeetY)
+            verify(pet.y >= screen.virtualY, "the window is on the screen: " + pet.y)
+            brain.stop()
+            // A big cat and a tall tower: still all on the screen.
+            DesktopPet.size = "large"
+            tryCompare(pet, "catH", 220)
+            tryVerify(function() { return brain.towerFeetY - pet.feetOffset >= screen.virtualY + 25 }, 2000)
+        }
         function test_aTowerOnAnotherScreenGivesTheCatAFloorThere() {
             const pet = quietPet()
             const brain = findChild(pet, "petBrain")
