@@ -107,6 +107,8 @@ ApplicationWindow {
     property string notification: ""
     property alias documents: documents
     readonly property var currentReader: documents.currentReader
+    readonly property bool canPrint: !homeVisible && !restoreFailed && !!currentReader
+                                    && currentReader.isActive && currentReader.canPrint
     // Shortcuts the reader changed in Settings (id → keys; "" turns one off).
     property var shortcutOverrides: Shortcuts.parse(researchStore.setting("shortcuts"))
     function keys(id) { return Shortcuts.keys(id, shortcutOverrides, Qt.platform.os) }
@@ -527,12 +529,14 @@ ApplicationWindow {
         hasSelection: hasDocument && window.currentReader.selectedText.length > 0
         canReopenTab: documents.closedTabs.length > 0
         canCloseTab: !window.homeVisible && documents.hasTabs
+        canPrint: window.canPrint
         onCommandChosen: function(command) {
             if (window.currentReader && window.currentReader.annotationDirty) { window.notify("Finish annotation editing first."); return }
             switch (command) {
             case "/home": window.showHome(); break
             case "/open paper": window.chooseFile(); break
             case "/find": window.findInView(); break
+            case "/print": if (window.canPrint) window.currentReader.printAction.trigger(); break
             case "/split right": documents.duplicateSplit("right"); break
             case "/split down": documents.duplicateSplit("bottom"); break
             case "/split off": documents.joinAll(); break
@@ -587,6 +591,12 @@ ApplicationWindow {
         Menu {
             title: "File"
             Action { text: "Open PDF…"; shortcut: StandardKey.Open; onTriggered: window.chooseFile() }
+            MenuItem {
+                objectName: "printMenuItem"
+                text: "Print PDF…"
+                action: window.canPrint ? window.currentReader.printAction : null
+                enabled: window.canPrint
+            }
             Action { objectName: "newNoteAction"; text: "New Note"; shortcut: window.keys("newNote"); enabled: !window.restoreFailed; onTriggered: documents.newNote() }
             Action { objectName: "openWebAction"; text: "Open Web Page…"; shortcut: window.keys("openWeb"); enabled: !window.restoreFailed; onTriggered: window.openWebAddress() }
             Action { objectName: "settingsAction"; text: "Settings…"; shortcut: Qt.platform.os === "osx" ? StandardKey.Preferences : "Ctrl+,"; onTriggered: settingsDialog.open() }

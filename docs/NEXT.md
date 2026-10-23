@@ -12,7 +12,7 @@
 
 - GitHub에 push해 CI(Ubuntu·Windows·macOS) 결과 확인 → 실패 로그를 주면 고칩니다.
 - Linux·Windows에서 실제 실행: 키 저장(키링·자격 증명 관리자), 파일 대화상자, 단축키 기본값.
-- 인쇄(실제 프린터·PDF로 저장), 주석 포함 PDF를 미리보기·Acrobat·Okular에서 열어 보기.
+- 인쇄: PDF 상단 프린터 버튼, File › Print PDF, ⌘/Ctrl+P로 실제 프린터·PDF로 저장 확인. 집중 읽기·분할 화면에서 선택한 논문이 인쇄되는지 확인. 주석 포함 PDF를 미리보기·Acrobat·Okular에서 열어 보기.
 - 의미 검색: Ollama `nomic-embed-text` 또는 OpenAI 키로 켜고 검색·관련 논문 확인.
 - OCR: Tesseract 설치 후 스캔 PDF 검색.
 - 백업 → 복원 → 재시작, 암호 PDF 열기·기억.

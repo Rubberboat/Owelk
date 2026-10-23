@@ -18,8 +18,10 @@ Popup {
     property bool hasSelection: false
     property bool canReopenTab: false
     property bool canCloseTab: hasDocument
+    property bool canPrint: hasDocument
     readonly property var commands: [
         {command: "/open paper", title: "File: Open PDF", enabled: true},
+        {command: "/print", title: "File: Print PDF…", enabled: canPrint},
         {command: "/new tab", title: "Tab: New Home Tab", enabled: true},
         {command: "/close tab", title: "Tab: Close Active Tab", enabled: canCloseTab},
         {command: "/reopen tab", title: "Tab: Reopen Closed Tab", enabled: canReopenTab},

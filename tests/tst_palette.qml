@@ -119,6 +119,18 @@ Item {
             tryCompare(chosen, "count", 1)
             compare(chosen.signalArguments[0][0].kind, "paper")
         }
+        function test_printRequiresPrintableDocument() {
+            findChild(palette, "paletteQuery").text = "print"
+            compare(palette.results.length, 1)
+            palette.hasDocument = false
+            compare(palette.results[0].enabled, false)
+            keyClick(Qt.Key_Return); compare(command.count, 0)
+            palette.hasDocument = true
+            compare(palette.results[0].enabled, true)
+            keyClick(Qt.Key_Return)
+            tryCompare(command, "count", 1)
+            compare(command.signalArguments[0][0], "/print")
+        }
         function test_shortcutsAnswerToList() {
             const query = findChild(palette, "paletteQuery")
             for (const text of ["/list", "shortcuts", "keys"]) {

@@ -58,7 +58,22 @@ Rectangle {
     property var annotationList: null
     // The toolbar button opens and closes that list.
     signal annotationsToggled()
-    function printDocument() { researchStore.printDocument(canvas.source, canvas.documentFingerprint, canvas.pageCount) }
+    readonly property bool canPrint: canvas.ready && canvas.documentFingerprint.length > 0
+                                    && !annotationDirty && !researchStore.printing
+    property alias printAction: printAction
+    Action {
+        id: printAction
+        objectName: "pdfPrintAction"
+        text: "Print PDF…"
+        shortcut: root.isActive ? root.keysFor("print") : ""
+        enabled: root.canPrint
+        onTriggered: root.printDocument()
+    }
+    function printDocument() {
+        if (!canPrint) return
+        activated()
+        researchStore.printDocument(canvas.source, canvas.documentFingerprint, canvas.pageCount)
+    }
     signal activated()
     signal changed()
     signal fileChosen(url source)
@@ -428,14 +443,14 @@ Rectangle {
                     onClicked: { root.activated(); canvas.nextPage() }
                 }
             }
-            // Annotation tools, then the Annotations list, then everything else (find, print, export) behind ⋯.
+            // Annotation tools, the Annotations list and Print; other document actions live behind ⋯.
             // Highlight and Draw keep their own colors; the narrow arrow next to each picks one.
             Row {
                 anchors.right:parent.right;anchors.rightMargin:4;anchors.verticalCenter:parent.verticalCenter
                 spacing: 2
                 Row {
                     objectName: "annotationTools"
-                    visible: readerToolbar.width >= 600
+                    visible: readerToolbar.width >= 680
                     // Inks first (pen, highlight: right-click for color), then writing (comment, text), then image
                     // and a marked region (a figure, a table, an equation).
                     IconButton {
@@ -457,8 +472,14 @@ Rectangle {
                     IconButton { objectName:"imageTool";icon.name: "image";checked:canvas.tool==="image";description: "Image";onClicked:root.setTool("image") }
                     IconButton { objectName:"areaTool";icon.name: "area";checked:canvas.tool==="area";description: "Mark region";onClicked:root.setTool("area") }
                 }
-                Rectangle { visible: readerToolbar.width >= 600; width: 1; height: 16; anchors.verticalCenter: parent.verticalCenter; color: Theme.border }
+                Rectangle { visible: readerToolbar.width >= 680; width: 1; height: 16; anchors.verticalCenter: parent.verticalCenter; color: Theme.border }
                 IconButton { objectName:"annotationsButton";icon.name: "annotations";checked:root.annotationList !== null;description: "Annotations";onClicked:root.annotationsToggled() }
+                IconButton {
+                    objectName: "printButton"
+                    action: printAction
+                    icon.name: "print"
+                    description: "Print PDF" + (root.keysFor("print").length ? " · " + Platform.keys(root.keysFor("print")) : "")
+                }
                 Rectangle { width: 1; height: 16; anchors.verticalCenter: parent.verticalCenter; color: Theme.border }
                 IconButton { icon.name: "more";
                     objectName: "readerMoreButton"
@@ -472,15 +493,15 @@ Rectangle {
                         MenuItem { objectName: "paperGuideAction"; text: "Paper Guide with AI"; onTriggered: root.paperGuide() }
                         MenuSeparator {}
                         // Narrow panes: the annotation tools move here.
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Draw";onTriggered:root.setTool("draw") }
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Highlight";onTriggered:root.useHighlight() }
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Comment";onTriggered:root.setTool("comment") }
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Text Box";onTriggered:root.setTool("text") }
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Image";onTriggered:root.setTool("image") }
-                        MenuItem { visible:readerToolbar.width<600;height:visible?implicitHeight:0;text:"Mark Region";onTriggered:root.setTool("area") }
-                        MenuSeparator { visible:readerToolbar.width<600;height:visible?implicitHeight:0 }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Draw";onTriggered:root.setTool("draw") }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Highlight";onTriggered:root.useHighlight() }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Comment";onTriggered:root.setTool("comment") }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Text Box";onTriggered:root.setTool("text") }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Image";onTriggered:root.setTool("image") }
+                        MenuItem { visible:readerToolbar.width<680;height:visible?implicitHeight:0;text:"Mark Region";onTriggered:root.setTool("area") }
+                        MenuSeparator { visible:readerToolbar.width<680;height:visible?implicitHeight:0 }
                         MenuItem { text:"Find in Document · " + Platform.keys("Ctrl+F");onTriggered:root.find() }
-                        MenuItem { objectName:"printOption";text:"Print…";onTriggered:root.printDocument() }
+                        MenuItem { objectName: "printOption"; action: printAction }
                         MenuItem { objectName:"exportAnnotatedOption";text:"Export Annotated PDF…";visible:researchStore.canExportAnnotatedPdf();height:visible?implicitHeight:0;enabled:canvas.documentFingerprint.length>0;onTriggered:annotatedFile.open() }
                         MenuItem { objectName:"exportMarkdownOption";text:"Export Annotations as Markdown…";onTriggered:markdownFolder.open() }
                         MenuSeparator {}
