@@ -461,6 +461,46 @@ Item {
             forYou.saveTopics([])
             verify(!forYou.configured)
         }
+        // Every For You gear opens Settings › For You: Home, a Home tab, and Library › For You.
+        function test_forYouGearsOpenTheirSettings() {
+            researchStore.forYou.saveTopics([])
+            const settings = findChild(workspace, "settingsDialog")
+            function gearOpensForYou(gear) {
+                verify(gear !== null && gear.visible)
+                settings.page = "appearance"
+                mouseClick(gear)
+                tryCompare(settings, "opened", true)
+                compare(settings.page, "foryou")
+                settings.close(); tryCompare(settings, "visible", false)
+            }
+            workspace.homeVisible = true
+            const home = findChild(workspace, "homeView")
+            waitForPolish(home); wait(50)
+            gearOpensForYou(visualChild(home, "homeForYouHeadingSettings"))
+            // A Home tab next to other tabs: its gear and its hint.
+            workspace.documents.openLibrary({})
+            workspace.documents.newHomeTab()
+            tryCompare(activeTab(), "kind", "home")
+            let tabHome = null
+            tryVerify(function() { tabHome = findChild(workspace.documents.groupView(workspace.documents.activeGroup), "homeView"); return tabHome !== null && tabHome.visible && tabHome.width > 0 })
+            waitForPolish(tabHome); wait(50)
+            gearOpensForYou(visualChild(tabHome, "homeForYouHeadingSettings"))
+            gearOpensForYou(visualChild(tabHome, "homeForYouHint"))
+            // Esc on its empty search field takes the cursor out, as on Home (keyboard focus needs an active window).
+            workspace.requestActivate()
+            tryVerify(function() { return workspace.active })
+            const search = visualChild(tabHome, "homeSearch")
+            search.forceActiveFocus()
+            tryVerify(function() { return search.activeFocus })
+            testInput.keyClick(search, Qt.Key_Escape)
+            tryVerify(function() { return !search.activeFocus })
+            // Library › For You.
+            workspace.documents.openLibrary({view: "foryou"})
+            const view = library()
+            tryCompare(view, "view", "foryou")
+            waitForPolish(view); wait(50)
+            gearOpensForYou(visualChild(view, "libraryForYouSettings"))
+        }
         function test_dragPaperOntoCollection() {
             const one = testInput.copyFixture("drag one.pdf")
             verify(researchStore.addDocuments([one], "") === 1)

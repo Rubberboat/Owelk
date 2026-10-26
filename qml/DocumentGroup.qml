@@ -462,6 +462,9 @@ Rectangle {
                 onLibraryFilterRequested: function(filter) { root.controller.activateGroup(root.groupId); root.controller.openLibrary(filter) }
                 onWebRequested: function(url) { root.controller.activateGroup(root.groupId); root.controller.openWeb(url) }
                 onNewNoteRequested: { root.controller.activateGroup(root.groupId); root.controller.newNote() }
+                onForYouPageRequested: function(url) { root.controller.activateGroup(root.groupId); root.controller.openWeb(url, true, "", true) }
+                onSettingsRequested: function(page) { root.controller.settingsRequested(page) }
+                onFocusLeft: root.forceActiveFocus()
                 TapHandler { onPressedChanged: if (pressed) root.controller.activateGroup(root.groupId) }
             }
         }
