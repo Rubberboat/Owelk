@@ -303,15 +303,17 @@ bool ResearchStore::initialize(QString *error)
         // AI conversations in the Trash (hidden from the list until restored or deleted for good).
         {13, {"ALTER TABLE ai_threads ADD COLUMN trashed_at TEXT"}},
         // Workspaces are gone: each one with papers becomes a collection of its name (joining a
-        // top-level collection already called that), and their tables go.
+        // top-level collection already called that), and their tables go. (No outer column in a subquery's
+        // ORDER BY: SQLite 3.45, Ubuntu 24.04's, refuses it, and every new database runs this step.)
         {14,
             {"INSERT OR IGNORE INTO collections(id,name,parent_id,created_at) SELECT w.id,w.name,NULL,w.opened_at "
              "FROM workspaces w WHERE w.id NOT IN (SELECT id FROM deleted_workspaces) "
              "AND EXISTS(SELECT 1 FROM workspace_documents d WHERE d.workspace_id=w.id) "
              "AND NOT EXISTS(SELECT 1 FROM collections c WHERE c.parent_id IS NULL AND c.name=w.name)",
                 "INSERT OR IGNORE INTO collection_documents(collection_id,document_id) "
-                "SELECT (SELECT c.id FROM collections c WHERE c.parent_id IS NULL AND c.name=w.name "
-                "ORDER BY c.id=w.id DESC LIMIT 1),d.document_id FROM workspace_documents d "
+                "SELECT coalesce((SELECT c.id FROM collections c WHERE c.parent_id IS NULL AND c.name=w.name "
+                "AND c.id=w.id),(SELECT c.id FROM collections c WHERE c.parent_id IS NULL AND c.name=w.name "
+                "LIMIT 1)),d.document_id FROM workspace_documents d "
                 "JOIN workspaces w ON w.id=d.workspace_id WHERE w.id NOT IN (SELECT id FROM deleted_workspaces)",
                 "DROP TABLE workspace_captures", "DROP TABLE workspace_document_exclusions",
                 "DROP TABLE workspace_documents", "DROP TABLE deleted_workspaces", "DROP TABLE workspaces"},
