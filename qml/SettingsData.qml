@@ -206,7 +206,12 @@ ColumnLayout {
                 objectName: "backUpNow"
                 text: researchStore.backingUp ? "Backing Up…" : "Choose Folder…"
                 enabled: !researchStore.backingUp
-                onClicked: backupFolderDialog.open()
+                // Starts in the folder of the last backup made here.
+                onClicked: {
+                    const last = researchStore.setting("backup.folder", "")
+                    if (last.length) backupFolderDialog.currentFolder = researchStore.fileUrl(last)
+                    backupFolderDialog.open()
+                }
             }
         }
         SettingsRow {
