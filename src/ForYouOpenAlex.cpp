@@ -303,6 +303,8 @@ void ForYou::appendOpenAlexJobs(const QDateTime &from, const QDateTime &to, int 
 {
     const auto base = m_store->setting("forYou.openAlexBaseUrl", "https://api.openalex.org");
     const auto key = Keychain::read(keyAccount, m_store->dataDirectory());
+    // Up to today where the reader is (it can be a day ahead of UTC).
+    const auto until = std::max(to.date(), to.toLocalTime().date()).toString(Qt::ISODate);
     for (const auto &value : entities()) {
         const auto entity = value.toMap();
         const auto id = entity.value("id").toString(), kind = entity.value("kind").toString();
@@ -311,7 +313,7 @@ void ForYou::appendOpenAlexJobs(const QDateTime &from, const QDateTime &to, int 
         QUrlQuery query{{"filter",
                             (kind == "person" ? "authorships.author.id:" : "authorships.institutions.lineage:") + id
                                 + ",from_publication_date:" + from.date().toString(Qt::ISODate)
-                                + ",to_publication_date:" + to.date().toString(Qt::ISODate) + ",type:article|preprint"},
+                                + ",to_publication_date:" + until + ",type:article|preprint"},
             {"sort", "publication_date:desc"}, {"per-page", QString::number(limit)},
             {"select",
                 "id,doi,title,publication_date,publication_year,authorships,abstract_inverted_index,best_oa_location,"

@@ -948,7 +948,10 @@ void ForYou::runNext()
 void ForYou::found(const QVariantList &papers, const QString &source, const QString &sourceName)
 {
     const auto oldest = since().date();
-    const auto today = QDateTime::currentDateTimeUtc().date();
+    // Today where the reader is, when that is already the next day in UTC (Korea before 9 a.m.): a paper dated
+    // today there is not from the future.
+    const auto now = QDateTime::currentDateTimeUtc();
+    const auto today = std::max(now.date(), now.toLocalTime().date());
     const auto addSource = [&](QVariantMap &paper) {
         auto sources = paper.value("sources").toList();
         if (sources.isEmpty() && !paper.value("source").toString().isEmpty())
