@@ -373,6 +373,46 @@ Item {
             tryVerify(function() { return view.count === 32 && atEnd(view) })
             controller.showThreads()
         }
+        // Going up to earlier questions: the wheel a little at a time (a trackpad), and the scroll bar dragged
+        // to the top. The view goes there and stays, though the turns above are laid out only as they come
+        // into sight (long and short answers, so their heights are not what the view first guessed).
+        function test_9a_scrollingUpGoesThereAndStays() {
+            reader.source = outlineSource
+            panel.chooseTopic(first)
+            const id = chat("Scroll", outlineSource)
+            for (let i = 0; i < 20; ++i) {
+                verify(researchStore.appendAiMessage(id, {role: "user", content: "Question " + i, display: "Question " + i}))
+                const more = i % 3 === 0 ? "\n\n" + ("A paragraph of words about the paper. ".repeat(30) + "\n\n").repeat(4) : ""
+                verify(researchStore.appendAiMessage(id, {role: "assistant", content: "Answer " + i + "." + more}))
+            }
+            const view = findChild(panel, "aiConversation")
+            verify(controller.openThread(id, true))
+            tryVerify(function() { return view.count === 40 && view.contentHeight > view.height * 3 && atEnd(view) })
+            wait(300)
+            verify(atEnd(view))
+            const end = view.contentY
+            for (let step = 0; step < 30; ++step) {
+                mouseWheel(view, view.width / 2, view.height / 2, 0, 15)
+                wait(20)
+            }
+            tryVerify(function() { return !view.moving }, 3000)
+            verify(view.contentY < end - 60, "went up: " + view.contentY + " from " + end)
+            verify(!view.following)
+            const there = view.contentY
+            wait(600)
+            verify(Math.abs(view.contentY - there) < 2, "stayed: " + view.contentY + " not " + there)
+            // The bar's handle, dragged from where it is to the top.
+            const bar = findChild(view, "aiConversationBar")
+            const handleY = (bar.position + bar.size / 2) * bar.height
+            mousePress(bar, bar.width / 2, handleY)
+            for (let y = handleY; y > -20; y -= 15) { mouseMove(bar, bar.width / 2, y); wait(10) }
+            mouseRelease(bar, bar.width / 2, -20)
+            tryVerify(function() { return Math.abs(view.contentY - view.originY) < 2 }, 3000, "at the top: " + view.contentY + " origin " + view.originY)
+            wait(600)
+            verify(Math.abs(view.contentY - view.originY) < 2, "stayed at the top: " + view.contentY + " origin " + view.originY)
+            verify(findChild(view, "aiQuestion-0") !== null)
+            controller.showThreads()
+        }
         function test_9z_deletingSeveralChatsOrAThreadAsksFirst() {
             reader.source = outlineSource
             panel.saveTopic("", "Pile", [])

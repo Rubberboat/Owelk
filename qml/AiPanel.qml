@@ -797,7 +797,11 @@ Item {
             clip: true
             spacing: 10
             acceptedButtons: Qt.NoButton
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { objectName: "aiConversationBar" }
+            // Every turn is made, not only those in sight: answers differ so much in length that the
+            // heights the view would guess for the rest kept changing as it moved, so going to the end
+            // moved it again (it never settled, and pulled the reader back down), and the bar jumped.
+            cacheBuffer: 100000
             property bool following: true
             property bool settling: false
             // A chat read again (an answer came in) keeps its place: the end while following, else where
@@ -815,7 +819,12 @@ Item {
             Connections { target: root.c; function onMessagesChanged() { conversation.load() } }
             Component.onCompleted: load()
             readonly property bool nearEnd: contentHeight <= height || contentY + height >= contentHeight + originY - 24
-            function toEnd() { following = true; settling = true; positionViewAtEnd(); settling = false }
+            readonly property bool atEnd: Math.abs(contentY + height - contentHeight - originY) < 1
+            function toEnd() {
+                following = true
+                if (atEnd) return
+                settling = true; positionViewAtEnd(); settling = false
+            }
             function follow() { if (following) Qt.callLater(toEnd) }
             // The question an answer replies to: the nearest user turn above it.
             function toQuestion(index) {
