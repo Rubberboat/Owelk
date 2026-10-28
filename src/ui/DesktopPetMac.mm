@@ -6,6 +6,7 @@
 #include <QRegion>
 #include <QWindow>
 #import <AppKit/AppKit.h>
+#import <objc/message.h>
 
 void desktopPetFloatEverywhere(QWindow *window)
 {
@@ -18,6 +19,16 @@ void desktopPetFloatEverywhere(QWindow *window)
             | NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary
             | NSWindowCollectionBehaviorIgnoresCycle;
         native.hidesOnDeactivate = NO;
+        // A click or a drag on the pet, its bubble or its tower does not make Owelk the active app: when it
+        // did, macOS brought Owelk's own window forward with it. Only a double click opens Owelk.
+        if ([native isKindOfClass:[NSPanel class]]) {
+            if (!(native.styleMask & NSWindowStyleMaskNonactivatingPanel))
+                native.styleMask = native.styleMask | NSWindowStyleMaskNonactivatingPanel;
+            // The window server is not always told of the mask once the panel exists; this tells it.
+            const SEL prevents = NSSelectorFromString(@"_setPreventsActivation:");
+            if ([native respondsToSelector:prevents])
+                reinterpret_cast<void (*)(id, SEL, BOOL)>(objc_msgSend)(native, prevents, YES);
+        }
     }
 }
 

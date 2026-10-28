@@ -116,7 +116,7 @@ Item {
             compare(findChild(pet, "petBrain").pose, "stretch")
             // The count starts again (test minutes are short: a few may have passed already).
             verify(pet.readMinutes < 25, "count " + pet.readMinutes)
-            // A click dismisses it and opens nothing.
+            // A click on the cat dismisses it and opens nothing.
             openSpy.target = pet; openSpy.clear()
             mouseClick(pet.contentItem, pet.width / 2, pet.height - 10)
             compare(pet.message, null); compare(openSpy.count, 0)
@@ -164,9 +164,15 @@ Item {
             fakeAi.finished(7, "the answer", {})
             compare(words.text, "답변이 준비됐어요!")
             compare(brain.pose, "sit"); verify(brain.meow)
-            threadSpy.target = pet
+            // Only a double click opens the answer (a click on the bubble or the cat leaves Owelk be).
+            threadSpy.target = pet; threadSpy.clear()
+            openSpy.target = pet; openSpy.clear()
             waitForRendering(bubble.contentItem)
             mouseClick(bubble.contentItem)
+            mouseClick(pet.contentItem, pet.width / 2, pet.height - 10)
+            compare(threadSpy.count, 0); compare(openSpy.count, 0)
+            compare(words.text, "답변이 준비됐어요!")
+            findChild(bubble, "petBubbleTap").doubleTapped(null, Qt.LeftButton)
             compare(threadSpy.count, 1)
             compare(threadSpy.signalArguments[0][0], "thread-1")
             tryCompare(bubble, "visible", false)
@@ -197,9 +203,12 @@ Item {
             fakeForYou.changed()
             compare(words.text, "For You에 새 논문 2편")
             compare(brain.pose, "sit"); verify(brain.perk)
-            forYouSpy.target = pet
+            forYouSpy.target = pet; forYouSpy.clear()
             mouseClick(pet.contentItem, pet.width / 2, pet.height - 10)
+            compare(forYouSpy.count, 0)
+            findChild(pet, "petTap").doubleTapped(null, Qt.LeftButton)
             compare(forYouSpy.count, 1)
+            compare(openSpy.count, 0)
             fakeForYou.items = [{id: "a"}]
             fakeForYou.changed()
             compare(pet.message, null, "fewer papers are not news")
@@ -591,6 +600,44 @@ Item {
             kneading.begin("aiWriting")
             verify(kneading.poke())
             compare(kneading.pose, "knead")
+        }
+        // Only a double click brings Owelk forward; a click moves only the cat (as the tap handlers report
+        // them: synthetic clicks are not timed like a hand's).
+        function test_onlyADoubleClickOpensOwelk() {
+            fakeForYou.items = []
+            const pet = quietPet({ai: fakeAi, forYou: fakeForYou, ownerActive: false})
+            const brain = findChild(pet, "petBrain")
+            const tap = findChild(pet, "petTap"), bubbleTap = findChild(pet, "petBubbleTap")
+            openSpy.target = pet; threadSpy.target = pet; forYouSpy.target = pet
+            openSpy.clear(); threadSpy.clear(); forYouSpy.clear()
+            brain.begin("sit")
+            tap.tapped(null, Qt.LeftButton)
+            compare(openSpy.count, 0); compare(brain.current, "poke")
+            tap.doubleTapped(null, Qt.LeftButton)
+            compare(openSpy.count, 1)
+            // An answer ready: a click on the cat or the bubble keeps the bubble; a double click opens it.
+            fakeAi.started(31, "thread-31", "codex", "model", false)
+            fakeAi.finished(31, "the answer", {})
+            compare(pet.message.thread, "thread-31")
+            tap.tapped(null, Qt.LeftButton)
+            bubbleTap.tapped(null, Qt.LeftButton)
+            compare(threadSpy.count, 0); verify(pet.message !== null)
+            bubbleTap.doubleTapped(null, Qt.LeftButton)
+            compare(threadSpy.count, 1); compare(threadSpy.signalArguments[0][0], "thread-31")
+            compare(pet.message, null)
+            // New papers: the cat's double click opens For You.
+            fakeForYou.items = [{id: "n1"}]; fakeForYou.changed()
+            verify(pet.message && pet.message.forYou)
+            tap.doubleTapped(null, Qt.LeftButton)
+            compare(forYouSpy.count, 1); compare(openSpy.count, 1)
+            // A meow: a click takes it away; with it up a double click opens Owelk.
+            pet.message = {text: "야옹", plain: true, ttl: 0}
+            tap.doubleTapped(null, Qt.LeftButton)
+            compare(openSpy.count, 2)
+            pet.message = {text: "야옹", plain: true, ttl: 0}
+            tap.tapped(null, Qt.LeftButton)
+            compare(pet.message, null); compare(openSpy.count, 2)
+            fakeForYou.items = []
         }
         function test_aClickOnTheCatPokesIt() {
             const pet = quietPet()

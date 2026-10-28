@@ -7,8 +7,8 @@ import Owelk.Ui
 // runs (Settings › Appearance › Desktop pet). It lives on the line it was left on: sits, grooms, strolls along
 // it, sleeps up on a cat tower that stands where the user put it (drag the tower anywhere), rolls on its back,
 // stretches, and now and then dashes out of the screen and back. Drag it anywhere (it keeps still while held);
-// a click makes it spring up and do something else, a double click brings Owelk forward; the right button has
-// its menu. While Owelk is behind other apps it says when an AI answer is ready or failed and when For You has
+// a click makes it spring up and do something else, and only a double click brings Owelk forward (on its
+// bubble too); the right button has its menu. While Owelk is behind other apps it says when an AI answer is ready or failed and when For You has
 // new papers, in a bubble above it; it kneads while an answer is written. PDFs dropped on it open in Owelk; text
 // dropped on it is explained by the AI. After a stretch of reading it suggests a break. Nothing moves or redraws
 // while nothing happens, and it stops when the screen is locked or Owelk is hidden.
@@ -58,7 +58,7 @@ Window {
     }
     // In front of the tower's window, without bringing Owelk forward.
     function putInFront() { DesktopPet.raiseWindow(pet) }
-    // A click on the bubble does what it says.
+    // A double click on the bubble (or on the cat while it is up) does what it says.
     function act() {
         const m = message
         message = null
@@ -67,11 +67,16 @@ Window {
         else if (m.forYou) forYouRequested()
         else openRequested()
     }
-    // A click on the cat: with a bubble up it does what the bubble says; else the cat springs up and goes on
-    // to something else.
+    // A click on the cat moves only the cat: it springs up and goes on to something else, and a bubble that
+    // only tells something (a break, a meow) goes. Owelk stays where it is.
     function tapped() {
-        if (message) act()
-        else brain.poke()
+        if (message && (message.reminder || message.plain)) message = null
+        brain.poke()
+    }
+    // A double click brings Owelk forward: at what the bubble says, if it says something to open.
+    function doubleTapped() {
+        if (message && !message.reminder && !message.plain) act()
+        else openRequested()
     }
     // Conversations being answered (gloss and other requests are not news).
     property var answering: ({})
@@ -545,7 +550,7 @@ Window {
         objectName: "petTap"
         onPressedChanged: if (pressed) pet.pressCursor = DesktopPet.cursor()
         onTapped: pet.tapped()
-        onDoubleTapped: pet.openRequested()
+        onDoubleTapped: pet.doubleTapped()
     }
     TapHandler { acceptedButtons: Qt.RightButton; onTapped: menu.popup() }
     Menu {
@@ -565,7 +570,7 @@ Window {
     }
 
     // The bubble: its own small window above the cat (below it near the top of the screen), so the pet's
-    // window stays the size of the cat. A click does what it says; the right button dismisses it.
+    // window stays the size of the cat. A double click does what it says; the right button dismisses it.
     Window {
         id: bubble
         objectName: "petBubble"
@@ -606,7 +611,7 @@ Window {
                 color: Theme.text
             }
         }
-        TapHandler { onTapped: pet.act() }
+        TapHandler { objectName: "petBubbleTap"; onDoubleTapped: pet.act() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: pet.message = null }
     }
 }
