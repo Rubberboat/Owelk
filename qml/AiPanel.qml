@@ -41,6 +41,20 @@ Item {
     // the chats (and the conversation); narrow, one list at a time.
     readonly property bool wide: width >= 440
     readonly property real topicWidth: Math.round(Math.min(200, Math.max(140, width * .3)))
+    // Wide, the column shows beside the list of chats and folds away while a chat is open; the header's
+    // sidebar button shows or hides it, and each place keeps that choice (ai.threadsOnList, ai.threadsInChat).
+    property bool threadsOnList: researchStore.setting("ai.threadsOnList", "1") === "1"
+    property bool threadsInChat: researchStore.setting("ai.threadsInChat", "0") === "1"
+    readonly property bool threadsShown: wide && (showingThreads ? threadsOnList : threadsInChat)
+    function toggleThreadsColumn() {
+        if (showingThreads) {
+            threadsOnList = !threadsOnList
+            researchStore.setSetting("ai.threadsOnList", threadsOnList ? "1" : "0")
+        } else {
+            threadsInChat = !threadsInChat
+            researchStore.setSetting("ai.threadsInChat", threadsInChat ? "1" : "0")
+        }
+    }
     property bool topicsOpen: false
     property int topicRevision: 0
     Connections { target: researchStore; function onAiThreadsChanged() { root.reviveHiddenPapers(); root.topicRevision++ } }
@@ -453,11 +467,11 @@ Item {
             onTriggered: { const target = textMenu.target; target.persistentSelection = textMenu.kept; root.quote(root.selectionText(target)) }
         }
     }
-    // The Threads: wide, a column on the left; narrow, in place of the chats until one is chosen.
+    // The Threads: wide, a column on the left (unless folded); narrow, in place of the chats until one is chosen.
     Item {
         id: topicColumn
         objectName: "aiTopics"
-        visible: root.wide || (root.showingThreads && root.topicsOpen)
+        visible: root.threadsShown || (!root.wide && root.showingThreads && root.topicsOpen)
         anchors.left: parent.left; anchors.top: parent.top
         // Narrow, the question box stays below the Threads too.
         anchors.bottom: root.wide ? parent.bottom : composerArea.top
@@ -614,13 +628,22 @@ Item {
     }
     ColumnLayout {
         anchors.top: parent.top; anchors.bottom: composerArea.top; anchors.right: parent.right
-        anchors.left: root.wide ? topicColumn.right : parent.left
+        anchors.left: root.threadsShown ? topicColumn.right : parent.left
         anchors.margins: 8; anchors.bottomMargin: 6
         visible: root.wide || !topicColumn.visible
         spacing: 6
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             spacing: 2
+            // Wide: the Threads column shown or folded away.
+            IconButton {
+                objectName: "aiThreadsColumnButton"
+                visible: root.wide
+                icon.name: "sidebar"
+                checked: root.threadsShown
+                description: root.threadsShown ? "Hide Threads" : "Show Threads"
+                onClicked: root.toggleThreadsColumn()
+            }
             // Narrow: from the chats back to the Threads.
             IconButton {
                 objectName: "aiTopicsButton"
@@ -666,7 +689,7 @@ Item {
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
         // The Thread's chats, newest first. Click opens; Cmd/Ctrl-click and Shift-click select
         // several; Delete or the right-click menu moves them to the Trash; dragged onto a Thread of one's
-        // own (wide), they move there.
+        // own (with the Threads shown), they move there.
         ListView {
             id: threadList
             objectName: "aiThreadList"
@@ -718,7 +741,7 @@ Item {
                     id: chatDrag
                     objectName: "aiChatDrag"
                     target: null
-                    enabled: root.wide
+                    enabled: root.threadsShown
                     onActiveChanged: {
                         if (active) root.startChatDrag(row.chosen ? root.selectedThreads.slice() : [row.modelData.id], row.modelData.title, centroid.scenePosition)
                         else root.finishChatDrag()
@@ -1002,7 +1025,7 @@ Item {
         id: composerArea
         objectName: "aiComposerArea"
         anchors.bottom: parent.bottom; anchors.right: parent.right
-        anchors.left: root.wide ? topicColumn.right : parent.left
+        anchors.left: root.threadsShown ? topicColumn.right : parent.left
         anchors.margins: 8
         spacing: 6
         // Attachments for the next turn; × removes one. Images show a thumbnail.

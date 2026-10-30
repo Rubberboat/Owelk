@@ -413,6 +413,50 @@ Item {
             verify(findChild(view, "aiQuestion-0") !== null)
             controller.showThreads()
         }
+        // Wide, the Threads column stands beside the list of chats and folds away in a chat; the sidebar button
+        // shows or hides it, and each place keeps that choice.
+        function test_9b_theThreadsColumnFoldsInAChatAndOnRequest() {
+            reader.source = outlineSource
+            panel.chooseTopic(first)
+            const column = findChild(panel, "aiTopics"), button = findChild(panel, "aiThreadsColumnButton")
+            const list = chats(), conversation = findChild(panel, "aiConversation")
+            function toggle() { button.clicked() }
+            verify(panel.wide && button.visible)
+            tryCompare(column, "visible", true)
+            verify(button.checked)
+            verify(list.mapToItem(panel, 0, 0).x >= column.width)
+            // A chat open: the column folds away and the chat takes the width.
+            const id = longChat("Folding", 2)
+            verify(controller.openThread(id, true))
+            tryCompare(column, "visible", false)
+            verify(!button.checked)
+            tryVerify(function() { return conversation.mapToItem(panel, 0, 0).x < 20 })
+            // Shown in a chat: kept for chats from now on, and the list still has it.
+            toggle()
+            tryCompare(column, "visible", true)
+            compare(researchStore.setting("ai.threadsInChat"), "1")
+            tryVerify(function() { return conversation.mapToItem(panel, 0, 0).x >= column.width })
+            controller.showThreads()
+            tryCompare(column, "visible", true)
+            // Hidden on the list: the list takes the width; a chat keeps its own choice.
+            toggle()
+            tryCompare(column, "visible", false)
+            compare(researchStore.setting("ai.threadsOnList"), "0")
+            tryVerify(function() { return list.mapToItem(panel, 0, 0).x < 20 })
+            verify(controller.openThread(id, true))
+            tryCompare(column, "visible", true)
+            toggle()
+            tryCompare(column, "visible", false)
+            controller.showThreads()
+            toggle()
+            tryCompare(column, "visible", true)
+            compare(researchStore.setting("ai.threadsOnList"), "1")
+            compare(researchStore.setting("ai.threadsInChat"), "0")
+            // Narrow, one list at a time as before: no button.
+            panel.width = 300
+            verify(!button.visible)
+            panel.width = 600
+        }
         function test_9z_deletingSeveralChatsOrAThreadAsksFirst() {
             reader.source = outlineSource
             panel.saveTopic("", "Pile", [])
